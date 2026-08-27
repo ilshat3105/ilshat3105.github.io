@@ -1,0 +1,3446 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>RouteFlow — заявки и топливо</title>
+<style>
+  :root{
+    --ink:#202124; --muted:#5f6368; --faint:#9aa0a6; --line:#e0e0e0; --bg:#fff;
+    --accent:#5f6368; --steel:#3d5a80;
+  }
+  *{box-sizing:border-box;}
+  button{-webkit-tap-highlight-color:transparent;outline:none;}
+  body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#c9c9c4;min-height:100vh;
+    display:flex;justify-content:center;padding:40px 16px;color:var(--ink);}
+  .phone{width:100%;max-width:390px;height:800px;background:var(--bg);border-radius:34px;overflow:hidden;
+    box-shadow:0 25px 60px rgba(0,0,0,.35);position:relative;display:flex;flex-direction:column;}
+  .status{display:flex;justify-content:space-between;padding:12px 24px 2px;font-size:13px;font-weight:500;flex-shrink:0;}
+
+  header{padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+  header .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:8px;
+    display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0;}
+  header .icon-btn:active{background:#f1f3f4;}
+  .search{flex:1;background:#f1f3f4;border-radius:24px;display:flex;align-items:center;
+    padding:9px 14px;gap:10px;}
+  .search input{border:none;background:none;outline:none;font-size:14.5px;color:var(--ink);width:100%;font-family:'Inter',sans-serif;}
+  .avatar{width:28px;height:28px;border-radius:50%;background:#7c4dff;color:#fff;font-size:12.5px;
+    font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+  main{flex:1;overflow-y:auto;padding:8px 12px 90px;position:relative;-webkit-overflow-scrolling:touch;}
+
+  .compose{display:none !important;}
+
+  /* Одна общая кнопка добавления для разделов «Заявки» и «Топливо». */
+  .global-fab{
+    position:absolute;right:22px;bottom:max(92px, calc(env(safe-area-inset-bottom) + 72px));
+    width:58px;height:58px;border:0;border-radius:50%;background:#2563eb;color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:300;line-height:1;
+    box-shadow:0 10px 24px rgba(37,99,235,.34);cursor:pointer;z-index:20;
+    -webkit-tap-highlight-color:transparent;transition:transform .12s ease,box-shadow .12s ease;
+  }
+  .global-fab:active{transform:scale(.94);box-shadow:0 6px 16px rgba(37,99,235,.28);}
+
+  .summary-bar{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 16px;
+    margin-bottom:16px;font-size:13.5px;color:var(--ink);font-weight:600;}
+
+  .section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.4px;margin:4px 2px 8px;}
+
+  .grid{display:flex;flex-direction:column;gap:12px;}
+  .note{border-radius:14px;border:1px solid var(--line);
+    padding:16px 18px 16px 18px;cursor:pointer;position:relative;
+    height:180px;overflow:hidden;display:flex;flex-direction:column;
+    transition:transform .15s ease;touch-action:pan-y;}
+  .drag-handle{position:absolute;top:50%;right:2px;transform:translateY(-50%);background:none;border:none;
+    color:var(--faint);padding:10px;cursor:grab;touch-action:none;z-index:5;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+  .note.drag-active{filter:brightness(.82);box-shadow:0 14px 30px rgba(0,0,0,.32) !important;
+    z-index:30;transition:none !important;}
+  .note h4{margin:0 0 6px;font-size:27.5px;font-weight:700;color:var(--ink);padding-right:24px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex-shrink:0;}
+  .note p{margin:0;font-size:14.5px;color:#3c4043;white-space:pre-wrap;line-height:1.5;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+    padding-right:78px;}
+  .note p strong{font-weight:700;color:var(--ink);font-size:17.7px;}
+  .note .cl-wrap{overflow:hidden;flex:1;}
+  .note .cl-item{display:flex;align-items:center;gap:10px;font-size:14.5px;margin:6px 0;color:#3c4043;}
+  .note .cl-item.done{color:var(--faint);text-decoration:line-through;}
+  .note .cl-item input{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
+  .note .pin{position:absolute;top:14px;right:14px;color:var(--muted);opacity:.85;}
+  .note .amount-badge{position:absolute;top:12px;right:14px;font-size:16px;font-weight:800;
+    color:var(--ink);display:flex;align-items:center;gap:6px;}
+  .paid-dot-inline{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:#9aa0a6;}
+  .paid-dot-inline.partial{background:#e8a33d;}
+  .paid-check-inline{width:15px;height:15px;flex-shrink:0;color:#2f7de1;}
+  .note .flag-tags{position:absolute;top:34px;right:14px;display:flex;gap:4px;}
+  .note .flag-tag{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap;}
+  .note .note-num{font-size:11px;color:var(--faint);font-weight:600;margin-bottom:3px;flex-shrink:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:78px;}
+  .note-num.fav-row{display:flex;align-items:center;gap:6px;overflow:visible;text-overflow:clip;}
+  .note .fav-num{display:inline-flex;align-items:center;justify-content:center;
+    color:#3c4043;font-weight:800;font-size:12.6px;flex-shrink:0;}
+  .note .more-items{font-size:13px;color:var(--faint);margin-top:4px;}
+  .note .fade{position:absolute;left:0;right:0;bottom:0;height:26px;
+    background:linear-gradient(to bottom, transparent, currentColor);pointer-events:none;}
+  .note .photos-row{display:flex;gap:6px;margin-top:8px;flex-shrink:0;}
+  .note .photo-thumb-sm{width:44px;height:44px;border-radius:8px;overflow:hidden;flex-shrink:0;
+    border:1px solid rgba(0,0,0,.08);}
+  .note .photo-thumb-sm img{width:100%;height:100%;object-fit:cover;display:block;}
+  .note .photo-more{width:44px;height:44px;border-radius:8px;flex-shrink:0;background:rgba(0,0,0,.06);
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#3c4043;}
+
+  .ed-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:flex-start;}
+  .ed-photo-item{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .ed-photo-date{font-size:10px;color:var(--faint);}
+  .ed-photo-thumb{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);}
+  .ed-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .ed-photo-thumb .ed-rm{position:absolute;top:2px;right:2px;background:rgba(32,33,36,.75);color:#fff;
+    border:none;width:18px;height:18px;border-radius:50%;font-size:11px;line-height:1;cursor:pointer;}
+  .ocr-result-loading{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px;
+    padding:20px 0;justify-content:center;}
+  .ocr-result-loading .spinner{width:16px;height:16px;border:2px solid rgba(0,0,0,.15);
+    border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:spin .7s linear infinite;}
+  .ocr-result-body{white-space:pre-wrap;font-size:14px;line-height:1.5;color:var(--ink);
+    background:#fafafa;border:1.5px solid var(--card-line);border-radius:10px;padding:12px;
+    margin-bottom:10px;overflow-y:auto;max-height:45vh;min-height:120px;width:100%;
+    font-family:'Inter',sans-serif;resize:vertical;box-sizing:border-box;outline:none;}
+  .ocr-result-body:focus{border-color:var(--accent);background:#fff;}
+  .ocr-confidence-hint{font-size:12px;color:var(--muted);margin-bottom:6px;display:none;}
+  .ocr-confidence-hint.show{display:block;}
+  .ocr-confidence-hint .dot{display:inline-block;width:9px;height:9px;border-radius:2px;
+    background:#fde68a;border:1px solid #d97706;vertical-align:middle;margin-right:4px;}
+  .ocr-preview{white-space:pre-wrap;font-size:14px;line-height:1.6;color:var(--ink);
+    background:#fafafa;border:1.5px solid var(--card-line);border-radius:10px;padding:12px;
+    margin-bottom:8px;overflow-y:auto;flex:1 1 auto;min-height:70px;width:100%;
+    font-family:'Inter',sans-serif;box-sizing:border-box;outline:none;}
+  .ocr-preview:focus{border-color:var(--accent);background:#fff;}
+  .ocr-preview:empty:before{content:attr(data-placeholder);color:var(--muted);}
+  .ocr-preview mark{background:#fde68a;color:#92400e;border-radius:3px;padding:0 1px;font-weight:700;}
+  .ocr-preview a.ocr-phone-link{color:#2563eb;font-weight:700;text-decoration:underline;cursor:pointer;}
+  .ocr-zoom-hint{font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4;
+    background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 10px;}
+  .ed-photo-checking{position:absolute;inset:0;background:rgba(0,0,0,.45);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}
+  .ed-photo-checking .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;}
+  .ed-photo-checking .pct{color:#fff;font-size:10px;font-weight:700;}
+  .ed-add-photo{width:64px;height:64px;border-radius:10px;border:1.5px dashed #c9c5b8;background:none;
+    color:var(--faint);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;}
+
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:60;display:none;
+    align-items:center;justify-content:center;}
+  .lightbox.show{display:flex;}
+  .lightbox img{max-width:90%;max-height:80%;object-fit:contain;border-radius:6px;touch-action:none;
+    position:relative;z-index:1;}
+  .lightbox .lb-close{position:absolute;top:14px;right:14px;background:rgba(0,0,0,.55);
+    border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);}
+  .lightbox .lb-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.55);
+    border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);}
+  .lightbox .lb-prev{left:10px;}
+  .lightbox .lb-next{right:10px;}
+  .lightbox .lb-count{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+    color:#fff;font-size:12.5px;background:rgba(0,0,0,.55);padding:4px 10px;border-radius:10px;z-index:5;}
+  .lightbox .lb-ocr-btn{position:absolute;bottom:14px;right:14px;background:rgba(37,99,235,.85);
+    border:none;color:#fff;padding:8px 14px;border-radius:20px;font-size:13.5px;font-weight:700;
+    cursor:pointer;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);font-family:'Inter',sans-serif;}
+  .lightbox .lb-select-btn{position:absolute;bottom:14px;left:14px;background:rgba(217,48,37,.85);
+    border:none;color:#fff;padding:8px 14px;border-radius:20px;font-size:13.5px;font-weight:700;
+    cursor:pointer;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);font-family:'Inter',sans-serif;}
+  .lightbox .lb-select-btn.active{background:#d93025;box-shadow:0 0 0 3px rgba(217,48,37,.45);}
+  .lb-select-overlay{position:absolute;inset:0;z-index:8;pointer-events:none;touch-action:none;}
+  .lb-select-overlay.active{pointer-events:auto;}
+  .lb-select-box{position:fixed;border:2.5px solid #ff3b30;background:rgba(255,59,48,.18);
+    display:none;pointer-events:none;z-index:9;}
+  .lightbox .lb-select-hint{position:fixed;top:14px;left:14px;right:14px;
+    background:rgba(217,48,37,.85);color:#fff;font-size:12.5px;line-height:1.4;
+    padding:10px 14px;border-radius:10px;z-index:6;text-align:center;
+    opacity:0;pointer-events:none;transition:opacity .4s ease;}
+  .lightbox .lb-select-hint.show{opacity:1;}
+  .lightbox .lb-lens-hint{position:fixed;top:14px;left:14px;right:14px;
+    background:rgba(0,0,0,.72);color:#fff;font-size:12.5px;line-height:1.4;
+    padding:10px 14px;border-radius:10px;z-index:6;text-align:center;
+    opacity:0;pointer-events:none;transition:opacity .4s ease;}
+  .lightbox .lb-lens-hint.show{opacity:1;}
+
+  .empty{text-align:center;color:var(--faint);font-size:13.5px;margin-top:60px;padding:0 30px;}
+
+  /* drawer */
+  .overlay{position:absolute;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;
+    transition:opacity .2s ease;z-index:30;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .drawer{position:absolute;top:0;left:0;bottom:0;width:250px;background:#fff;z-index:31;
+    transform:translateX(-100%);transition:transform .2s ease;padding:16px 0;}
+  .drawer.show{transform:translateX(0);}
+  .drawer .brand{font-size:17px;font-weight:600;padding:8px 20px 18px;}
+  .drawer button{display:flex;align-items:center;gap:18px;width:100%;background:none;border:none;
+    text-align:left;padding:11px 20px;font-size:14px;color:var(--ink);cursor:pointer;border-radius:0 20px 20px 0;}
+  .drawer button.active{background:#feefc3;font-weight:600;}
+  .drawer button:active{background:#f1f3f4;}
+
+  /* editor */
+  .editor-overlay{position:fixed;left:0;top:0;width:100%;height:100vh;background:#fff;z-index:40;display:none;flex-direction:column;}
+  .editor-overlay.show{display:flex;}
+  .editor-top{display:flex;align-items:center;gap:4px;padding:10px 6px;border-bottom:1px solid transparent;flex-shrink:0;}
+  .editor-top .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:9px;
+    display:flex;align-items:center;justify-content:center;border-radius:50%;}
+  .editor-top .icon-btn[disabled]{opacity:.3;pointer-events:none;}
+  .editor-top .spacer{flex:1;}
+  .editor-fields{flex-shrink:0;padding:12px 20px 4px;display:flex;flex-direction:column;}
+  .editor-fields input.title{width:100%;border:none;outline:none;font-size:19px;font-weight:600;
+    margin-bottom:10px;font-family:'Inter',sans-serif;background:transparent;flex-shrink:0;}
+  .editor-body{flex:1;overflow-y:auto;padding:0 20px 20px;display:flex;flex-direction:column;}
+  .ed-num{font-size:12px;color:var(--faint);font-weight:600;margin-bottom:4px;flex-shrink:0;}
+  .ed-paid-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);
+    font-weight:600;margin-bottom:8px;flex-shrink:0;background:#fff;
+    border:1px solid var(--card-line);border-radius:20px;padding:4px 10px 4px 8px;width:fit-content;}
+  .ed-paid-badge .dot{width:8px;height:8px;border-radius:50%;background:#188038;flex-shrink:0;}
+  .ed-paid-badge .dot.partial{background:#e8a33d;}
+  .ed-paid-badge .dot.gray{background:#9aa0a6;}
+  .ed-paid-badge .dot.over{background:#8d6748;}
+  .ed-reminder-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#fff;
+    font-weight:600;margin-bottom:8px;flex-shrink:0;background:#e8a33d;
+    border-radius:20px;padding:4px 10px;width:fit-content;cursor:pointer;}
+  .ed-reminder-badge.overdue{background:#d93025;}
+  .ed-reminder-badge .x{opacity:.85;font-weight:800;margin-left:2px;}
+  .ed-reminder-badge .alarm{opacity:.9;margin-left:2px;}
+  .note .reminder-tag{position:absolute;top:10px;right:12px;font-size:10.5px;font-weight:700;
+    color:#fff;background:#e8a33d;border-radius:10px;padding:2px 7px;display:flex;align-items:center;gap:3px;}
+  .note .reminder-tag.overdue{background:#d93025;}
+  .due-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-shrink:0;}
+  .due-chip{background:none;border:1px solid var(--line);color:var(--muted);border-radius:20px;
+    padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
+  .ed-due-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#fff;
+    font-weight:600;flex-shrink:0;background:#188038;border-radius:20px;padding:4px 10px;
+    width:fit-content;cursor:pointer;}
+  .ed-due-badge.overdue{background:#d93025;}
+  .ed-due-badge.default{background:#9aa0a6;}
+  .ed-due-badge.default.overdue{background:#d93025;}
+  .ed-due-badge .x{opacity:.85;font-weight:800;margin-left:2px;}
+  .note.due-overdue{background:#fdf1f0 !important;}
+  .amount-row{display:flex;align-items:center;gap:5px;margin-bottom:12px;flex-shrink:0;flex-wrap:wrap;}
+  .amount-row > input{width:72px;border:1px solid var(--line);border-radius:8px;padding:7px 8px;
+    font-size:13.5px;font-family:'Inter',sans-serif;background:transparent;outline:none;}
+  .amount-row input:focus{border-color:#5f6368;}
+  .amount-row #amountPreview{font-size:12px;color:#188038;font-weight:600;margin-right:2px;white-space:nowrap;}
+  .amount-flags{display:flex;gap:8px;margin-bottom:12px;flex-shrink:0;}
+  .flag-chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--ink);
+    background:#fff;border:1px solid var(--card-line);border-radius:14px;padding:4px 8px;cursor:pointer;
+    user-select:none;white-space:nowrap;}
+  .flag-chip input{width:13px;height:13px;accent-color:#5f6368;cursor:pointer;flex-shrink:0;}
+  .flag-chip:has(input:checked){background:var(--concrete);border-color:#5f6368;font-weight:600;}
+  .editor-body textarea.body{width:100%;border:none;outline:none;font-size:14.5px;line-height:1.6;
+    resize:none;font-family:'Inter',sans-serif;background:transparent;min-height:80px;overflow:hidden;
+    flex-shrink:0;}
+  .cl-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .cl-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
+  .cl-row input[type=text]{flex:1;border:none;outline:none;font-size:14.5px;background:transparent;font-family:'Inter',sans-serif;}
+  .cl-row.done input[type=text]{color:var(--faint);text-decoration:line-through;}
+  .cl-row .rm{background:none;border:none;color:var(--faint);cursor:pointer;padding:4px;flex-shrink:0;}
+  .cl-add{display:flex;align-items:center;gap:10px;margin-top:8px;color:var(--faint);}
+  .cl-add input{flex:1;border:none;outline:none;font-size:14.5px;font-family:'Inter',sans-serif;background:transparent;}
+
+  .editor-toolbar{border-bottom:1px solid var(--line);padding:8px 6px;display:flex;align-items:center;
+    gap:2px;flex-shrink:0;position:relative;flex-wrap:wrap;}
+  .editor-toolbar .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:9px;
+    display:flex;align-items:center;justify-content:center;border-radius:50%;}
+  .editor-toolbar .icon-btn:active{background:#f1f3f4;}
+  .editor-toolbar .icon-btn[disabled]{opacity:.3;pointer-events:none;}
+  .editor-toolbar .close-btn{margin-left:auto;background:none;border:none;color:var(--ink);
+    font-size:13.5px;font-weight:500;padding:9px 16px;cursor:pointer;border-radius:6px;}
+  .editor-toolbar .close-btn:active{background:#f1f3f4;}
+
+  .ed-photos-wrap{padding:12px 20px 0;flex-shrink:0;}
+
+  /* ---- Раздел "Маршруты" — отдельная вкладка: только переход в Spoke ---- */
+  .spoke-panel{display:flex;flex-direction:column;align-items:center;text-align:center;
+    padding:70px 24px 0;}
+  .spoke-panel-title{font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px;}
+  .spoke-panel-text{font-size:13.5px;color:var(--muted);line-height:1.5;margin-bottom:22px;max-width:280px;}
+  .open-spoke-btn{width:100%;max-width:280px;background:#3730a3;border:none;border-radius:12px;
+    padding:14px;font-size:14.5px;font-weight:700;color:#fff;cursor:pointer;
+    font-family:'Inter',sans-serif;}
+
+  /* ---- Окно с распознанным текстом фото (OCR) — переиспользует те же стили листа ---- */
+  .route-import-overlay{position:fixed;inset:0;background:transparent;z-index:70;
+    display:none;align-items:flex-end;justify-content:center;pointer-events:none;}
+  .route-import-overlay.show{display:flex;}
+  .route-import-sheet{background:#fff;width:100%;max-width:520px;max-height:44vh;
+    border-radius:20px 20px 0 0;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.25);pointer-events:auto;}
+  .route-import-title{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:10px;flex-shrink:0;}
+  .route-import-close{flex-shrink:0;width:100%;background:none;border:1.5px solid var(--card-line);
+    border-radius:12px;padding:12px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;
+    font-family:'Inter',sans-serif;}
+  .route-save-btn{flex:1;background:var(--accent);color:#fff;border:none;border-radius:12px;
+    padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+  #ocrSelectBtn{background:#d93025;}
+  #ocrSelectBtn.active{background:#a3201a;box-shadow:0 0 0 3px rgba(217,48,37,.35) inset;}
+
+  .palette{position:absolute;top:52px;left:6px;background:#fff;border:1px solid var(--line);
+    border-radius:24px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:8px;display:none;
+    flex-wrap:wrap;gap:8px;width:230px;z-index:5;}
+  .palette.show{display:flex;}
+  .swatch{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--line);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .swatch.selected{border:2px solid #5f6368;}
+  .swatch svg{opacity:0;}
+  .swatch.selected svg{opacity:1;}
+  #colorBtn, #checklistToggleBtn{display:none !important;}
+
+  .pay-choice-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;
+    display:none;align-items:center;justify-content:center;padding:24px;}
+  .pay-choice-overlay.show{display:flex;}
+  .pay-choice-card{background:#fff;border-radius:16px;padding:20px;width:100%;max-width:340px;
+    display:flex;flex-direction:column;gap:10px;}
+  .pay-choice-card h4{margin:0;font-size:16px;font-weight:700;color:var(--ink);}
+  .pay-choice-card p{margin:0 0 4px;font-size:13px;color:var(--muted);}
+  .pay-choice-btn{display:flex;align-items:center;gap:10px;width:100%;padding:14px 16px;
+    border-radius:12px;border:1.5px solid var(--card-line);background:#fff;font-size:15px;
+    font-weight:600;color:var(--ink);cursor:pointer;text-align:left;}
+  .pay-choice-btn:active{background:var(--concrete);}
+  .pay-choice-btn .dot{width:12px;height:12px;border-radius:50%;background:#188038;flex-shrink:0;}
+  .pay-choice-btn .dot.partial{background:#e8a33d;}
+  .pay-choice-cancel{background:none;border:none;color:var(--muted);font-size:13.5px;
+    padding:8px;cursor:pointer;margin-top:4px;}
+  .pay-choice-btn.full-width{justify-content:center;background:var(--steel);border-color:var(--steel);color:#fff;}
+  .pay-choice-btn.full-width .dot{background:#fff;}
+
+  .top-tabs{display:flex;gap:4px;padding:8px 16px 0;border-bottom:1px solid var(--line);flex-shrink:0;}
+  .top-tab{background:none;border:none;padding:10px 4px;margin-right:20px;font-family:'Oswald',sans-serif,'Inter';
+    font-size:13.5px;font-weight:600;letter-spacing:.2px;color:var(--faint);cursor:pointer;
+    position:relative;text-transform:uppercase;outline:none;-webkit-tap-highlight-color:transparent;}
+  .top-tab.active{color:var(--ink);}
+  .top-tab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2.5px;
+    background:var(--steel);border-radius:2px;}
+
+  /* ---- Расходы: карточка истории, переключатель вида, группы ---- */
+  .exp-view-toggle{display:flex;gap:8px;margin:0 2px 12px;}
+  .exp-view-btn{flex:1;background:#fff;border:1px solid var(--card-line);border-radius:12px;
+    padding:10px;font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer;
+    font-family:'Inter',sans-serif;}
+  .exp-view-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+  .exp-card{background:#fff;border:1px solid var(--card-line);border-radius:14px;padding:14px 16px;
+    margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    cursor:pointer;}
+  .exp-card .exp-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .exp-card .exp-cat{font-size:13px;color:var(--muted);font-weight:600;}
+  .exp-card .exp-amount{font-size:17px;font-weight:700;color:var(--ink);}
+  .exp-card .exp-meta{font-size:12.5px;color:var(--faint);}
+  .exp-card .exp-edit{background:none;border:none;color:var(--faint);cursor:pointer;padding:6px;flex-shrink:0;}
+
+  .exp-group-card{background:#fff;border:1px solid var(--card-line);border-radius:14px;padding:14px 16px;
+    margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .exp-group-card .exp-group-name{font-size:14.5px;font-weight:700;color:var(--ink);}
+  .exp-group-card .exp-group-count{font-size:12.5px;color:var(--faint);margin-top:2px;}
+  .exp-group-card .exp-group-total{font-size:16px;font-weight:700;color:var(--navy);}
+
+  /* ---- Доходы: баннер "должны" и переключатель с 4 пунктами ---- */
+  .inc-owed-banner{background:#fff7ed;border:1px solid #fdba74;border-radius:14px;
+    padding:12px 16px;margin-bottom:12px;font-size:13.5px;color:#9a3412;font-weight:600;}
+  .inc-owed-banner b{font-size:16px;}
+  #incFilterToggle{flex-wrap:wrap;}
+  #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
+  #incOverdueBtn.has-overdue{color:#d93025;border-color:#f3b4ae;}
+  .inc-card{background:#fff;border:1px solid var(--card-line);border-radius:14px;padding:14px 16px;
+    margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    cursor:pointer;}
+  .inc-card .inc-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .inc-card .inc-route{font-size:14.5px;font-weight:700;color:var(--ink);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .inc-card .inc-meta{font-size:12.5px;color:var(--faint);}
+  .inc-card .inc-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
+  .inc-card .inc-amount{font-size:16px;font-weight:700;color:var(--navy);}
+  .inc-card .inc-status{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;}
+  .inc-card .inc-status.full{background:#e6f4ea;color:#1e7e34;}
+  .inc-card .inc-status.partial{background:#fff4e5;color:#b35c00;}
+  .inc-card .inc-status.none{background:#f1f3f4;color:#5f6368;}
+
+  /* ---- Окно добавления/редактирования расхода — выезжает снизу, рядом с клавиатурой ---- */
+  .exp-sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:70;
+    display:none;align-items:flex-end;justify-content:center;}
+  .exp-sheet-overlay.show{display:flex;}
+  .exp-sheet{background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;
+    padding:10px 18px calc(18px + env(safe-area-inset-bottom,0px));
+    display:flex;flex-direction:column;gap:12px;
+    box-shadow:0 -8px 30px rgba(0,0,0,.18);}
+  .exp-sheet-handle{width:36px;height:4px;border-radius:2px;background:#dadce0;margin:2px auto 4px;}
+  .exp-cat-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;}
+  .exp-cat-chip{flex-shrink:0;background:#f1f3f4;border:1.5px solid transparent;border-radius:999px;
+    padding:9px 16px;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;
+    white-space:nowrap;font-family:'Inter',sans-serif;}
+  .exp-cat-chip.active{background:var(--accent);color:#fff;}
+  .exp-cat-chip.exp-cat-add{background:#fff;border:1.5px dashed #b9bdc4;color:var(--muted);}
+  .exp-cat-new-input{width:100%;border:1.5px solid var(--card-line);border-radius:12px;
+    padding:12px 14px;font-size:15px;font-family:'Inter',sans-serif;outline:none;}
+  .exp-cat-new-input:focus{border-color:var(--accent);}
+  .exp-amount-row{display:flex;align-items:center;gap:8px;border:1.5px solid var(--card-line);
+    border-radius:14px;padding:10px 16px;}
+  .exp-amount-input{flex:1;border:none;outline:none;font-size:28px;font-weight:700;
+    font-family:'Inter',sans-serif;color:var(--ink);min-width:0;}
+  .exp-amount-suffix{font-size:20px;font-weight:700;color:var(--faint);}
+  .exp-sheet-actions{display:flex;gap:10px;}
+  .exp-delete-btn{flex:0 0 auto;background:#fff;border:1.5px solid #f28b82;color:#c5221f;
+    border-radius:12px;padding:13px 18px;font-size:14.5px;font-weight:700;cursor:pointer;
+    font-family:'Inter',sans-serif;}
+  .exp-save-btn{flex:1;background:var(--accent);color:#fff;border:none;border-radius:12px;
+    padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+  .exp-save-btn:disabled{opacity:.4;}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:#323232;color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;
+    opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:50;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+
+  /* ===== PRO MARKET UI OVERRIDES ===== */
+  :root{
+    --ink:#111827;
+    --muted:#6b7280;
+    --faint:#9ca3af;
+    --line:#e5e7eb;
+    --bg:#f4f7fb;
+    --accent:#2563eb;
+    --accent-2:#1d4ed8;
+    --steel:#2563eb;
+    --card-line:#e6eaf0;
+    --concrete:#f3f6fb;
+    --success:#16a34a;
+    --warning:#f59e0b;
+    --danger:#ef4444;
+    --navy:#0f172a;
+  }
+
+  html,body{min-height:100%;}
+  body{
+    background:linear-gradient(135deg,#e8eef7 0%,#dbe5f2 100%);
+    padding:28px 16px;
+    font-family:'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  .phone{
+    max-width:430px;
+    height:min(900px,calc(100vh - 56px));
+    border-radius:30px;
+    background:var(--bg);
+    box-shadow:0 24px 70px rgba(15,23,42,.22),0 2px 12px rgba(15,23,42,.08);
+    border:1px solid rgba(255,255,255,.7);
+  }
+  .status{
+    background:var(--navy);
+    color:#fff;
+    padding:12px 22px 6px;
+    font-size:12px;
+  }
+  header{
+    background:var(--navy);
+    padding:10px 14px 16px;
+    gap:10px;
+  }
+  header .icon-btn{color:#dbeafe;}
+  header .icon-btn:active{background:rgba(255,255,255,.08);}
+  .search{
+    background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .search svg{color:#bfdbfe;}
+  .search input{color:#fff;}
+  .search input::placeholder{color:#94a3b8;}
+  .avatar{
+    width:32px;height:32px;
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    box-shadow:0 0 0 2px rgba(255,255,255,.15);
+  }
+
+  .top-tabs{
+    background:#fff;
+    padding:0 16px;
+    gap:22px;
+    box-shadow:0 1px 0 var(--line);
+  }
+  .top-tab{
+    margin-right:0;
+    padding:14px 2px 13px;
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    letter-spacing:.55px;
+    color:#94a3b8;
+  }
+  .top-tab.active{color:var(--navy);}
+  .top-tab.active::after{background:var(--accent);height:3px;}
+
+  main{padding:14px 4px 92px;}
+  .compose{
+    border:0;
+    border-radius:14px;
+    padding:14px 16px;
+    margin-bottom:12px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    color:#fff;
+    font-weight:700;
+    box-shadow:0 8px 18px rgba(37,99,235,.22);
+  }
+  .compose::before{content:'+ ';font-weight:800;font-size:18px;vertical-align:-1px;}
+  .summary-bar{
+    border:0;
+    border-radius:16px;
+    padding:14px 16px;
+    background:linear-gradient(135deg,#0f172a,#172554);
+    color:#fff;
+    box-shadow:0 10px 24px rgba(15,23,42,.13);
+  }
+  /* Monthly requests summary: same visual weight as regular cards */
+  #summaryBar{
+    background:#fff;
+    color:var(--navy);
+    border:1px solid var(--card-line);
+    border-radius:18px;
+    box-shadow:0 6px 18px rgba(15,23,42,.055);
+    font-weight:700;
+  }
+  #expSummaryBar{
+    background:#fff;
+    color:var(--navy);
+    border:1px solid var(--card-line);
+    border-radius:18px;
+    box-shadow:0 6px 18px rgba(15,23,42,.055);
+    font-weight:700;
+  }
+  #incSummaryBar{
+    background:#fff;
+    color:var(--navy);
+    border:1px solid var(--card-line);
+    border-radius:18px;
+    box-shadow:0 6px 18px rgba(15,23,42,.055);
+    font-weight:700;
+  }
+  .section-label{
+    color:#64748b;
+    font-size:10px;
+    margin:10px 2px 8px;
+    letter-spacing:.8px;
+  }
+  .grid{gap:3px;}
+  .note{
+    height:auto;
+    min-height:154px;
+    border:1px solid var(--card-line);
+    border-radius:18px;
+    padding:12px 14px 12px 16px;
+    background:#fff !important;
+    box-shadow:0 6px 18px rgba(15,23,42,.055);
+    transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+  }
+  .note:active{transform:scale(.994);box-shadow:0 3px 10px rgba(15,23,42,.07);}
+  .note.favorite{background:#fef6d8 !important;}
+  .note.due-overdue{background:#fbe4e1 !important;}
+  .note h4{font-size:26px;color:var(--navy);margin-bottom:8px;}
+  .note p,.note .cl-item{font-size:13.5px;color:#475569;}
+  .note .amount-badge{
+    top:13px;right:14px;
+    font-size:15px;
+    color:var(--navy);
+  }
+  .note .flag-tags{top:36px;right:14px;}
+  .note .flag-tag{color:#64748b;}
+  .note .note-num{color:#94a3b8;font-size:10.5px;letter-spacing:.15px;}
+  .paid-dot-inline{width:8px;height:8px;}
+  .paid-check-inline{width:14px;height:14px;}
+  .note .photos-row{margin-top:10px;}
+  .note .photo-thumb-sm,.note .photo-more{border-radius:10px;}
+  .note .pin{color:var(--accent);}
+
+  .drawer{
+    width:286px;
+    border-radius:0 24px 24px 0;
+    box-shadow:18px 0 45px rgba(15,23,42,.18);
+    padding-top:24px;
+  }
+  .drawer .brand{font-size:20px;font-weight:800;color:var(--navy);padding:8px 22px 22px;}
+  .drawer button{margin:2px 10px;width:calc(100% - 20px);border-radius:12px;padding:12px 14px;}
+  .drawer button.active{background:#eff6ff;color:var(--accent);}
+
+  .editor-overlay{background:var(--bg);}
+  .editor-top{
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:10px 10px;
+  }
+  .editor-toolbar{
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:7px 8px;
+  }
+  .editor-toolbar .icon-btn,.editor-top .icon-btn{border-radius:10px;}
+  .editor-toolbar .icon-btn:active,.editor-top .icon-btn:active{background:#eff6ff;color:var(--accent);}
+  .editor-toolbar .close-btn{
+    background:var(--accent);
+    color:#fff;
+    border-radius:10px;
+    padding:9px 14px;
+    font-weight:700;
+  }
+  .editor-fields{padding:16px 18px 4px;}
+  .editor-body{padding:4px 18px 24px;}
+  .editor-fields input.title{font-size:22px;color:var(--navy);}
+  .amount-row{background:#fff;border:1px solid var(--card-line);padding:8px;border-radius:14px;}
+  .amount-row > input{border:0;background:#f8fafc;width:70px;}
+  .amount-row #amountPreview{color:var(--success);}
+  .flag-chip{background:#f8fafc;border-color:var(--card-line);padding:5px 8px;}
+  .flag-chip:has(input:checked){background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
+  .ed-paid-badge{border-color:var(--card-line);box-shadow:0 2px 8px rgba(15,23,42,.04);}
+  .editor-body textarea.body{background:#fff;border:1px solid var(--card-line);border-radius:14px;padding:14px;min-height:170px;}
+  .ed-add-photo,.ed-photo-thumb{width:68px;height:68px;border-radius:12px;}
+  .ed-add-photo{border-color:#cbd5e1;background:#fff;color:var(--accent);}
+  .palette{border-radius:18px;}
+
+  /* Нижняя панель действий редактора: основные кнопки всегда под большим пальцем. */
+  .editor-toolbar{
+    order:99;
+    position:relative;
+    display:flex;
+    flex-wrap:nowrap;
+    align-items:center;
+    gap:2px;
+    width:100%;
+    padding:8px 8px max(8px, env(safe-area-inset-bottom));
+    border-top:1px solid var(--line);
+    border-bottom:0;
+    background:rgba(255,255,255,.97);
+    box-shadow:0 -8px 24px rgba(15,23,42,.08);
+    overflow-x:auto;
+    overflow-y:visible;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    z-index:12;
+  }
+  .editor-toolbar::-webkit-scrollbar{display:none;}
+  .editor-toolbar .icon-btn{flex:0 0 42px;width:42px;height:42px;padding:0;}
+  .editor-toolbar .close-btn{
+    position:sticky;
+    right:0;
+    flex:0 0 auto;
+    margin-left:6px;
+    min-height:44px;
+    padding:0 15px;
+    box-shadow:-10px 0 14px rgba(255,255,255,.96);
+    z-index:2;
+  }
+  .editor-toolbar .palette{
+    position:fixed;
+    top:auto;
+    left:10px;
+    bottom:calc(70px + env(safe-area-inset-bottom));
+  }
+  .editor-body{padding-bottom:18px;}
+
+  .pay-choice-card{
+    border-radius:22px;
+    padding:22px;
+    box-shadow:0 24px 70px rgba(15,23,42,.28);
+  }
+  .pay-choice-card h4{font-size:18px;color:var(--navy);}
+  .pay-choice-btn{border-color:var(--card-line);border-radius:14px;}
+  .pay-choice-btn.full-width{background:var(--accent);border-color:var(--accent);}
+
+  .exp-card{
+    border-color:var(--card-line);
+    border-radius:18px;
+    box-shadow:0 6px 18px rgba(15,23,42,.045);
+  }
+  .exp-group-card{
+    border-color:var(--card-line);
+    border-radius:18px;
+    box-shadow:0 6px 18px rgba(15,23,42,.045);
+  }
+  .exp-card .exp-amount{color:var(--navy);}
+  .exp-card .exp-meta{color:#64748b;}
+
+  .summary-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
+  .summary-nav button{background:none;border:none;color:inherit;opacity:.7;cursor:pointer;
+    font-size:18px;line-height:1;padding:4px 10px;}
+  .summary-nav button:disabled{opacity:.25;cursor:default;}
+  .summary-nav .summary-month-label{font-size:12px;font-weight:700;opacity:.75;text-transform:uppercase;letter-spacing:.4px;}
+  .goal-progress{margin-top:10px;}
+  .goal-progress-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;}
+  .goal-progress-text{font-size:12.5px;font-weight:600;opacity:.9;}
+  .goal-edit-btn{background:none;border:none;color:inherit;opacity:.6;cursor:pointer;padding:2px 4px;}
+  .goal-bar-track{height:7px;border-radius:5px;background:rgba(15,23,42,.08);overflow:hidden;}
+  #summaryBar .goal-bar-track{background:rgba(255,255,255,.18);}
+  .goal-bar-fill{height:100%;border-radius:5px;background:var(--danger);transition:width .3s ease;}
+  .goal-bar-fill.ok{background:var(--success);}
+  .goal-set-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;
+    opacity:.8;background:none;border:1px dashed currentColor;border-radius:20px;padding:5px 12px;
+    cursor:pointer;margin-top:8px;color:inherit;}
+
+  .toast{border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.2);}
+
+  @media (max-width:520px){
+    body{padding:0;background:var(--bg);}
+    .phone{max-width:none;width:100%;height:100vh;border-radius:0;border:0;box-shadow:none;}
+  }
+
+</style>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+
+<div class="phone">
+
+  <header>
+    <button class="icon-btn" id="menuBtn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+    </button>
+    <div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="searchInput" placeholder="Поиск">
+    </div>
+    <div class="avatar" id="avatar">Я</div>
+  </header>
+
+  <div class="top-tabs" id="topTabs">
+    <button class="top-tab active" data-section="notes">Заявки</button>
+    <button class="top-tab" data-section="routes">Маршруты</button>
+    <button class="top-tab" data-section="fuel">Расходы</button>
+    <button class="top-tab" data-section="income">Доходы</button>
+  </div>
+
+  <main id="main">
+    <div class="compose" id="composeBar">Новая заявка</div>
+    <div class="summary-bar" id="summaryBar" style="display:none;"></div>
+    <div id="content"></div>
+    <div id="incomeSection" style="display:none;">
+      <div class="summary-bar" id="incSummaryBar" style="display:none;"></div>
+      <div class="inc-owed-banner" id="incOwedBanner" style="display:none;"></div>
+      <div class="exp-view-toggle" id="incFilterToggle">
+        <button class="exp-view-btn active" data-incfilter="all">Все</button>
+        <button class="exp-view-btn" data-incfilter="full">Оплачено</button>
+        <button class="exp-view-btn" data-incfilter="partial">Частично</button>
+        <button class="exp-view-btn" data-incfilter="none">Не оплачено</button>
+        <button class="exp-view-btn" id="incOverdueBtn" data-incfilter="overdue">⚠ Просрочено</button>
+      </div>
+      <div id="incList"></div>
+    </div>
+    <div id="routesSection" style="display:none;">
+      <div class="spoke-panel">
+        <div class="spoke-panel-title">Маршруты ведутся в Spoke</div>
+        <div class="spoke-panel-text">Постройте и оптимизируйте маршрут в приложении Spoke — здесь только быстрый переход туда.</div>
+        <button class="open-spoke-btn" id="openSpokeBtn" type="button">Открыть Spoke</button>
+      </div>
+    </div>
+    <div id="fuelSection" style="display:none;">
+      <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
+      <div class="exp-view-toggle" id="expViewToggle">
+        <button class="exp-view-btn active" data-expview="history">История</button>
+        <button class="exp-view-btn" data-expview="groups">По группам</button>
+      </div>
+      <div id="expHistoryView">
+        <div id="expList"></div>
+      </div>
+      <div id="expGroupsView" style="display:none;">
+        <div id="expGroupsList"></div>
+      </div>
+    </div>
+  </main>
+
+  <button class="global-fab" id="globalFab" type="button" aria-label="Добавить">+</button>
+
+  <div class="overlay" id="overlay"></div>
+  <nav class="drawer" id="drawer">
+    <div class="brand">RouteFlow</div>
+    <button class="active" data-view="notes">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
+      Заметки
+    </button>
+    <button data-view="archive">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="10" y1="13" x2="14" y2="13"/></svg>
+      Архив
+    </button>
+    <button data-view="trash">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      Корзина
+    </button>
+    <div style="height:1px;background:var(--line);margin:10px 16px;"></div>
+    <button id="exportDataBtn" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Сохранить копию данных
+    </button>
+    <button id="importDataBtn" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Загрузить копию данных
+    </button>
+    <input type="file" id="importFileInput" accept="application/json,.json" style="display:none;">
+  </nav>
+
+  <div class="editor-overlay" id="editorOverlay">
+    <div class="editor-fields">
+      <div class="ed-num" id="edNum" style="display:none;"></div>
+      <div class="ed-paid-badge" id="edPaidBadge" style="display:none;"></div>
+      <div class="ed-reminder-badge" id="edReminderBadge" style="display:none;"></div>
+    </div>
+    <div class="editor-body">
+      <textarea class="body" id="bodyInput" placeholder="Заметка..."></textarea>
+      <div id="checklistWrap" style="display:none;">
+        <div id="clItems"></div>
+        <div class="cl-add">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <input id="clNewInput" placeholder="Добавить пункт">
+        </div>
+      </div>
+    </div>
+    <div class="ed-photos-wrap">
+      <div class="ed-photos" id="edPhotos"></div>
+    </div>
+    <div class="amount-row" id="amountRowBottom">
+      <input id="amountInput" placeholder="Сумма">
+      <span id="amountPreview"></span>
+      <label class="flag-chip"><input type="checkbox" id="noNdsCheck"> Без НДС</label>
+      <label class="flag-chip"><input type="checkbox" id="cashCheck"> Нал</label>
+    </div>
+    <div class="due-row" id="dueRow">
+      <label class="due-chip" style="display:flex;align-items:center;gap:6px;cursor:text;">
+        📅 Срок оплаты, дней:
+        <input type="number" id="dueDaysInput" min="0" placeholder="—" style="width:44px;border:none;background:none;font-size:13px;font-weight:700;color:var(--ink);font-family:'Inter',sans-serif;text-align:center;-moz-appearance:textfield;">
+      </label>
+      <div class="ed-due-badge" id="edDueBadge" style="display:none;"></div>
+    </div>
+    <div class="editor-toolbar">
+      <button class="icon-btn" id="photoBtn" title="Прикрепить фото">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
+      <button class="icon-btn" id="paidBtn" title="Отметить оплаченной">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.2 2.2 4.8-4.8"/></svg>
+      </button>
+      <button class="icon-btn" id="reminderBtn" title="Напоминание">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </button>
+      <input type="datetime-local" id="reminderInput" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;">
+      <button class="icon-btn" id="colorBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button class="icon-btn" id="checklistToggleBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </button>
+      <button class="icon-btn" id="archiveBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="10" y1="13" x2="14" y2="13"/></svg>
+      </button>
+      <button class="icon-btn" id="undoBtn" title="Отменить" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      </button>
+      <button class="icon-btn" id="redoBtn" title="Повторить" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+      </button>
+      <button class="icon-btn" id="deleteBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button>
+      <button class="close-btn" id="editorDone">Закрыть</button>
+      <div class="palette" id="palette"></div>
+    </div>
+  </div>
+
+  <div class="route-import-overlay" id="paymentTypeOverlay">
+    <div class="route-import-sheet" style="max-height:none;">
+      <div class="route-import-title">Как оплата — без НДС или наличными?</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button class="route-save-btn" id="paymentTypeNoNds" type="button" style="flex:1;">Без НДС</button>
+        <button class="route-save-btn" id="paymentTypeCash" type="button" style="flex:1;">Нал</button>
+      </div>
+      <button class="route-import-close" id="paymentTypeSkip" type="button">Пропустить (с НДС, безнал)</button>
+    </div>
+  </div>
+
+  <div class="lightbox" id="lightbox">
+    <button class="lb-close" id="lbClose">×</button>
+    <button class="lb-nav lb-prev" id="lbPrev">‹</button>
+    <img id="lbImg" src="">
+    <div class="lb-select-overlay" id="lbSelectOverlay">
+      <div class="lb-select-box" id="lbSelectBox"></div>
+    </div>
+    <button class="lb-nav lb-next" id="lbNext">›</button>
+    <button class="lb-select-btn" id="lbSelectBtn" title="Выделить область на фото">▭ Область</button>
+    <button class="lb-ocr-btn" id="lbOcrBtn" title="Распознать текст с фото">Aa</button>
+    <div class="lb-lens-hint" id="lbLensHint">Долгое нажатие на фото → «Найти через Google Объектив» — так текст распознаётся точнее всего</div>
+    <div class="lb-select-hint" id="lbSelectHint">Проведите пальцем прямоугольник по нужному участку фото</div>
+    <div class="lb-count" id="lbCount"></div>
+  </div>
+
+  <div class="pay-choice-overlay" id="payChoiceOverlay">
+    <div class="pay-choice-card">
+      <h4>Платёжное поручение распознано</h4>
+      <p>Как оплачена эта заявка?</p>
+      <button class="pay-choice-btn" id="payChoiceFull"><span class="dot"></span>Полная оплата</button>
+      <button class="pay-choice-btn" id="payChoicePartial"><span class="dot partial"></span>Частичная оплата</button>
+      <button class="pay-choice-cancel" id="payChoiceCancel">Не отмечать</button>
+    </div>
+  </div>
+
+  <div class="pay-choice-overlay" id="goalOverlay">
+    <div class="pay-choice-card">
+      <h4>Минимальная сумма за месяц</h4>
+      <p>Ваш личный ориентир по заявкам — ниже него опускаться не желательно.</p>
+      <div class="fuel-field">
+        <label>Цель, ₽</label>
+        <input id="goalInput" inputmode="decimal" placeholder="напр. 650000">
+      </div>
+      <button class="pay-choice-btn full-width" id="goalSaveBtn"><span class="dot"></span>Сохранить цель</button>
+      <button class="pay-choice-cancel" id="goalCancelBtn">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div class="exp-sheet-overlay" id="expSheetOverlay">
+  <div class="exp-sheet" id="expSheet">
+    <div class="exp-sheet-handle"></div>
+    <div class="exp-cat-row" id="expCatRow"></div>
+    <input class="exp-cat-new-input" id="expCatNewInput" placeholder="Название категории" style="display:none;">
+    <div class="exp-amount-row">
+      <input class="exp-amount-input" id="expAmountInput" inputmode="decimal" placeholder="0">
+      <span class="exp-amount-suffix">₽</span>
+    </div>
+    <div class="exp-sheet-actions">
+      <button class="exp-delete-btn" id="expDeleteBtn" style="display:none;">Удалить</button>
+      <button class="exp-save-btn" id="expSaveBtn">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<div class="route-import-overlay" id="ocrResultOverlay">
+  <div class="route-import-sheet">
+    <div class="route-import-title">Распознанный текст с фото — можно поправить перед копированием</div>
+    <div class="ocr-result-loading" id="ocrResultLoading">
+      <span class="spinner"></span> Распознаю текст…
+    </div>
+    <div class="ocr-confidence-hint" id="ocrConfidenceHint"><span class="dot"></span>Жёлтым — места, где программа сама не уверена в цифре/символе. Проверьте их глазами по фото.</div>
+    <div class="ocr-preview ocr-result-body" id="ocrPreview" contenteditable="true"></div>
+    <button class="route-save-btn" id="ocrSelectBtn" type="button" style="display:none;margin-bottom:8px;">▭ Выделить область</button>
+    <button class="route-import-close" id="ocrResultClose" type="button">Закрыть</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" accept="image/*" id="photoInput" style="display:none;">
+
+<script>
+const COLORS = [
+  { name:'default', hex:'#ffffff' },
+  { name:'red',    hex:'#F28B82' },
+  { name:'orange', hex:'#FBBC04' },
+  { name:'yellow', hex:'#FFF475' },
+  { name:'green',  hex:'#CCFF90' },
+  { name:'teal',   hex:'#A7FFEB' },
+  { name:'blue',   hex:'#CBF0F8' },
+  { name:'darkblue', hex:'#AECBFA' },
+  { name:'purple', hex:'#D7AEFB' },
+  { name:'pink',   hex:'#FDCFE8' },
+  { name:'brown',  hex:'#E6C9A8' },
+  { name:'gray',   hex:'#E8EAED' },
+];
+function colorHex(name){ return (COLORS.find(c=>c.name===name)||COLORS[0]).hex; }
+
+let notes = [];
+let idSeq = 1;
+let monthKey = null;
+// Номера пересчитываются заново при каждом изменении списка — всегда идут подряд,
+// без "дыр" после удаления. Отдельно по каждому календарному месяцу.
+const TRASH_AUTO_DELETE_DAYS = 30;
+// Удаляет насовсем заметки, которые пролежали в корзине дольше месяца. У старых
+// заметок, помещённых в корзину ещё до этой функции, даты нет — не трогаем их,
+// пока пользователь не удалит/восстановит вручную (лучше сохранить лишнее, чем
+// стереть важное по ошибке).
+function purgeOldTrash(){
+  const cutoff = Date.now() - TRASH_AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000;
+  const before = notes.length;
+  notes = notes.filter(n => !(n.trashed && n.trashedAt && n.trashedAt < cutoff));
+  return notes.length !== before;
+}
+function renumberNotes(){
+  const counters = {};
+  notes.slice()
+    .filter(n => !n.trashed && !n.archived)
+    .sort((a,b) => (a.createdAt||0) - (b.createdAt||0))
+    .forEach(n => {
+      const d = new Date(n.createdAt || Date.now());
+      const key = d.getFullYear() + '-' + (d.getMonth()+1);
+      counters[key] = (counters[key] || 0) + 1;
+      n.number = counters[key];
+    });
+}
+const WEEKDAYS_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+const MONTHS_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+function formatNoteDate(ts){
+  const d = new Date(ts);
+  return `${WEEKDAYS_SHORT[d.getDay()]}, ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}.`;
+}
+const MONTHS_FULL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+// Понимает "25", "25тр", "25000", "25.000", "1,5" — числа меньше 1000 считаются тысячами.
+function parseAmount(str){
+  if(!str) return null;
+  const cleaned = String(str).toLowerCase().replace(/,/g, '.').replace(/[^\d.]/g, '');
+  if(!cleaned) return null;
+  let num = parseFloat(cleaned);
+  if(isNaN(num) || num <= 0) return null;
+  if(num < 1000) num = num * 1000;
+  return Math.round(num);
+}
+function formatAmount(n){
+  return n.toLocaleString('ru-RU') + ' ₽';
+}
+
+function ensureCurrentMonth(){
+  const now = new Date();
+  const key = now.getFullYear() + '-' + (now.getMonth()+1);
+  if(key !== monthKey){ monthKey = key; }
+}
+// Считает сумму и количество не по накопителю, а прямо по текущим заметкам —
+// так правки задним числом (добавили/поменяли сумму при редактировании) тоже учитываются,
+// а удалённые (в корзине) из отчёта пропадают.
+function computeMonthSummary(offset){
+  ensureCurrentMonth();
+  const now = new Date();
+  const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
+  const key = offset ? monthKeyShift(nowKey, offset) : nowKey;
+  let count = 0, total = 0;
+  notes.forEach(n => {
+    if(n.trashed || n.archived || !n.amount || !n.createdAt) return;
+    const d = new Date(n.createdAt);
+    const k = d.getFullYear() + '-' + (d.getMonth()+1);
+    if(k === key){ count++; total += n.amount; }
+  });
+  return { count, total, key };
+}
+
+let view = 'notes'; // notes | archive | trash
+let searchQuery = '';
+let editingNote = null; // draft object being edited, or null
+let isNewNote = false;
+
+function filtered(){
+  let list = notes.filter(n => {
+    if(view === 'trash') return n.trashed;
+    if(view === 'archive') return n.archived && !n.trashed;
+    return !n.archived && !n.trashed;
+  });
+  if(searchQuery.trim()){
+    const q = searchQuery.trim().toLowerCase();
+    list = list.filter(n =>
+      (n.title||'').toLowerCase().includes(q) ||
+      (n.text||'').toLowerCase().includes(q) ||
+      (n.checklist||[]).some(i => i.text.toLowerCase().includes(q))
+    );
+  }
+  return list;
+}
+
+// Статус оплаты: 'none' | 'partial' | 'full'. Старые заметки хранили только n.paid (true/false) —
+// читаем совместимо, а пишем всегда через paymentStatus.
+function getPaymentStatus(n){
+  return n.paymentStatus || (n.paid ? 'full' : 'none');
+}
+function setPaymentStatus(note, status, extra){
+  note.paymentStatus = status;
+  note.paid = (status === 'full'); // для обратной совместимости со старым кодом/данными
+  if(extra) Object.assign(note, extra);
+}
+// Пересчитывает статус оплаты заново по тем фото, что реально остались у заметки —
+// удалили платёжку из списка, и её сумма сразу выпадает из общего подсчёта.
+function recomputePaymentStatus(note){
+  const amounts = (note.photoAmounts || []).filter(a => typeof a === 'number' && a > 0);
+  const total = amounts.reduce((s, a) => s + a, 0);
+  const dates = (note.photoDates || []).filter(Boolean);
+  const latestDate = dates.length ? Math.max(...dates) : null;
+  const hasUnknownAmountPayment = (note.photoAmounts || []).some(a => a === 0);
+
+  if(total > 0 && note.amount){
+    if(total >= note.amount) setPaymentStatus(note, 'full', { paidAt: latestDate, paidAmount: total });
+    else setPaymentStatus(note, 'partial', { paidAt: latestDate, paidAmount: total });
+  } else if(total > 0){
+    setPaymentStatus(note, 'full', { paidAt: latestDate, paidAmount: total });
+  } else if(hasUnknownAmountPayment){
+    setPaymentStatus(note, 'full', { paidAt: latestDate || Date.now(), paidAmount: 0 });
+  } else {
+    setPaymentStatus(note, 'none', { paidAt: null, paidAmount: 0 });
+  }
+}
+// 'gray' — ещё не оплачена, 'partial' — недоплата (жёлтый), 'full' — оплачена точно (зелёный),
+// 'over' — оплачена с переплатой (тёмно-зелёный)
+function getPaymentColorClass(n){
+  const status = getPaymentStatus(n);
+  if(status === 'none') return 'gray';
+  if(status === 'partial') return 'partial';
+  const over = n.paidAmount && n.amount && n.paidAmount > n.amount;
+  return over ? 'over' : '';
+}
+// Просрочена ли оплата: срок (указанный или по умолчанию 15 раб.дней от создания)
+// прошёл, а заявка ещё не оплачена полностью.
+function isOverdue(n){
+  const dueAt = getEffectiveDueAt(n);
+  return !!(dueAt && dueAt < Date.now() && getPaymentStatus(n) !== 'full');
+}
+
+function noteCardHtml(n, favInfo){
+  const photos = n.photos || [];
+  const hasPhotos = photos.length > 0;
+  const textLines = hasPhotos ? 2 : 3;
+  const clCount = hasPhotos ? 2 : 3;
+
+  let body = '';
+  if(n.checklist){
+    const shown = n.checklist.slice(0,clCount);
+    body = shown.map(it => `<div class="cl-item ${it.done?'done':''}">
+      <input type="checkbox" data-clcheck="${n.id}:${it.id}" ${it.done?'checked':''}>
+      <span>${escapeHtml(it.text)}</span></div>`).join('');
+    if(n.checklist.length > clCount) body += `<div class="more-items">+ ещё ${n.checklist.length-clCount}</div>`;
+  } else if(n.text){
+    body = `<p style="-webkit-line-clamp:${textLines}">${formatCardBodyHtml(n.text)}</p>`;
+  }
+
+  let photosHtml = '';
+  if(hasPhotos){
+    const shownPhotos = photos.slice(0,3);
+    photosHtml = `<div class="photos-row">
+      ${shownPhotos.map((p,i) => `<div class="photo-thumb-sm" data-cardphoto="${n.id}:${i}"><img src="${p}"></div>`).join('')}
+      ${photos.length > 3 ? `<div class="photo-more" data-cardphoto="${n.id}:3">+${photos.length-3}</div>` : ''}
+    </div>`;
+  }
+
+  const payColor = getPaymentColorClass(n);
+  const favNum = favInfo ? favInfo.rank : null;
+  const numberBlockHtml = n.favorite
+    ? `<div class="note-num fav-row">
+        <span class="fav-num">${favNum || ''}</span>
+        ${n.number ? `<span>№${n.number}${n.createdAt ? ' · ' + formatNoteDate(n.createdAt) : ''}</span>` : ''}
+      </div>`
+    : (n.number ? `<div class="note-num">№${n.number}${n.createdAt ? ' · ' + formatNoteDate(n.createdAt) : ''}</div>` : '');
+  const overdue = isOverdue(n);
+  return `<div class="note ${n.favorite ? 'favorite' : ''} ${overdue ? 'due-overdue' : ''}" style="background:${overdue ? '#fbe4e1' : (n.favorite ? '#fef6d8' : colorHex(n.color))}" data-open="${n.id}">
+    ${n.favorite ? `<button class="drag-handle" data-drag="${n.id}" aria-label="Изменить порядок в избранном">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+    </button>` : ''}
+    ${n.pinned ? `<span class="pin" style="${n.amount ? `top:${(n.noNds || n.cash) ? '54px' : '34px'};` : ''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l1.5 5.5L19 9l-5 3 1 6-3-3-3 3 1-6-5-3 5.5-1.5z"/></svg></span>` : ''}
+    ${n.amount ? `<div class="amount-badge">${(payColor === '' || payColor === 'over') ? `<svg class="paid-check-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>` : `<span class="paid-dot-inline ${payColor}"></span>`}${formatAmount(n.amount)}</div>` : ''}
+    ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
+    ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? `top:${(n.noNds || n.cash) ? '60px' : '38px'};` : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
+    ${numberBlockHtml}
+    ${n.title ? `<h4>${escapeHtml(n.title)}</h4>` : ''}
+    ${body}
+    ${photosHtml}
+  </div>`;
+}
+
+// Если заметка начинается с "Груз: ..." (обычно после копирования с АТИ) — прячем само
+// слово "Груз:" и делаем первую строку (маршрут) чуть жирнее для быстрого чтения.
+function formatCardBodyHtml(text){
+  const lines = (text || '').split('\n');
+  const first = lines[0] || '';
+  const stripped = first.replace(/^\s*груз\s*:\s*/i, '');
+  const rest = lines.slice(1).join('\n');
+  let html = `<strong>${escapeHtml(stripped)}</strong>`;
+  if(rest) html += '\n' + escapeHtml(rest);
+  return html;
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderContent(){
+  purgeOldTrash();
+  renumberNotes();
+  saveState();
+  const content = document.getElementById('content');
+  document.getElementById('composeBar').style.display = view === 'notes' ? 'block' : 'none';
+  renderSummaryBar();
+  const list = filtered();
+
+  if(view === 'trash' && list.length){
+    content.innerHTML = `<p style="font-size:12px;color:var(--faint);margin:0 2px 10px;">Заметки в корзине удаляются навсегда через месяц</p>` + buildGrids(list);
+    return;
+  }
+
+  if(!list.length){
+    const msgs = { notes:'Здесь пока пусто. Нажмите «Новая заявка», чтобы начать.', archive:'В архиве пока ничего нет.', trash:'Корзина пуста.' };
+    content.innerHTML = `<div class="empty">${msgs[view]}</div>`;
+    return;
+  }
+  content.innerHTML = buildGrids(list);
+}
+
+let viewedMonthOffset = 0; // 0 = текущий месяц, -1 = предыдущий и т.д.
+let monthlyGoal = null; // личный минимум по сумме заявок за месяц, ₽
+
+// Карточка месяца/цели наверху списка заявок отключена по просьбе пользователя —
+// не должна отвлекать. Логика оставлена (для возможного возврата), но не вызывается.
+function renderSummaryBar(){
+  document.getElementById('summaryBar').style.display = 'none';
+}
+function renderSummaryBarFull(){
+  const bar = document.getElementById('summaryBar');
+  if(view !== 'notes'){ bar.style.display = 'none'; return; }
+  const now = new Date();
+  const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
+  const { count, total, key } = computeMonthSummary(viewedMonthOffset);
+  const monthLabel = monthNameOf(key) + ' ' + key.split('-')[0];
+  const nextDisabled = viewedMonthOffset >= 0 ? 'disabled' : '';
+
+  let goalHtml = '';
+  if(monthlyGoal){
+    const pctReal = Math.round((total / monthlyGoal) * 100);
+    const pctBar = Math.min(100, pctReal);
+    const ok = total >= monthlyGoal;
+    goalHtml = `
+      <div class="goal-progress">
+        <div class="goal-progress-row">
+          <span class="goal-progress-text">Цель: ${formatAmount(total)} из ${formatAmount(monthlyGoal)} (${pctReal}%)</span>
+          <button class="goal-edit-btn" id="goalEditBtn">✎</button>
+        </div>
+        <div class="goal-bar-track"><div class="goal-bar-fill ${ok ? 'ok' : ''}" style="width:${pctBar}%"></div></div>
+      </div>`;
+  } else {
+    goalHtml = `<button class="goal-set-chip" id="goalEditBtn">+ Цель на месяц</button>`;
+  }
+
+  bar.innerHTML = `
+    <div class="summary-nav">
+      <button id="summaryPrevMonth">‹</button>
+      <span class="summary-month-label">${monthLabel}</span>
+      <button id="summaryNextMonth" ${nextDisabled}>›</button>
+    </div>
+    <div>${count} заявок · ${formatAmount(total)}</div>
+    ${goalHtml}
+  `;
+  bar.style.display = 'block';
+  // Keep the monthly summary visually equal to the request cards.
+  // Inline values intentionally override any older cached/theme CSS.
+  bar.style.background = '#ffffff';
+  bar.style.color = '#0f172a';
+  bar.style.border = '1px solid #e2e8f0';
+  bar.style.boxShadow = '0 6px 18px rgba(15,23,42,.055)';
+  bar.style.borderRadius = '18px';
+  bar.style.fontWeight = '700';
+}
+document.getElementById('summaryBar').addEventListener('click', (e) => {
+  if(e.target.closest('#summaryPrevMonth')){ viewedMonthOffset--; renderSummaryBar(); return; }
+  if(e.target.closest('#summaryNextMonth') && viewedMonthOffset < 0){ viewedMonthOffset++; renderSummaryBar(); return; }
+  if(e.target.closest('#goalEditBtn')){
+    document.getElementById('goalInput').value = monthlyGoal || '';
+    document.getElementById('goalOverlay').classList.add('show');
+  }
+});
+document.getElementById('goalCancelBtn').addEventListener('click', () => {
+  document.getElementById('goalOverlay').classList.remove('show');
+});
+document.getElementById('goalSaveBtn').addEventListener('click', () => {
+  const val = parseFloat((document.getElementById('goalInput').value || '').replace(',', '.'));
+  monthlyGoal = (val > 0) ? val : null;
+  document.getElementById('goalOverlay').classList.remove('show');
+  saveState();
+  renderSummaryBar();
+  showToast(monthlyGoal ? 'Цель сохранена' : 'Цель убрана');
+});
+
+function buildGrids(list){
+  const overdueList = view === 'notes' ? list.filter(n => isOverdue(n)) : [];
+  const rest = view === 'notes' ? list.filter(n => !isOverdue(n)) : list;
+  const favs = rest.filter(n => n.favorite).sort((a,b) => (a.favoriteOrder||0) - (b.favoriteOrder||0));
+  const favInfo = {};
+  favs.forEach((n,i) => { favInfo[n.id] = { rank: i+1, total: favs.length }; });
+
+  if(view !== 'notes'){
+    return `<div class="grid">${list.map(n => noteCardHtml(n, favInfo[n.id])).join('')}</div>`;
+  }
+  const pinned = rest.filter(n => n.pinned && !n.favorite);
+  const others = rest.filter(n => !n.pinned && !n.favorite);
+  let html = '';
+  if(overdueList.length){
+    html += `<div class="section-label">⚠ Просрочена оплата</div><div class="grid">${overdueList.map(n => noteCardHtml(n, null)).join('')}</div>`;
+  }
+  if(favs.length){
+    html += `<div class="section-label">Избранное · маршрут</div><div class="grid">${favs.map(n => noteCardHtml(n, favInfo[n.id])).join('')}</div>`;
+  }
+  if(pinned.length){
+    html += `<div class="section-label">Закреплённые</div><div class="grid">${pinned.map(n => noteCardHtml(n, favInfo[n.id])).join('')}</div>`;
+  }
+  if(others.length){
+    if(favs.length || pinned.length || overdueList.length) html += `<div class="section-label">Остальные</div>`;
+    html += `<div class="grid">${others.map(n => noteCardHtml(n, favInfo[n.id])).join('')}</div>`;
+  }
+  return html;
+}
+
+document.getElementById('content').addEventListener('click', (e) => {
+  const chk = e.target.closest('[data-clcheck]');
+  if(chk){
+    e.stopPropagation();
+    const [nid, iid] = chk.getAttribute('data-clcheck').split(':');
+    const n = notes.find(x => x.id == nid);
+    const it = n.checklist.find(x => x.id == iid);
+    it.done = chk.checked;
+    renderContent();
+    return;
+  }
+  if(swipedNoteId != null){ swipedNoteId = null; return; } // клик сразу после свайпа — не открываем редактор
+  if(e.target.closest('[data-drag]')) return; // клик по ручке перетаскивания — не открываем редактор
+  const cardPhoto = e.target.closest('[data-cardphoto]');
+  if(cardPhoto){
+    e.stopPropagation();
+    const [nid, idx] = cardPhoto.getAttribute('data-cardphoto').split(':');
+    const n = notes.find(x => x.id == nid);
+    if(n && n.photos && n.photos.length){
+      openLightbox(Math.min(parseInt(idx, 10), n.photos.length - 1), n.photos);
+    }
+    return;
+  }
+  const open = e.target.closest('[data-open]');
+  if(open){ openEditor(notes.find(n => n.id == open.getAttribute('data-open'))); }
+});
+
+// Свайп влево по карточке заявки — добавить/убрать из "Избранное" (маршрутный лист).
+// Для избранных долгое нажатие в любом месте карточки (не обязательно по ручке ⠿) запускает
+// перетаскивание — удобнее одной рукой за рулём, чем целиться в маленькую точку.
+let swipedNoteId = null;
+let cardGesture = null;
+let longPressTimer = null;
+const LONG_PRESS_MS = 380;
+document.getElementById('content').addEventListener('touchstart', (e) => {
+  if(view !== 'notes') return;
+  const card = e.target.closest('.note');
+  if(!card) return;
+  if(e.target.closest('[data-drag]') || e.target.closest('[data-clcheck]') || e.target.closest('[data-cardphoto]')) return;
+  const t = e.touches[0];
+  const id = card.getAttribute('data-open');
+  const n = notes.find(x => x.id == id);
+  cardGesture = { id, card, startX: t.clientX, startY: t.clientY, dx: 0, mode: 'pending' };
+  if(n && n.favorite){
+    const grid = card.parentElement;
+    const siblingEls = Array.from(grid.children).filter(el => el.classList.contains('note') && el !== card);
+    clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => {
+      if(!cardGesture || cardGesture.id !== id || cardGesture.mode !== 'pending') return;
+      cardGesture.mode = 'drag';
+      cardGesture.siblings = siblingEls.map(el => ({
+        id: el.getAttribute('data-open'),
+        mid: el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2
+      }));
+      cardGesture.hoverIndex = null;
+      card.classList.add('drag-active');
+      card.style.transition = 'none';
+      if(navigator.vibrate) navigator.vibrate(12);
+    }, LONG_PRESS_MS);
+  }
+}, { passive: true });
+document.getElementById('content').addEventListener('touchmove', (e) => {
+  if(!cardGesture) return;
+  const t = e.touches[0];
+  const dx = t.clientX - cardGesture.startX;
+  const dy = t.clientY - cardGesture.startY;
+  if(cardGesture.mode === 'pending'){
+    if(Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    clearTimeout(longPressTimer);
+    if(Math.abs(dy) > Math.abs(dx)){ cardGesture = null; return; } // вертикальная прокрутка — не мешаем
+    cardGesture.mode = 'swipe';
+  }
+  if(cardGesture.mode === 'swipe'){
+    cardGesture.dx = dx;
+    const clamped = Math.max(-90, Math.min(90, dx));
+    cardGesture.card.style.transition = 'none';
+    cardGesture.card.style.transform = `translateX(${clamped}px)`;
+    return;
+  }
+  if(cardGesture.mode === 'drag'){
+    e.preventDefault();
+    const y = t.clientY;
+    cardGesture.card.style.transform = `translateY(${y - cardGesture.startY}px) scale(1.02)`;
+    let idx = cardGesture.siblings.length;
+    for(let i = 0; i < cardGesture.siblings.length; i++){
+      if(y < cardGesture.siblings[i].mid){ idx = i; break; }
+    }
+    cardGesture.hoverIndex = idx;
+  }
+}, { passive: false });
+function finishCardGesture(){
+  clearTimeout(longPressTimer);
+  if(!cardGesture) return;
+  const { card, dx, mode, id, siblings, hoverIndex } = cardGesture;
+  cardGesture = null;
+  card.style.transition = '';
+  card.style.transform = '';
+  if(mode === 'swipe'){
+    if(dx < -60){
+      const n = notes.find(x => x.id == id);
+      if(n){
+        n.favorite = !n.favorite;
+        if(n.favorite){
+          const maxOrder = notes.reduce((m,x) => (x.favorite && x.id !== n.id) ? Math.max(m, x.favoriteOrder||0) : m, 0);
+          n.favoriteOrder = maxOrder + 1;
+        }
+        swipedNoteId = id; // клик сразу после свайпа не должен открывать редактор
+        setTimeout(() => { if(swipedNoteId === id) swipedNoteId = null; }, 400);
+        saveState();
+        renderContent();
+        showToast(n.favorite ? 'Добавлено в избранное' : 'Убрано из избранного');
+      }
+    } else if(dx > 60){
+      swipedNoteId = id; // клик сразу после свайпа не должен открывать редактор
+      setTimeout(() => { if(swipedNoteId === id) swipedNoteId = null; }, 400);
+      const n = notes.find(x => x.id == id);
+      if(n && confirm('Удалить эту заявку? Она переместится в корзину.')){
+        n.trashed = true;
+        n.trashedAt = Date.now();
+        n.archived = false;
+        saveState();
+        renderContent();
+        showToast('Заявка перемещена в корзину');
+      }
+    }
+    return;
+  }
+  if(mode === 'drag'){
+    card.classList.remove('drag-active');
+    swipedNoteId = id; // клик сразу после долгого нажатия не должен открывать редактор
+    setTimeout(() => { if(swipedNoteId === id) swipedNoteId = null; }, 400);
+    if(hoverIndex == null || !siblings || !siblings.length) return;
+    const favs = notes.filter(n => n.favorite && !n.trashed && !n.archived)
+      .sort((a,b) => (a.favoriteOrder||0) - (b.favoriteOrder||0));
+    const fromIdx = favs.findIndex(n => n.id == id);
+    if(fromIdx === -1) return;
+    const [item] = favs.splice(fromIdx, 1);
+    let targetId, insertAfter;
+    if(hoverIndex < siblings.length){ targetId = siblings[hoverIndex].id; insertAfter = false; }
+    else { targetId = siblings[siblings.length - 1].id; insertAfter = true; }
+    let toIdx = favs.findIndex(n => n.id == targetId);
+    if(toIdx === -1) toIdx = favs.length;
+    if(insertAfter) toIdx++;
+    favs.splice(toIdx, 0, item);
+    favs.forEach((n, i) => { n.favoriteOrder = i + 1; });
+    saveState();
+    renderContent();
+  }
+}
+document.getElementById('content').addEventListener('touchend', finishCardGesture);
+document.getElementById('content').addEventListener('touchcancel', finishCardGesture);
+
+// Перетаскивание за ручку ⠿ — оставлено как запасной способ (например, мышью), но теперь
+// не обязательно: для избранных то же самое делает долгое нажатие в любом месте карточки выше.
+let dragState = null;
+document.getElementById('content').addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-drag]');
+  if(!handle) return;
+  const card = handle.closest('.note');
+  const grid = card.parentElement;
+  const siblings = Array.from(grid.children).filter(el => el.classList.contains('note') && el !== card);
+  if(!siblings.length) return; // перетаскивать некуда — единственная избранная заявка
+  handle.setPointerCapture(e.pointerId);
+  dragState = {
+    pointerId: e.pointerId,
+    id: handle.getAttribute('data-drag'),
+    card,
+    startY: e.clientY,
+    siblings: siblings.map(el => ({
+      id: el.getAttribute('data-open'),
+      mid: el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2
+    })),
+    hoverIndex: null
+  };
+  card.classList.add('drag-active');
+  e.preventDefault();
+});
+document.getElementById('content').addEventListener('pointermove', (e) => {
+  if(!dragState || e.pointerId !== dragState.pointerId) return;
+  const y = e.clientY;
+  dragState.card.style.transform = `translateY(${y - dragState.startY}px) scale(1.02)`;
+  let idx = dragState.siblings.length;
+  for(let i = 0; i < dragState.siblings.length; i++){
+    if(y < dragState.siblings[i].mid){ idx = i; break; }
+  }
+  dragState.hoverIndex = idx;
+  e.preventDefault();
+});
+function finishDrag(e){
+  if(!dragState || (e && e.pointerId !== dragState.pointerId)) return;
+  dragState.card.classList.remove('drag-active');
+  dragState.card.style.transform = '';
+  const { id, siblings, hoverIndex } = dragState;
+  dragState = null;
+  if(hoverIndex == null || !siblings.length) return;
+  const favs = notes.filter(n => n.favorite && !n.trashed && !n.archived)
+    .sort((a,b) => (a.favoriteOrder||0) - (b.favoriteOrder||0));
+  const fromIdx = favs.findIndex(n => n.id == id);
+  if(fromIdx === -1) return;
+  const [item] = favs.splice(fromIdx, 1);
+  let targetId, insertAfter;
+  if(hoverIndex < siblings.length){ targetId = siblings[hoverIndex].id; insertAfter = false; }
+  else { targetId = siblings[siblings.length - 1].id; insertAfter = true; }
+  let toIdx = favs.findIndex(n => n.id == targetId);
+  if(toIdx === -1) toIdx = favs.length;
+  if(insertAfter) toIdx++;
+  favs.splice(toIdx, 0, item);
+  favs.forEach((n, i) => { n.favoriteOrder = i + 1; });
+  saveState();
+  renderContent();
+}
+document.getElementById('content').addEventListener('pointerup', finishDrag);
+document.getElementById('content').addEventListener('pointercancel', finishDrag);
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  searchQuery = e.target.value;
+  renderContent();
+});
+
+// drawer
+const drawer = document.getElementById('drawer');
+const overlay = document.getElementById('overlay');
+document.getElementById('menuBtn').addEventListener('click', () => { drawer.classList.add('show'); overlay.classList.add('show'); });
+overlay.addEventListener('click', () => { drawer.classList.remove('show'); overlay.classList.remove('show'); });
+drawer.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-view]');
+  if(!btn) return;
+  view = btn.getAttribute('data-view');
+  drawer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  drawer.classList.remove('show'); overlay.classList.remove('show');
+  searchQuery = ''; document.getElementById('searchInput').value = '';
+  renderContent();
+});
+
+// ---- editor ----
+const editorOverlay = document.getElementById('editorOverlay');
+const bodyInput = document.getElementById('bodyInput');
+const checklistWrap = document.getElementById('checklistWrap');
+const clItems = document.getElementById('clItems');
+const clNewInput = document.getElementById('clNewInput');
+const palette = document.getElementById('palette');
+
+document.getElementById('composeBar').addEventListener('click', () => {
+  isNewNote = true;
+  editingNote = { id:null, title:'', text:'', checklist:null, color:'default', pinned:false, favorite:false, favoriteOrder:0, archived:false, trashed:false, photos:[], photoAmounts:[], photoDates:[], photoIds:[], photoNumbers:[] };
+  openEditor(editingNote, true);
+});
+
+let photoIdSeq = 1;
+function newPhotoId(){ return 'ph' + (photoIdSeq++); }
+
+function openEditor(note, isNew){
+  isNewNote = !!isNew;
+  editingNote = isNew ? note : Object.assign({}, note, {
+    checklist: note.checklist ? note.checklist.map(i=>({...i})) : null,
+    photos: (note.photos || []).slice(),
+    photoAmounts: (note.photoAmounts || []).slice(),
+    photoDates: (note.photoDates || []).slice(),
+    photoIds: (note.photoIds || []).slice(),
+    photoNumbers: (note.photoNumbers || []).slice()
+  });
+  // на случай старых заметок, где ID фото ещё не было — достраиваем недостающие
+  if(!editingNote.photos) editingNote.photos = [];
+  if(!editingNote.photoIds) editingNote.photoIds = [];
+  while(editingNote.photoIds.length < editingNote.photos.length) editingNote.photoIds.push(newPhotoId());
+  bodyInput.value = (editingNote.text || '').replace(/\s+$/, '');
+  editingNote.text = bodyInput.value;
+  lastBodyValue = bodyInput.value;
+  const edNum = document.getElementById('edNum');
+  if(editingNote.number){ edNum.textContent = '№' + editingNote.number + (editingNote.createdAt ? ' · ' + formatNoteDate(editingNote.createdAt) : ''); edNum.style.display='block'; }
+  else { edNum.style.display='none'; }
+  document.getElementById('amountInput').value = editingNote.amountRaw || '';
+  document.getElementById('noNdsCheck').checked = !!editingNote.noNds;
+  document.getElementById('cashCheck').checked = !!editingNote.cash;
+  updateAmountPreview();
+  updateArchiveBtnIcon();
+  updatePaidBadge();
+  updateReminderBadge();
+  updateDueBadge();
+  bodyInput.style.display = editingNote.checklist ? 'none' : 'block';
+  checklistWrap.style.display = editingNote.checklist ? 'block' : 'none';
+  renderChecklistEditor();
+  renderEditorPhotos();
+  palette.classList.remove('show');
+  editorOverlay.style.background = colorHex(editingNote.color);
+  editorOverlay.classList.add('show');
+  adjustEditorForViewport();
+  autoResizeBody();
+  renderPalette();
+  history = [snapshotNote()];
+  historyIndex = 0;
+  updateHistoryButtons();
+}
+
+// ---- undo / redo ----
+let history = [];
+let historyIndex = -1;
+function snapshotNote(){ return JSON.parse(JSON.stringify(editingNote)); }
+function pushHistory(){
+  history = history.slice(0, historyIndex + 1);
+  history.push(snapshotNote());
+  historyIndex = history.length - 1;
+  updateHistoryButtons();
+}
+function updateHistoryButtons(){
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  if(historyIndex > 0) undoBtn.removeAttribute('disabled'); else undoBtn.setAttribute('disabled','true');
+  if(historyIndex < history.length - 1) redoBtn.removeAttribute('disabled'); else redoBtn.setAttribute('disabled','true');
+}
+function restoreSnapshot(){
+  editingNote = JSON.parse(JSON.stringify(history[historyIndex]));
+  bodyInput.value = editingNote.text || '';
+  lastBodyValue = bodyInput.value;
+  autoResizeBody();
+  document.getElementById('amountInput').value = editingNote.amountRaw || '';
+  document.getElementById('noNdsCheck').checked = !!editingNote.noNds;
+  document.getElementById('cashCheck').checked = !!editingNote.cash;
+  updateAmountPreview();
+  updatePaidBadge();
+  updateReminderBadge();
+  updateDueBadge();
+  bodyInput.style.display = editingNote.checklist ? 'none' : 'block';
+  checklistWrap.style.display = editingNote.checklist ? 'block' : 'none';
+  renderChecklistEditor();
+  renderEditorPhotos();
+  editorOverlay.style.background = colorHex(editingNote.color);
+  renderPalette();
+  updateHistoryButtons();
+}
+document.getElementById('undoBtn').addEventListener('click', () => {
+  if(historyIndex > 0){ historyIndex--; restoreSnapshot(); }
+});
+document.getElementById('redoBtn').addEventListener('click', () => {
+  if(historyIndex < history.length - 1){ historyIndex++; restoreSnapshot(); }
+});
+let textPushTimer = null;
+function scheduleTextHistoryPush(){
+  clearTimeout(textPushTimer);
+  textPushTimer = setTimeout(pushHistory, 700);
+}
+function autoResizeBody(){
+  bodyInput.style.height = 'auto';
+  if(bodyInput.value){
+    // есть текст — поле по размеру текста, без лишнего пустого места снизу
+    bodyInput.style.height = bodyInput.scrollHeight + 'px';
+  } else {
+    // заметка пустая — поле растянуто на всё доступное место, чтобы можно
+    // было тапнуть/вставить текст в любом месте, а не только у самого верха
+    const available = bodyInput.parentElement.clientHeight;
+    bodyInput.style.height = available + 'px';
+  }
+  updateBodyEmptyAlign();
+}
+// Пока заметка пустая, подсказку "Заметка..." (и место, куда тапать/вставлять текст)
+// показываем внизу поля — ближе к пальцу. Как только появляется текст, поле
+// ведёт себя как обычно — заполняется сверху вниз.
+function updateBodyEmptyAlign(){
+  if(bodyInput.value){
+    bodyInput.style.paddingTop = '';
+    return;
+  }
+  bodyInput.style.paddingTop = '14px';
+  const cs = getComputedStyle(bodyInput);
+  const lineHeight = parseFloat(cs.lineHeight) || 23;
+  const padBottom = parseFloat(cs.paddingBottom) || 14;
+  const contentHeight = bodyInput.clientHeight - padBottom - 14;
+  const extra = Math.max(0, contentHeight - lineHeight);
+  bodyInput.style.paddingTop = (14 + extra) + 'px';
+}
+let lastBodyValue = '';
+bodyInput.addEventListener('input', () => {
+  // Если это похоже на вставку большого куска текста (резкий скачок длины за одно
+  // событие), убираем пустые строки в самом конце — они часто остаются при
+  // копировании из АТИ. Обычный Enter при наборе текста при этом не трогаем.
+  const addedChars = bodyInput.value.length - lastBodyValue.length;
+  if(addedChars > 15){
+    const trimmed = bodyInput.value.replace(/\s+$/, '');
+    if(trimmed !== bodyInput.value){
+      bodyInput.value = trimmed;
+      bodyInput.selectionStart = bodyInput.selectionEnd = bodyInput.value.length;
+    }
+  }
+  lastBodyValue = bodyInput.value;
+  editingNote.text = bodyInput.value;
+  scheduleTextHistoryPush();
+  autoResizeBody();
+});
+function updateAmountPreview(){
+  const raw = document.getElementById('amountInput').value;
+  const parsed = parseAmount(raw);
+  const preview = document.getElementById('amountPreview');
+  preview.textContent = parsed ? '= ' + formatAmount(parsed) : '';
+}
+document.getElementById('amountInput').addEventListener('input', () => {
+  const raw = document.getElementById('amountInput').value;
+  editingNote.amountRaw = raw;
+  editingNote.amount = parseAmount(raw);
+  updateAmountPreview();
+  scheduleTextHistoryPush();
+});
+document.getElementById('noNdsCheck').addEventListener('change', (e) => {
+  editingNote.noNds = e.target.checked;
+  pushHistory();
+});
+document.getElementById('cashCheck').addEventListener('change', (e) => {
+  editingNote.cash = e.target.checked;
+  pushHistory();
+});
+
+const ocrPendingPhotos = new Set(); // id фото, которые сейчас в процессе распознавания
+
+function renderEditorPhotos(){
+  if(!editingNote) return; // OCR может запускаться и без открытого редактора (например, при импорте маршрута)
+  const wrap = document.getElementById('edPhotos');
+  const photos = editingNote.photos || [];
+  const ids = editingNote.photoIds || [];
+  wrap.innerHTML = photos.map((p, i) => {
+    const pct = ocrProgressPercent[ids[i]];
+    return `
+    <div class="ed-photo-thumb">
+      <img src="${p}" data-viewphoto="${i}">
+      ${ocrPendingPhotos.has(ids[i]) ? `<div class="ed-photo-checking"><span class="spinner"></span>${typeof pct === 'number' ? `<span class="pct">${pct}%</span>` : ''}</div>` : ''}
+      <button class="ed-rm" data-edphotorm="${i}">×</button>
+    </div>`;
+  }).join('') + `<button class="ed-add-photo" id="edAddPhotoBtn">+</button>`;
+}
+document.getElementById('editorOverlay').addEventListener('click', (e) => {
+  const view = e.target.closest('[data-viewphoto]');
+  if(view){ openLightbox(parseInt(view.getAttribute('data-viewphoto'))); return; }
+  const add = e.target.closest('#edAddPhotoBtn');
+  if(add){ document.getElementById('photoInput').click(); return; }
+  const rm = e.target.closest('[data-edphotorm]');
+  if(rm){
+    const idx = parseInt(rm.getAttribute('data-edphotorm'), 10);
+    if(!editingNote.photoIds) editingNote.photoIds = [];
+    const removedId = editingNote.photoIds[idx];
+    editingNote.photos.splice(idx, 1);
+    if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
+    if(!editingNote.photoDates) editingNote.photoDates = [];
+    if(!editingNote.photoNumbers) editingNote.photoNumbers = [];
+    editingNote.photoAmounts.splice(idx, 1);
+    editingNote.photoDates.splice(idx, 1);
+    editingNote.photoIds.splice(idx, 1);
+    editingNote.photoNumbers.splice(idx, 1);
+    renderEditorPhotos();
+    // Статус снимаем только если удалили именно то фото, из-за которого он был поставлен
+    // (платёжку) — а не любое другое, например скан самой заявки на перевозку.
+    if(editingNote.statusPhotoId && editingNote.statusPhotoId === removedId){
+      setPaymentStatus(editingNote, 'none', { paidAt: null, paidAmount: 0, statusPhotoId: null });
+      updatePaidBadge();
+      showToast('Платёжка удалена — отметка об оплате снята');
+    } else if(!editingNote.statusPhotoId && editingNote.photos.length === 0 && getPaymentStatus(editingNote) !== 'none'){
+      // статус ставили вручную, без привязки к конкретному фото — без документов вообще держать его нет смысла
+      setPaymentStatus(editingNote, 'none', { paidAt: null, paidAmount: 0 });
+      updatePaidBadge();
+      showToast('Фото удалено — отметка об оплате снята');
+    }
+    pushHistory();
+  }
+});
+
+// ---- lightbox ----
+let lbIndex = 0;
+let lightboxPhotos = null;
+function openLightbox(i, photosArr){
+  lbIndex = i;
+  lightboxPhotos = photosArr || null;
+  renderLightbox();
+  document.getElementById('lightbox').classList.add('show');
+  const hint = document.getElementById('lbLensHint');
+  hint.classList.add('show');
+  clearTimeout(openLightbox._hintTimer);
+  openLightbox._hintTimer = setTimeout(() => hint.classList.remove('show'), 3500);
+}
+function renderLightbox(){
+  const photos = lightboxPhotos || editingNote.photos || [];
+  document.getElementById('lbImg').src = photos[lbIndex];
+  document.getElementById('lbCount').textContent = `${lbIndex+1} / ${photos.length}`;
+  const multi = photos.length > 1;
+  document.getElementById('lbPrev').style.display = multi ? 'flex' : 'none';
+  document.getElementById('lbNext').style.display = multi ? 'flex' : 'none';
+  resetLbZoom();
+}
+document.getElementById('lbClose').addEventListener('click', () => {
+  document.getElementById('lightbox').classList.remove('show');
+  lightboxPhotos = null;
+});
+// Если фото приблизили пальцами (щипком) перед распознаванием — вырезаем именно ту
+// область, что видна на экране прямо сейчас, а не всё фото целиком. Меньше лишнего
+// текста и линий таблицы вокруг, крупнее буквы — распознаётся заметно точнее.
+function cropVisibleLightboxRegion(dataUrl, screenBox){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try{
+        const imgRect = lbImgEl.getBoundingClientRect();
+        const box = screenBox || { left:0, top:0, right:window.innerWidth, bottom:window.innerHeight };
+        const viewLeft = Math.max(imgRect.left, box.left);
+        const viewTop = Math.max(imgRect.top, box.top);
+        const viewRight = Math.min(imgRect.right, box.right);
+        const viewBottom = Math.min(imgRect.bottom, box.bottom);
+        if(viewRight <= viewLeft || viewBottom <= viewTop){ resolve(dataUrl); return; }
+        const scaleX = img.naturalWidth / imgRect.width;
+        const scaleY = img.naturalHeight / imgRect.height;
+        const sx = (viewLeft - imgRect.left) * scaleX;
+        const sy = (viewTop - imgRect.top) * scaleY;
+        const sw = (viewRight - viewLeft) * scaleX;
+        const sh = (viewBottom - viewTop) * scaleY;
+        if(sw < 5 || sh < 5){ resolve(dataUrl); return; }
+        const UPSCALE = 2; // дополнительно увеличиваем вырезку — мелкий текст читается точнее
+        const canvas = document.createElement('canvas');
+        canvas.width = sw * UPSCALE;
+        canvas.height = sh * UPSCALE;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      } catch(e){
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+document.getElementById('lbOcrBtn').addEventListener('click', async () => {
+  const photos = lightboxPhotos || editingNote.photos || [];
+  const dataUrl = photos[lbIndex];
+  if(!dataUrl) return;
+  // Приближено (щипком) больше, чем чуть-чуть — вырезаем видимую область;
+  // иначе распознаём фото целиком, как обычно.
+  const cropped = lbScale > 1.05 ? await cropVisibleLightboxRegion(dataUrl) : dataUrl;
+  runManualPhotoOcr(cropped);
+});
+
+// "▭ Область" — выделить пальцем прямоугольником нужный кусок фото прямо на экране и
+// распознать только его. Проще и надёжнее приближения щипком: не нужно гадать,
+// что именно попало в кадр — виден точный прямоугольник, который будет прочитан.
+let lbSelecting = false;
+let selStartX = null, selStartY = null;
+const lbSelectBtn = document.getElementById('lbSelectBtn');
+const lbSelectOverlay = document.getElementById('lbSelectOverlay');
+const lbSelectBox = document.getElementById('lbSelectBox');
+function setLbSelecting(on){
+  lbSelecting = on;
+  lbSelectBtn.classList.toggle('active', on);
+  document.getElementById('ocrSelectBtn').classList.toggle('active', on);
+  lbSelectOverlay.classList.toggle('active', on);
+  document.getElementById('lbSelectHint').classList.toggle('show', on);
+}
+lbSelectBtn.addEventListener('click', () => setLbSelecting(!lbSelecting));
+// Та же кнопка, но продублированная прямо в окне результата — после первого распознавания
+// само окно закрывает собой фото снизу, и до кнопки на фото уже не дотянуться.
+document.getElementById('ocrSelectBtn').addEventListener('click', () => setLbSelecting(!lbSelecting));
+lbSelectOverlay.addEventListener('touchstart', (e) => {
+  if(!lbSelecting || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  selStartX = t.clientX; selStartY = t.clientY;
+  Object.assign(lbSelectBox.style, { left: selStartX + 'px', top: selStartY + 'px', width: '0px', height: '0px', display: 'block' });
+  e.preventDefault();
+}, { passive: false });
+lbSelectOverlay.addEventListener('touchmove', (e) => {
+  if(!lbSelecting || selStartX == null || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  const x = Math.min(t.clientX, selStartX), y = Math.min(t.clientY, selStartY);
+  const w = Math.abs(t.clientX - selStartX), h = Math.abs(t.clientY - selStartY);
+  Object.assign(lbSelectBox.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+  e.preventDefault();
+}, { passive: false });
+lbSelectOverlay.addEventListener('touchend', async (e) => {
+  if(!lbSelecting || selStartX == null) return;
+  const rect = lbSelectBox.getBoundingClientRect();
+  lbSelectBox.style.display = 'none';
+  selStartX = null; selStartY = null;
+  setLbSelecting(false); // выделение — разовое действие: обвели один раз и сразу распознали
+  if(rect.width < 15 || rect.height < 15) return; // слишком маленькая область — считаем, что это был просто тап
+  if(!window.Tesseract){
+    showToast('Распознавание недоступно — нет доступа к интернету для загрузки языкового пакета');
+    return;
+  }
+  const photos = lightboxPhotos || editingNote.photos || [];
+  const dataUrl = photos[lbIndex];
+  if(!dataUrl) return;
+  const cropped = await cropVisibleLightboxRegion(dataUrl, rect);
+  document.getElementById('ocrResultOverlay').classList.add('show');
+  document.getElementById('ocrSelectBtn').style.display = 'block';
+  const preview = document.getElementById('ocrPreview');
+  if(!preview.innerHTML.trim()){
+    preview.innerHTML = '';
+    preview.setAttribute('data-placeholder', '');
+  }
+  await appendOcrRegionResult(cropped, 'Выделенная область:');
+}, { passive: true });
+
+document.getElementById('lbPrev').addEventListener('click', () => {
+  const photos = lightboxPhotos || editingNote.photos || [];
+  lbIndex = (lbIndex - 1 + photos.length) % photos.length;
+  renderLightbox();
+});
+document.getElementById('lbNext').addEventListener('click', () => {
+  const photos = lightboxPhotos || editingNote.photos || [];
+  lbIndex = (lbIndex + 1) % photos.length;
+  renderLightbox();
+});
+
+// Свайп пальцем по фото — листать снимки влево/вправо, когда фото не увеличено.
+// Также: щипок двумя пальцами и двойной тап — увеличить фото (масштабируется только само фото,
+// крестик и стрелки остаются на месте, т.к. страница больше не зумится целиком).
+// Долгое нажатие специально НЕ перехватываем — так остаётся доступным системное меню
+// телефона («Найти через Google Объектив», «Копировать изображение» и т.п.), оно
+// распознаёт текст куда точнее, чем наш встроенный движок.
+let lbSwipeStartX = null, lbSwipeStartY = null;
+const lbImgEl = document.getElementById('lbImg');
+const LB_SWIPE_THRESHOLD = 40;
+let lbScale = 1, lbTX = 0, lbTY = 0;
+let lbPinchStartDist = null, lbPinchStartScale = 1;
+let lbPanStartX = null, lbPanStartY = null, lbPanStartTX = 0, lbPanStartTY = 0;
+let lbLastTapTime = 0;
+
+function applyLbTransform(){
+  lbImgEl.style.transform = `translate(${lbTX}px, ${lbTY}px) scale(${lbScale})`;
+}
+function resetLbZoom(){
+  lbScale = 1; lbTX = 0; lbTY = 0;
+  applyLbTransform();
+}
+function lbTouchDist(t0, t1){
+  return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+}
+
+lbImgEl.addEventListener('touchstart', (e) => {
+  if(e.touches.length === 2){
+    lbPinchStartDist = lbTouchDist(e.touches[0], e.touches[1]);
+    lbPinchStartScale = lbScale;
+    lbSwipeStartX = null; lbSwipeStartY = null;
+    lbPanStartX = null;
+    return;
+  }
+  if(e.touches.length === 1){
+    const now = Date.now();
+    if(now - lbLastTapTime < 300){
+      lbLastTapTime = 0;
+      lbScale = lbScale > 1 ? 1 : 2.5;
+      lbTX = 0; lbTY = 0;
+      applyLbTransform();
+      lbSwipeStartX = null;
+      return;
+    }
+    lbLastTapTime = now;
+    if(lbScale > 1){
+      lbPanStartX = e.touches[0].clientX;
+      lbPanStartY = e.touches[0].clientY;
+      lbPanStartTX = lbTX;
+      lbPanStartTY = lbTY;
+    } else {
+      lbSwipeStartX = e.touches[0].clientX;
+      lbSwipeStartY = e.touches[0].clientY;
+    }
+  }
+}, { passive: true });
+
+lbImgEl.addEventListener('touchmove', (e) => {
+  if(e.touches.length === 2 && lbPinchStartDist){
+    const d = lbTouchDist(e.touches[0], e.touches[1]);
+    lbScale = Math.min(4, Math.max(1, lbPinchStartScale * (d / lbPinchStartDist)));
+    applyLbTransform();
+    e.preventDefault();
+    return;
+  }
+  if(e.touches.length === 1 && lbScale > 1 && lbPanStartX != null){
+    lbTX = lbPanStartTX + (e.touches[0].clientX - lbPanStartX);
+    lbTY = lbPanStartTY + (e.touches[0].clientY - lbPanStartY);
+    applyLbTransform();
+    e.preventDefault();
+  }
+}, { passive: false });
+
+lbImgEl.addEventListener('touchend', (e) => {
+  if(e.touches.length > 0) return; // ещё остались пальцы на экране — ждём, пока уберут все
+  lbPinchStartDist = null;
+  lbPanStartX = null; lbPanStartY = null;
+  if(lbScale <= 1.02){ lbScale = 1; lbTX = 0; lbTY = 0; applyLbTransform(); }
+  if(lbScale > 1 || lbSwipeStartX == null) return; // при увеличенном фото свайп-навигацию не запускаем
+  const dx = e.changedTouches[0].clientX - lbSwipeStartX;
+  const dy = e.changedTouches[0].clientY - lbSwipeStartY;
+  lbSwipeStartX = null; lbSwipeStartY = null;
+  if(Math.abs(dx) < LB_SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
+  const photos = lightboxPhotos || editingNote.photos || [];
+  if(photos.length < 2) return;
+  lbIndex = dx < 0 ? (lbIndex + 1) % photos.length : (lbIndex - 1 + photos.length) % photos.length;
+  renderLightbox();
+});
+
+
+
+function compressImage(file, maxDim=1800, quality=0.8){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if(w > h){ if(w > maxDim){ h = Math.round(h*maxDim/w); w = maxDim; } }
+        else { if(h > maxDim){ w = Math.round(w*maxDim/h); h = maxDim; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('photoBtn').addEventListener('click', () => {
+  document.getElementById('photoInput').click();
+});
+document.getElementById('photoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  try{
+    const dataUrl = await compressImage(file);
+    if(!editingNote.photos) editingNote.photos = [];
+    if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
+    if(!editingNote.photoDates) editingNote.photoDates = [];
+    if(!editingNote.photoIds) editingNote.photoIds = [];
+    if(!editingNote.photoNumbers) editingNote.photoNumbers = [];
+    const photoId = newPhotoId();
+    editingNote.photos.push(dataUrl);
+    editingNote.photoAmounts.push(null);
+    editingNote.photoDates.push(Date.now());
+    editingNote.photoIds.push(photoId);
+    editingNote.photoNumbers.push(null);
+    renderEditorPhotos();
+    pushHistory();
+    if(getPaymentStatus(editingNote) !== 'full'){
+      checkIfPaymentOrderOCR(dataUrl, photoId);
+    }
+  } catch(err){
+    showToast('Не удалось загрузить фото');
+  }
+});
+
+// Локальное распознавание текста на фото (OCR, работает в любом браузере, без ИИ и без интернета
+// после первой загрузки языкового пакета). Ищет характерные слова платёжного поручения.
+let ocrWorkerPromise = null;
+let currentOcrPhotoId = null;
+const ocrProgressPercent = {}; // photoId -> 0..100, чтобы было видно, что реально идёт распознавание
+function getOcrWorker(){
+  if(!ocrWorkerPromise && window.Tesseract){
+    ocrWorkerPromise = Tesseract.createWorker('rus', 1, {
+      logger: (m) => {
+        if(currentOcrPhotoId && m && typeof m.progress === 'number'){
+          ocrProgressPercent[currentOcrPhotoId] = Math.round(m.progress * 100);
+          renderEditorPhotos();
+        }
+      }
+    }).then(async (worker) => {
+      // Режим "единый блок текста" — обычно точнее для плотных абзацев (договоры,
+      // печатный текст), чем режим "разметка страницы" по умолчанию.
+      try { await worker.setParameters({ tessedit_pageseg_mode: '4' }); } catch(e){}
+      return worker;
+    });
+  }
+  return ocrWorkerPromise;
+}
+// Готовит фото документа для распознавания: увеличивает мелкий текст до разумного
+// разрешения и переводит в чёрно-белое по адаптивному порогу (метод Оцу) — для
+// фото бумажных бланков с рамками и мелким шрифтом это ощутимо точнее, чем просто
+// линейное усиление контраста, потому что убирает блики и неровный фон, оставляя
+// только сам текст.
+function preprocessImageForOcr(dataUrl){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try{
+        // 1) Увеличиваем мелкий текст: если самая длинная сторона меньше ~2000px,
+        // масштабируем вверх (но не более чем в 2.5 раза, чтобы не размывать).
+        const longSide = Math.max(img.naturalWidth, img.naturalHeight);
+        const targetLongSide = 2000;
+        let scale = longSide < targetLongSide ? Math.min(targetLongSide / longSide, 2.5) : 1;
+        const w = Math.round(img.naturalWidth * scale);
+        const h = Math.round(img.naturalHeight * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        const n = w * h;
+
+        // 2) Ч/б + гистограмма яркости
+        const gray = new Uint8ClampedArray(n);
+        const hist = new Array(256).fill(0);
+        for(let i = 0, p = 0; i < data.length; i += 4, p++){
+          const g = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+          gray[p] = g;
+          hist[g | 0]++;
+        }
+
+        // 3) Порог Оцу — сам находит границу между "текстом" и "фоном", в отличие
+        // от фиксированного контраста подстраивается под конкретное фото (тёмное/светлое).
+        let sum = 0;
+        for(let t = 0; t < 256; t++) sum += t * hist[t];
+        let sumB = 0, wB = 0, wF = 0, maxVar = 0, threshold = 128;
+        for(let t = 0; t < 256; t++){
+          wB += hist[t];
+          if(wB === 0) continue;
+          wF = n - wB;
+          if(wF === 0) break;
+          sumB += t * hist[t];
+          const mB = sumB / wB;
+          const mF = (sum - sumB) / wF;
+          const varBetween = wB * wF * (mB - mF) * (mB - mF);
+          if(varBetween > maxVar){ maxVar = varBetween; threshold = t; }
+        }
+
+        // 4) Бинаризация с небольшим запасом (чуть мягче порога), чтобы не терять
+        // тонкие штрихи букв на слабо пропечатанных бланках.
+        const t = threshold + 8;
+        for(let i = 0, p = 0; i < data.length; i += 4, p++){
+          const v = gray[p] > t ? 255 : 0;
+          data[i] = data[i+1] = data[i+2] = v;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch(e){
+        resolve(dataUrl); // не получилось обработать — используем как есть
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+// Если загрузить несколько фото подряд, не дожидаясь окончания предыдущего распознавания,
+// сам движок OCR всё равно обрабатывает их по одному — а вот прогресс без очереди мог
+// случайно привязаться не к тому фото. Эта очередь гарантирует правильную привязку.
+let ocrQueue = [];
+let ocrQueueBusy = false;
+function recognizeQueued(dataUrl, photoId){
+  return new Promise((resolve) => {
+    ocrQueue.push({ dataUrl, photoId, resolve });
+    processOcrQueue();
+  });
+}
+// Грузит dataURL в объект Image (используется вырезкой видимой области в лайтбоксе).
+function loadImageEl(dataUrl){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+// Двухпроходное построчное распознавание пробовали — оно ломается на бланках с
+// колонками (например, реквизиты "Перевозчик | Заказчик" рядом): программа считает
+// это одной строкой и склеивает цифры из разных колонок в кашу. Поэтому вернулись
+// к одному проходу по всему фото — он менее детальный, но не путает колонки местами.
+//
+// Дополнительно: для каждого символа, в котором сам движок не уверен (это видно по
+// его внутренней оценке confidence), — если это цифра или похожий на цифру символ —
+// вырезаем именно его, увеличиваем в 8 раз и распознаём заново, уже только среди
+// цифр 0-9 (без букв, чтобы не путать ещё сильнее). Если уверенность выросла —
+// подставляем новый результат; если сомнение осталось — помечаем место как
+// "неуверенное", чтобы можно было подсветить его в интерфейсе.
+const AMBIGUOUS_CHARS = /[0-9OoоОIlSsBZzЗ]/;
+const CONF_THRESHOLD = 70; // 0-100, ниже этого — считаем сомнительным
+
+async function refineAmbiguousSymbol(worker, imgEl, bbox){
+  try{
+    const pad = 4;
+    const x0 = Math.max(0, bbox.x0 - pad), y0 = Math.max(0, bbox.y0 - pad);
+    const x1 = Math.min(imgEl.naturalWidth, bbox.x1 + pad), y1 = Math.min(imgEl.naturalHeight, bbox.y1 + pad);
+    const w = x1 - x0, h = y1 - y0;
+    if(w < 3 || h < 3) return null;
+    const UPSCALE = 8;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * UPSCALE);
+    canvas.height = Math.round(h * UPSCALE);
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(imgEl, x0, y0, w, h, 0, 0, canvas.width, canvas.height);
+    await worker.setParameters({ tessedit_pageseg_mode: '10', tessedit_char_whitelist: '0123456789' });
+    const res = await worker.recognize(canvas.toDataURL('image/png'));
+    const t = (res.data.text || '').replace(/\s/g, '');
+    return t.length === 1 ? { text: t, confidence: res.data.confidence } : null;
+  } catch(e){
+    return null;
+  } finally {
+    try{ await worker.setParameters({ tessedit_pageseg_mode: '4', tessedit_char_whitelist: '' }); } catch(e){}
+  }
+}
+
+// Собирает итоговый текст посимвольно из результата Tesseract и параллельно помечает
+// диапазоны с низкой уверенностью — нужно, чтобы потом подсветить их в превью.
+async function buildTextWithConfidence(worker, imgEl, data){
+  const lines = data.lines || [];
+  let out = '';
+  const lowRanges = [];
+  for(const line of lines){
+    for(const word of (line.words || [])){
+      for(const sym of (word.symbols || [])){
+        let ch = sym.text;
+        let conf = sym.confidence;
+        if(AMBIGUOUS_CHARS.test(ch) && conf < CONF_THRESHOLD){
+          const refined = await refineAmbiguousSymbol(worker, imgEl, sym.bbox);
+          if(refined && refined.confidence > conf){
+            ch = refined.text;
+            conf = refined.confidence;
+          }
+        }
+        const start = out.length;
+        out += ch;
+        if(conf < CONF_THRESHOLD) lowRanges.push({ start, end: start + ch.length });
+      }
+      out += ' ';
+    }
+    out += '\n';
+  }
+  return { text: out, lowRanges };
+}
+
+async function processOcrQueue(){
+  if(ocrQueueBusy) return;
+  ocrQueueBusy = true;
+  while(ocrQueue.length){
+    const job = ocrQueue.shift();
+    currentOcrPhotoId = job.photoId;
+    ocrProgressPercent[job.photoId] = 0;
+    renderEditorPhotos();
+    let text = null;
+    let lowRanges = [];
+    try{
+      const worker = await getOcrWorker();
+      if(worker){
+        const processedUrl = await preprocessImageForOcr(job.dataUrl);
+        const result = await worker.recognize(processedUrl);
+        if(result.data.lines && result.data.lines.length){
+          const imgEl = await loadImageEl(processedUrl);
+          const built = await buildTextWithConfidence(worker, imgEl, result.data);
+          text = built.text;
+          lowRanges = built.lowRanges;
+        } else {
+          text = result.data.text;
+        }
+      }
+    } catch(err){
+      // тихо игнорируем — например, нет интернета для первой загрузки языкового пакета
+    }
+    delete ocrProgressPercent[job.photoId];
+    job.resolve({ text, lowRanges });
+  }
+  ocrQueueBusy = false;
+
+}
+
+// Частая беда OCR — путает буквы, похожие на цифры (особенно в телефонах и номерах
+// заявок): O/о → 0, I/l/| → 1, S/s → 5, B → 8, Z/z → 2. Правим это только внутри
+// "числовых" кусков текста (в основном цифры, максимум 1-2 такие буквы подряд) —
+// обычные слова не трогаем, чтобы не испортить осмысленный текст.
+function cleanupOcrNumbers(text){
+  const confusable = { 'O':'0','o':'0','о':'0','О':'0', 'I':'1','l':'1','|':'1','і':'1', 'S':'5','s':'5', 'B':'8', 'Z':'2','z':'2' };
+  return text.replace(/[+()\-\s0-9OoоОIlSsBZz|іi]{6,}/g, (chunk) => {
+    const digitCount = (chunk.match(/\d/g) || []).length;
+    if(digitCount < 5) return chunk; // недостаточно похоже на номер — не трогаем
+    return chunk.replace(/[OoоОIlSsBZz|і]/g, (ch) => confusable[ch] !== undefined ? confusable[ch] : ch);
+  });
+}
+// Экранирует HTML перед вставкой в превью (чтобы < > & из распознанного текста не
+// сломали разметку и не выполнились как теги).
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+// Ищет в тексте похожие на телефонные номера куски. Важно: голая цепочка из 10 цифр
+// подряд без разделителей (например "5906124967") — это с равным успехом может быть
+// ИНН организации (у него тоже ровно 10 цифр), поэтому телефоном считаем только то,
+// что записано в характерном для номера виде — с "+", скобками, дефисами или точками
+// между цифрами, а не сплошным числом.
+function findPhoneMatches(text){
+  const regex = /[+]?[78]?[ \t.\-–—()]*\d(?:[\d \t.\-–—()]{7,17})\d/g;
+  const matches = [];
+  let m;
+  while((m = regex.exec(text))){
+    const raw = m[0];
+    const digits = raw.replace(/\D/g, '');
+    if(digits.length !== 10 && digits.length !== 11) continue;
+    const trimmed = raw.trim();
+    const dashOrParenCount = (trimmed.match(/[.\-–—()]/g) || []).length;
+    const innerSpaceCount = (trimmed.match(/ /g) || []).length;
+    // Настоящий телефон почти всегда либо начинается с "+", либо имеет дефисы/скобки/точки,
+    // либо разбит минимум на 3 группы пробелами (4+ группы цифр). А вот "серия и номер"
+    // документа (например, паспорта) — это обычно ровно 2 группы цифр с одним пробелом
+    // между ними, без дефисов и "+" — такое не считаем телефоном.
+    const looksFormatted = trimmed.startsWith('+') || dashOrParenCount >= 1 || innerSpaceCount >= 2
+      // Слитные 11 цифр, начинающиеся на "89" (без пробелов/дефисов) — тоже почти
+      // наверняка телефон: у ИНН организаций 10 цифр, у ИП/физлиц 12, а "89..." на
+      // 11 цифр не совпадает ни с одним другим массовым документом.
+      || (digits.length === 11 && digits.startsWith('89'));
+    if(!looksFormatted) continue;
+    // Требовать "первая цифра — 9" для ВСЕХ телефонов нельзя: у городских номеров
+    // после кода страны бывают другие цифры (например 8-846-269-43-21 — Самара).
+    // Поэтому "9" проверяем только для записи через одни пробелы без дефисов/скобок —
+    // именно такая запись (2-4 группы цифр через пробел) совпадает по виду с серией
+    // паспорта или водительского удостоверения, и тут нужна доп. проверка. А если в
+    // номере есть дефис, скобки или "+" — это уже явно телефонный формат (в наших
+    // документах паспорт/ИНН/права дефисами никогда не записываются), доверяем ему
+    // независимо от первой цифры — это и покрывает городские номера.
+    const last10 = digits.length === 10 ? digits : digits.slice(-10);
+    const nearbyContext = text.slice(Math.max(0, m.index - 15), m.index).toLowerCase();
+    const hasPhoneLabel = /тел/.test(nearbyContext);
+    const hasStrongPunctuation = trimmed.startsWith('+') || dashOrParenCount >= 1;
+    if(!hasStrongPunctuation && last10[0] !== '9' && !hasPhoneLabel) continue;
+    let tel = digits.length === 10 ? digits : digits.slice(-10);
+    matches.push({ start: m.index, end: m.index + raw.length, tel: '+7' + tel });
+  }
+  return matches;
+}
+// Строит HTML-превью: подсвечивает жёлтым сомнительные (по уверенности OCR) места
+// и превращает похожие на телефон куски в синие кликабельные ссылки для звонка.
+// Диапазоны могут пересекаться (сомнительная цифра внутри номера телефона) — тогда
+// ссылка снаружи, подсветка внутри неё.
+function renderOcrPreview(text, lowRanges){
+  const n = text.length;
+  const lowFlag = new Array(n).fill(false);
+  for(const r of (lowRanges || [])) for(let i = r.start; i < r.end && i < n; i++) lowFlag[i] = true;
+  const phoneMatches = findPhoneMatches(text);
+  const phoneFlag = new Array(n).fill(-1);
+  phoneMatches.forEach((p, idx) => { for(let i = p.start; i < p.end && i < n; i++) phoneFlag[i] = idx; });
+
+  let html = '';
+  let i = 0;
+  while(i < n){
+    if(phoneFlag[i] !== -1){
+      const idx = phoneFlag[i];
+      let seg = '';
+      let j = i;
+      while(j < n && phoneFlag[j] === idx){
+        if(lowFlag[j]){
+          let k = j, lowSeg = '';
+          while(k < n && phoneFlag[k] === idx && lowFlag[k]){ lowSeg += text[k]; k++; }
+          seg += `<mark>${escapeHtml(lowSeg)}</mark>`;
+          j = k;
+        } else {
+          let k = j, normalSeg = '';
+          while(k < n && phoneFlag[k] === idx && !lowFlag[k]){ normalSeg += text[k]; k++; }
+          seg += escapeHtml(normalSeg);
+          j = k;
+        }
+      }
+      html += `<a class="ocr-phone-link" href="tel:${phoneMatches[idx].tel}" contenteditable="false">${seg}</a>`;
+      i = j;
+    } else if(lowFlag[i]){
+      let j = i, seg = '';
+      while(j < n && phoneFlag[j] === -1 && lowFlag[j]){ seg += text[j]; j++; }
+      html += `<mark>${escapeHtml(seg)}</mark>`;
+      i = j;
+    } else {
+      let j = i, seg = '';
+      while(j < n && phoneFlag[j] === -1 && !lowFlag[j]){ seg += text[j]; j++; }
+      html += escapeHtml(seg);
+      i = j;
+    }
+  }
+  return { html, hasPhones: phoneMatches.length > 0 };
+}
+// ---- Ручное распознавание текста с конкретного фото (кнопка "Aa" на фото в заявке) —
+// показывает весь распознанный текст в одном блоке (подсветка сомнительных мест +
+// кликабельные телефоны + возможность править прямо тут же и скопировать).
+async function runManualPhotoOcr(dataUrl){
+  if(!window.Tesseract){
+    showToast('Распознавание недоступно — нет доступа к интернету для загрузки языкового пакета');
+    return;
+  }
+  const preview = document.getElementById('ocrPreview');
+  document.getElementById('ocrResultOverlay').classList.add('show');
+  preview.innerHTML = '';
+  preview.setAttribute('data-placeholder', '');
+  document.getElementById('ocrResultLoading').style.display = 'flex';
+  document.getElementById('ocrSelectBtn').style.display = 'none';
+  document.getElementById('ocrConfidenceHint').classList.remove('show');
+  const { text, lowRanges } = await recognizeQueued(dataUrl, 'manual-' + Date.now());
+  document.getElementById('ocrResultLoading').style.display = 'none';
+  if(!text || !text.trim()){
+    preview.innerHTML = '';
+    preview.setAttribute('data-placeholder', 'Не удалось распознать текст на этом фото — возможно, оно нечёткое или слишком тёмное. Можно вписать текст сюда вручную.');
+    document.getElementById('ocrSelectBtn').style.display = 'block';
+    return;
+  }
+  const cleaned = cleanupOcrNumbers(text.trim());
+  const rendered = renderOcrPreview(cleaned, lowRanges);
+  preview.innerHTML = rendered.html;
+  document.getElementById('ocrSelectBtn').style.display = 'block';
+  if(lowRanges && lowRanges.length){
+    document.getElementById('ocrConfidenceHint').classList.add('show');
+  }
+}
+document.getElementById('ocrResultClose').addEventListener('click', () => {
+  document.getElementById('ocrResultOverlay').classList.remove('show');
+});
+document.getElementById('ocrResultOverlay').addEventListener('click', (e) => {
+  if(e.target === document.getElementById('ocrResultOverlay')){
+    document.getElementById('ocrResultOverlay').classList.remove('show');
+  }
+});
+// "Обновить" — берёт фото, которое сейчас открыто в лайтбоксе (учитывая текущее
+// приближение пальцами), распознаёт заново и добавляет уточнённый результат в конец
+// того же блока — так можно приблизить проблемное место (например, спорную цифру),
+// пересканировать именно его и сверить со старым результатом, не теряя остальной текст.
+async function appendOcrRegionResult(cropped, label){
+  const { text, lowRanges } = await recognizeQueued(cropped, 'refresh-' + Date.now());
+  if(text && text.trim()){
+    const cleaned = cleanupOcrNumbers(text.trim());
+    const rendered = renderOcrPreview(cleaned, lowRanges);
+    const preview = document.getElementById('ocrPreview');
+    preview.innerHTML += `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--card-line);color:var(--muted);font-size:12px;">${label}</div>` + rendered.html;
+    preview.scrollTop = preview.scrollHeight; // сразу прокручиваем вниз — к свежедобавленному тексту
+    if(lowRanges && lowRanges.length){
+      document.getElementById('ocrConfidenceHint').classList.add('show');
+    }
+    return true;
+  }
+  showToast('Не удалось распознать текст на этом участке');
+  return false;
+}
+
+// Ищет номер самого платёжного поручения ("ПЛАТЕЖНОЕ ПОРУЧЕНИЕ № 574") — нужен,
+// чтобы отличить действительно новую платёжку от случайно повторно прикреплённого фото той же.
+function extractOrderNumberFromOcrText(text){
+  const m = (text || '').match(/поручение[^\d№]{0,10}№?\s*(\d{2,8})/i);
+  return m ? m[1] : null;
+}
+
+// Показывает окно "Полная / Частичная оплата" и возвращает выбор бухгалтера ('full'|'partial'|null).
+// Если сразу несколько фото подряд определились как платёжки, окна выбора не должны
+// накладываться друг на друга — показываем их строго по очереди, одно за другим.
+let payChoiceChain = Promise.resolve();
+function askPaymentChoice(){
+  const run = () => new Promise((resolve) => {
+    const overlay = document.getElementById('payChoiceOverlay');
+    overlay.classList.add('show');
+    const cleanup = (result) => {
+      overlay.classList.remove('show');
+      fullBtn.removeEventListener('click', onFull);
+      partialBtn.removeEventListener('click', onPartial);
+      cancelBtn.removeEventListener('click', onCancel);
+      resolve(result);
+    };
+    const fullBtn = document.getElementById('payChoiceFull');
+    const partialBtn = document.getElementById('payChoicePartial');
+    const cancelBtn = document.getElementById('payChoiceCancel');
+    const onFull = () => cleanup('full');
+    const onPartial = () => cleanup('partial');
+    const onCancel = () => cleanup(null);
+    fullBtn.addEventListener('click', onFull);
+    partialBtn.addEventListener('click', onPartial);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+  const result = payChoiceChain.then(run);
+  payChoiceChain = result.catch(() => {});
+  return result;
+}
+
+async function checkIfPaymentOrderOCR(dataUrl, photoId){
+  const noteRef = editingNote;
+  if(!window.Tesseract) return;
+  ocrPendingPhotos.add(photoId);
+  renderEditorPhotos();
+  try{
+    const { text } = await recognizeQueued(dataUrl, photoId);
+    // сам процесс распознавания закончен здесь — крутящийся значок снимаем сразу,
+    // не дожидаясь ответа пользователя в окне "Полная/Частичная оплата" ниже
+    ocrPendingPhotos.delete(photoId);
+    if(editingNote === noteRef) renderEditorPhotos();
+    if(text == null) return;
+    const t = (text || '').toLowerCase();
+    // "платежн" — специально не просто "плат": слово "оплата"/"оплаты" тоже содержит "плат"
+    // как часть себя и есть почти в любом документе (в том числе в самой заявке на перевозку)
+    const isPayment = (t.includes('платежн') && t.includes('поручен')) || t.includes('0401060');
+    if(isPayment && editingNote === noteRef){
+      // ищем фото по его уникальному id — если фото одинаковые по картинке, поиск по
+      // содержимому их бы перепутал; id всегда свой у каждого прикреплённого файла
+      const photoIndex = (editingNote.photoIds || []).indexOf(photoId);
+      if(photoIndex === -1) return; // это фото успели удалить, пока шло распознавание
+
+      const paidAt = Date.now();
+      const orderNumber = extractOrderNumberFromOcrText(text);
+
+      if(!editingNote.photoNumbers) editingNote.photoNumbers = [];
+      if(orderNumber){
+        const dupIndex = editingNote.photoNumbers.findIndex((n, idx) => idx !== photoIndex && n === orderNumber);
+        if(dupIndex !== -1){
+          const remove = window.confirm(
+            'Похоже, это дубликат платёжки № ' + orderNumber + ' — она уже прикреплена к этой заявке.\nУбрать повторное фото?'
+          );
+          if(remove){
+            editingNote.photos.splice(photoIndex, 1);
+            editingNote.photoAmounts.splice(photoIndex, 1);
+            editingNote.photoDates.splice(photoIndex, 1);
+            editingNote.photoIds.splice(photoIndex, 1);
+            editingNote.photoNumbers.splice(photoIndex, 1);
+            renderEditorPhotos();
+            recomputePaymentStatus(editingNote);
+            updatePaidBadge();
+            pushHistory();
+            showToast('Дубликат удалён');
+            return;
+          }
+        }
+      }
+      editingNote.photoNumbers[photoIndex] = orderNumber;
+
+      // Сумму с платёжки больше не считываем автоматически — слишком легко ошибиться.
+      // Просто фиксируем, что это платёжка, а бухгалтер сам решает в окне выбора,
+      // полная это оплата или частичная.
+      if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
+      if(!editingNote.photoDates) editingNote.photoDates = [];
+      editingNote.photoAmounts[photoIndex] = 0;
+      editingNote.photoDates[photoIndex] = paidAt;
+
+      if(getPaymentStatus(editingNote) === 'none'){
+        const choice = await askPaymentChoice();
+        if(choice && editingNote === noteRef){
+          editingNote.paymentAuto = false;
+          setPaymentStatus(editingNote, choice, { paidAt, paidAmount: 0, statusPhotoId: photoId });
+          updatePaidBadge();
+          pushHistory();
+          showToast(choice === 'full' ? 'Отмечено: полная оплата' : 'Отмечено: частичная оплата');
+        }
+      }
+    }
+  } catch(err){
+    // тихо игнорируем — например, нет интернета для первой загрузки языкового пакета
+  } finally {
+    if(ocrPendingPhotos.has(photoId)){
+      ocrPendingPhotos.delete(photoId);
+      if(editingNote === noteRef) renderEditorPhotos();
+    }
+  }
+}
+
+function updatePaidBadge(){
+  const badge = document.getElementById('edPaidBadge');
+  const status = getPaymentStatus(editingNote);
+  if(status === 'none'){
+    badge.innerHTML = '<span class="dot gray"></span>Не оплачено';
+    badge.style.display = 'inline-flex';
+    return;
+  }
+  if(status === 'partial'){
+    const sumStr = editingNote.paidAmount ? formatAmount(editingNote.paidAmount) + (editingNote.amount ? ' из ' + formatAmount(editingNote.amount) : '') : '';
+    badge.innerHTML = '<span class="dot partial"></span>Частично оплачено' + (sumStr ? ' — ' + sumStr : '');
+  } else {
+    const over = (editingNote.paidAmount && editingNote.amount && editingNote.paidAmount > editingNote.amount)
+      ? editingNote.paidAmount - editingNote.amount : 0;
+    badge.innerHTML = '<span class="dot' + (over > 0 ? ' over' : '') + '"></span>Оплачено' +
+      (over > 0 ? ' — переплата ' + formatAmount(over) : '');
+  }
+  badge.style.display = 'inline-flex';
+}
+
+// Форматирует дату/время напоминания коротко и понятно: "сегодня, 09:00",
+// "завтра, 09:00" или "26 авг, 09:00" для остальных дат.
+function formatReminderDate(ts){
+  const d = new Date(ts);
+  const now = new Date();
+  const startOfDay = (dt) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+  const time = d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+  if(diffDays === 0) return 'сегодня, ' + time;
+  if(diffDays === 1) return 'завтра, ' + time;
+  const months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  return d.getDate() + ' ' + months[d.getMonth()] + ', ' + time;
+}
+
+// Обновляет жёлтый/красный бейдж напоминания в редакторе заявки.
+function updateReminderBadge(){
+  const badge = document.getElementById('edReminderBadge');
+  if(!editingNote.reminderAt){
+    badge.style.display = 'none';
+    return;
+  }
+  const overdue = editingNote.reminderAt < Date.now();
+  badge.className = 'ed-reminder-badge' + (overdue ? ' overdue' : '');
+  badge.innerHTML = '🔔 ' + formatReminderDate(editingNote.reminderAt) +
+    (editingNote.reminderText ? ' — ' + escapeHtml(editingNote.reminderText) : '') +
+    ' <span class="alarm" id="edReminderAlarm" title="Поставить настоящий будильник на телефоне">📱</span>' +
+    ' <span class="x" id="edReminderClear">×</span>';
+  badge.style.display = 'inline-flex';
+}
+// Клик по крестику — снять напоминание. Клик по значку телефона — поставить
+// настоящий будильник в приложении "Часы" (сработает, даже если "Мой Рейс" закрыт).
+// Клик по остальной части бейджа — открыть пикер даты/времени заново, чтобы поправить.
+document.getElementById('edReminderBadge').addEventListener('click', (e) => {
+  if(e.target.id === 'edReminderClear'){
+    editingNote.reminderAt = null;
+    editingNote.reminderText = '';
+    updateReminderBadge();
+    pushHistory();
+    return;
+  }
+  if(e.target.id === 'edReminderAlarm'){
+    setPhoneAlarm(editingNote.reminderAt, editingNote.title || editingNote.text || 'Мой Рейс');
+    return;
+  }
+  openReminderPicker();
+});
+function openReminderPicker(){
+  const input = document.getElementById('reminderInput');
+  if(editingNote.reminderAt){
+    const d = new Date(editingNote.reminderAt);
+    const pad = (n) => String(n).padStart(2,'0');
+    input.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  } else {
+    // по умолчанию предлагаем завтра в 9 утра — самый частый случай ("позвонить утром")
+    const d = new Date(Date.now() + 86400000);
+    const pad = (n) => String(n).padStart(2,'0');
+    input.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T09:00';
+  }
+  if(input.showPicker){ try{ input.showPicker(); return; }catch(e){} }
+  input.click();
+}
+document.getElementById('reminderBtn').addEventListener('click', openReminderPicker);
+document.getElementById('reminderInput').addEventListener('change', (e) => {
+  if(!e.target.value) return;
+  editingNote.reminderAt = new Date(e.target.value).getTime();
+  updateReminderBadge();
+  pushHistory();
+  // Сразу же предлагаем поставить настоящий будильник — чтобы не забыть нажать
+  // на значок 📱 отдельно. Пометка в приложении сама по себе не звонит.
+  setPhoneAlarm(editingNote.reminderAt, editingNote.title || editingNote.text || 'Мой Рейс');
+});
+// Ставит настоящий будильник в приложении "Часы" на телефоне — сработает, даже
+// если само приложение "Мой Рейс" закрыто. Открывается через системную ссылку
+// intent:, которую понимает штатное приложение будильника Android.
+function setPhoneAlarm(ts, message){
+  const d = new Date(ts);
+  const shortMsg = (message || '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Мой Рейс';
+  const intentUrl = 'intent://#Intent;action=android.intent.action.SET_ALARM;' +
+    'i.android.intent.extra.alarm.HOUR=' + d.getHours() + ';' +
+    'i.android.intent.extra.alarm.MINUTES=' + d.getMinutes() + ';' +
+    'S.android.intent.extra.alarm.MESSAGE=' + encodeURIComponent(shortMsg) + ';' +
+    'B.android.intent.extra.alarm.SKIP_UI=false;end';
+  window.location.href = intentUrl;
+}
+
+// ==================== СРОК ОПЛАТЫ ====================
+// Праздники РФ по ст. 112 ТК РФ — фиксированные даты (месяц, день), повторяются каждый год.
+const RU_FIXED_HOLIDAYS_MD = [[1,1],[1,2],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8],[2,23],[3,8],[5,1],[5,9],[6,12],[11,4]];
+// Дополнительные нерабочие дни, перенесённые постановлениями Правительства РФ —
+// известны точно на 2025-2027 годы. Для остальных лет перенос дат, которые
+// выпадают на выходной, считается по общему правилу ТК РФ (см. isRussianNonWorkingDay).
+const RU_EXTRA_NON_WORKING = ['2025-12-31','2026-01-09','2026-03-09','2026-05-11','2026-12-31'];
+function dateKey(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function isRussianNonWorkingDay(d){
+  if(RU_EXTRA_NON_WORKING.includes(dateKey(d))) return true;
+  const m = d.getMonth()+1, day = d.getDate();
+  if(RU_FIXED_HOLIDAYS_MD.some(([hm,hd]) => hm === m && hd === day)) return true;
+  // Общее правило ТК РФ: если праздник (кроме новогодних каникул 1-8 января) выпал
+  // на выходной, ближайший следующий рабочий день тоже становится нерабочим —
+  // если это не учтено явным переносом выше.
+  for(const [hm,hd] of RU_FIXED_HOLIDAYS_MD){
+    if(hm === 1) continue; // блок 1-8 января не переносится по этому правилу
+    const holiday = new Date(d.getFullYear(), hm-1, hd);
+    const dow = holiday.getDay();
+    if(dow === 0 || dow === 6){
+      const shift = dow === 0 ? 1 : 2; // с воскресенья на понедельник, с субботы на понедельник
+      const shifted = new Date(holiday);
+      shifted.setDate(shifted.getDate() + shift);
+      if(dateKey(shifted) === dateKey(d)) return true;
+    }
+  }
+  return false;
+}
+function isRussianWorkingDay(d){
+  const dow = d.getDay();
+  if(dow === 0 || dow === 6) return false;
+  return !isRussianNonWorkingDay(d);
+}
+// Прибавляет N рабочих дней к сегодняшней дате, пропуская выходные и все
+// праздники РФ (с переносами) — так же, как считает бухгалтерия.
+function addRussianWorkingDaysFrom(fromDate, days){
+  const d = new Date(fromDate);
+  let added = 0;
+  while(added < days){
+    d.setDate(d.getDate() + 1);
+    if(isRussianWorkingDay(d)) added++;
+  }
+  d.setHours(23, 59, 0, 0);
+  return d;
+}
+function addRussianWorkingDays(days){
+  return addRussianWorkingDaysFrom(new Date(), days);
+}
+const DEFAULT_DUE_WORK_DAYS = 15;
+// Если срок оплаты не указан вручную, считаем его по умолчанию — 15 рабочих дней
+// от даты создания заявки. Так ни одна заявка не потеряется и не "зависнет" молча
+// без напоминания, даже если про срок забыли изначально.
+function getEffectiveDueAt(n){
+  if(n.dueAt) return n.dueAt;
+  if(!n.createdAt) return null;
+  return addRussianWorkingDaysFrom(new Date(n.createdAt), DEFAULT_DUE_WORK_DAYS).getTime();
+}
+// Показывает короткую дату: "31 авг" (без года, чтобы не перегружать бейдж).
+function formatDueDate(ts){
+  const d = new Date(ts);
+  const months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  return d.getDate() + ' ' + months[d.getMonth()];
+}
+function updateDueBadge(){
+  const badge = document.getElementById('edDueBadge');
+  const daysInput = document.getElementById('dueDaysInput');
+  if(!editingNote.dueAt){
+    // Явного срока нет — но для новой (уже сохранённой) заявки действует срок по
+    // умолчанию: 15 рабочих дней от даты создания. Показываем его так же, как
+    // обычный срок, только с пометкой "(по умолчанию)" — пока пользователь сам
+    // не впишет своё число, это не считается его выбором, но заявка всё равно
+    // не потеряется и подсветится просроченной, если время выйдет.
+    if(document.activeElement !== daysInput) daysInput.value = '';
+    const fallbackAt = getEffectiveDueAt(editingNote);
+    if(!fallbackAt){ badge.style.display = 'none'; return; }
+    const overdue = fallbackAt < Date.now() && getPaymentStatus(editingNote) !== 'full';
+    badge.className = 'ed-due-badge default' + (overdue ? ' overdue' : '');
+    badge.innerHTML = (overdue ? '⚠ Просрочено: ' : '📅 Оплата до: ') + formatDueDate(fallbackAt) + ' (по умолчанию, 15 раб.дней)';
+    badge.style.display = 'inline-flex';
+    return;
+  }
+  if(document.activeElement !== daysInput){
+    daysInput.value = editingNote.dueWorkDays != null ? editingNote.dueWorkDays : '';
+  }
+  const overdue = editingNote.dueAt < Date.now() && getPaymentStatus(editingNote) !== 'full';
+  badge.className = 'ed-due-badge' + (overdue ? ' overdue' : '');
+  badge.innerHTML = (overdue ? '⚠ Просрочено: ' : '📅 Оплата до: ') + formatDueDate(editingNote.dueAt) +
+    ' <span class="x" id="edDueClear">×</span>';
+  badge.style.display = 'inline-flex';
+}
+document.getElementById('edDueBadge').addEventListener('click', (e) => {
+  if(e.target.id === 'edDueClear'){
+    editingNote.dueAt = null;
+    editingNote.dueWorkDays = null;
+    document.getElementById('dueDaysInput').value = '';
+    updateDueBadge();
+    pushHistory();
+  }
+});
+// Поле "дней" всегда считает срок от сегодняшнего дня — ввели число, сразу
+// пересчитался и сохранился срок оплаты; очистили поле — срок снят.
+document.getElementById('dueDaysInput').addEventListener('input', (e) => {
+  const val = parseInt(e.target.value, 10);
+  if(!val || val <= 0){
+    editingNote.dueAt = null;
+    editingNote.dueWorkDays = null;
+    updateDueBadge();
+    pushHistory();
+    return;
+  }
+  editingNote.dueWorkDays = val;
+  editingNote.dueAt = addRussianWorkingDays(val).getTime();
+  updateDueBadge();
+  pushHistory();
+});
+
+document.getElementById('paidBtn').addEventListener('click', () => {
+  const status = getPaymentStatus(editingNote);
+  // ручное нажатие всегда переключает между "не оплачено" и "оплачено полностью";
+  // "частично" выставляется только автоматически по сумме на распознанной платёжке.
+  // Ручное решение больше не пересчитывается автоматом при удалении фото.
+  editingNote.paymentAuto = false;
+  const next = status === 'full' ? 'none' : 'full';
+  setPaymentStatus(editingNote, next, { paidAt: next === 'full' ? Date.now() : null, paidAmount: next === 'full' ? (editingNote.amount || editingNote.paidAmount || 0) : 0, statusPhotoId: null });
+  updatePaidBadge();
+  updateDueBadge();
+  pushHistory();
+  showToast(next === 'full' ? 'Отмечено как оплачено' : 'Отметка об оплате снята');
+});
+
+function renderChecklistEditor(){
+  if(!editingNote.checklist){ clItems.innerHTML=''; return; }
+  clItems.innerHTML = editingNote.checklist.map(it => `
+    <div class="cl-row ${it.done?'done':''}">
+      <input type="checkbox" data-editcheck="${it.id}" ${it.done?'checked':''}>
+      <input type="text" data-edittext="${it.id}" value="${(it.text||'').replace(/"/g,'&quot;')}" placeholder="Пункт списка">
+      <button class="rm" data-editrm="${it.id}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('');
+}
+
+clItems.addEventListener('input', (e) => {
+  const t = e.target.closest('[data-edittext]');
+  if(!t) return;
+  const it = editingNote.checklist.find(i => i.id == t.getAttribute('data-edittext'));
+  if(it) it.text = t.value;
+  scheduleTextHistoryPush();
+});
+clItems.addEventListener('change', (e) => {
+  const c = e.target.closest('[data-editcheck]');
+  if(!c) return;
+  const it = editingNote.checklist.find(i => i.id == c.getAttribute('data-editcheck'));
+  if(it) it.done = c.checked;
+  renderChecklistEditor();
+  pushHistory();
+});
+clItems.addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-editrm]');
+  if(!rm) return;
+  editingNote.checklist = editingNote.checklist.filter(i => i.id != rm.getAttribute('data-editrm'));
+  renderChecklistEditor();
+  pushHistory();
+});
+let clIdSeq = 100;
+clNewInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    const val = clNewInput.value.trim();
+    if(!val) return;
+    if(!editingNote.checklist) editingNote.checklist = [];
+    editingNote.checklist.push({ id: clIdSeq++, text: val, done:false });
+    clNewInput.value = '';
+    renderChecklistEditor();
+    pushHistory();
+  }
+});
+
+document.getElementById('checklistToggleBtn').addEventListener('click', () => {
+  if(editingNote.checklist){
+    // convert to plain text
+    editingNote.text = editingNote.checklist.map(i => (i.done?'[x] ':'[ ] ') + i.text).join('\n');
+    editingNote.checklist = null;
+    bodyInput.value = editingNote.text;
+    lastBodyValue = bodyInput.value;
+    bodyInput.style.display = 'block';
+    autoResizeBody();
+    checklistWrap.style.display = 'none';
+  } else {
+    editingNote.checklist = editingNote.text.trim()
+      ? editingNote.text.split('\n').filter(Boolean).map(t => ({ id: clIdSeq++, text:t.replace(/^\[[ x]\]\s*/,''), done:false }))
+      : [];
+    editingNote.text = '';
+    bodyInput.style.display = 'none';
+    checklistWrap.style.display = 'block';
+    renderChecklistEditor();
+  }
+  pushHistory();
+});
+
+function renderPalette(){
+  palette.innerHTML = COLORS.map(c => `
+    <div class="swatch ${editingNote.color===c.name?'selected':''}" data-setcolor="${c.name}" style="background:${c.hex}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#202124" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>`).join('');
+}
+document.getElementById('colorBtn').addEventListener('click', () => { palette.classList.toggle('show'); });
+palette.addEventListener('click', (e) => {
+  const sw = e.target.closest('[data-setcolor]');
+  if(!sw) return;
+  editingNote.color = sw.getAttribute('data-setcolor');
+  editorOverlay.style.background = colorHex(editingNote.color);
+  renderPalette();
+  pushHistory();
+});
+
+function isEmptyNote(n){
+  return !(n.text||'').trim() && !(n.checklist && n.checklist.some(i => i.text.trim()))
+    && !(n.photos && n.photos.length);
+}
+
+function closeEditor(commit){
+  if(!editingNote.checklist) editingNote.text = bodyInput.value;
+  if(commit && !isEmptyNote(editingNote)){
+    if(editingNote.checklist) editingNote.checklist = editingNote.checklist.filter(i => i.text.trim());
+    if(isNewNote){
+      editingNote.id = idSeq++;
+      editingNote.createdAt = Date.now();
+      notes.unshift(editingNote);
+    } else {
+      const idx = notes.findIndex(n => n.id === editingNote.id);
+      notes[idx] = editingNote;
+    }
+  }
+  editorOverlay.classList.remove('show');
+  palette.classList.remove('show');
+  editingNote = null;
+  renderContent();
+}
+document.getElementById('editorDone').addEventListener('click', () => {
+  // Сумма указана, а способ оплаты (без НДС / нал) не отмечен — переспрашиваем,
+  // чтобы не забыть проставить нужную галочку задним числом.
+  if(editingNote.amount && !editingNote.noNds && !editingNote.cash){
+    document.getElementById('paymentTypeOverlay').classList.add('show');
+    return;
+  }
+  closeEditor(true);
+});
+document.getElementById('paymentTypeNoNds').addEventListener('click', () => {
+  editingNote.noNds = true;
+  document.getElementById('noNdsCheck').checked = true;
+  document.getElementById('paymentTypeOverlay').classList.remove('show');
+  closeEditor(true);
+});
+document.getElementById('paymentTypeCash').addEventListener('click', () => {
+  editingNote.cash = true;
+  document.getElementById('cashCheck').checked = true;
+  document.getElementById('paymentTypeOverlay').classList.remove('show');
+  closeEditor(true);
+});
+document.getElementById('paymentTypeSkip').addEventListener('click', () => {
+  document.getElementById('paymentTypeOverlay').classList.remove('show');
+  closeEditor(true);
+});
+
+document.getElementById('archiveBtn').addEventListener('click', () => {
+  if(editingNote.trashed){
+    editingNote.trashed = false;
+    showToast('Заметка восстановлена');
+    closeEditor(true);
+    return;
+  }
+  editingNote.archived = !editingNote.archived;
+  showToast(editingNote.archived ? 'Заметка перенесена в архив' : 'Заметка возвращена из архива');
+  closeEditor(true);
+});
+function updateArchiveBtnIcon(){
+  const btn = document.getElementById('archiveBtn');
+  const delBtn = document.getElementById('deleteBtn');
+  if(editingNote.trashed){
+    btn.title = 'Восстановить';
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/></svg>';
+    // В корзине навсегда удалить руками нельзя — только восстановить или ждать
+    // автоматического удаления через месяц (так безопаснее, если приложением
+    // пользуется не один человек).
+    delBtn.style.display = 'none';
+  } else {
+    btn.title = editingNote.archived ? 'Убрать из архива' : 'В архив';
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="10" y1="13" x2="14" y2="13"/></svg>';
+    delBtn.style.display = '';
+  }
+}
+document.getElementById('deleteBtn').addEventListener('click', () => {
+  if(view === 'trash'){
+    // Кнопка скрыта для заметок из корзины (см. updateArchiveBtnIcon) — но на
+    // всякий случай не даём удалить насовсем и отсюда: только автоматически, через месяц.
+    return;
+  }
+  editingNote.trashed = true;
+  editingNote.trashedAt = Date.now();
+  editingNote.archived = false;
+  showToast('Заметка перемещена в корзину');
+  closeEditor(true);
+});
+
+function showToast(msg, duration){
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toast.classList.remove('show'), duration || 2000);
+}
+
+// ==================== РАСХОДЫ ====================
+let currentSection = 'notes';
+let expenses = [];           // { id, category, amount, createdAt }
+let expenseIdSeq = 1;
+let expenseCategories = [];  // список категорий, которые пользователь сам вписал
+let expView = 'history';     // 'history' | 'groups'
+let viewedExpMonthOffset = 0;
+let editingExpenseId = null;
+let expSelectedCategory = null;
+
+document.getElementById('topTabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.top-tab');
+  if(!btn) return;
+  currentSection = btn.getAttribute('data-section');
+  document.querySelectorAll('.top-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const isFuel = currentSection === 'fuel';
+  const isIncome = currentSection === 'income';
+  const isRoutes = currentSection === 'routes';
+  document.getElementById('composeBar').style.display = 'none';
+  document.getElementById('summaryBar').style.display = 'none';
+  document.getElementById('content').style.display = (isFuel || isIncome || isRoutes) ? 'none' : 'block';
+  document.getElementById('fuelSection').style.display = isFuel ? 'block' : 'none';
+  document.getElementById('incomeSection').style.display = isIncome ? 'block' : 'none';
+  document.getElementById('routesSection').style.display = isRoutes ? 'block' : 'none';
+  document.getElementById('globalFab').style.display = isRoutes ? 'none' : 'flex';
+  document.getElementById('searchInput').placeholder =
+    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : isRoutes ? 'Поиск по маршрутам' : 'Поиск';
+  if(isFuel) renderExpenses();
+  else if(isIncome) renderIncome();
+  else if(isRoutes){ /* раздел статичный — только кнопка перехода в Spoke */ }
+  else renderContent();
+});
+
+// Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу.
+// На "Доходы" и "Маршруты" отдельного добавления нет (маршруты — это кнопка Spoke).
+document.getElementById('globalFab').addEventListener('click', () => {
+  if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
+  if(currentSection === 'income') return;
+  if(currentSection === 'routes') return;
+  document.getElementById('composeBar').click();
+});
+
+// ==================== МАРШРУТЫ (переход в Spoke) ====================
+// Раздел "Маршруты" теперь состоит только из кнопки перехода в Spoke — вся
+// работа с точками и оптимизацией маршрута ведётся в самом Spoke.
+document.getElementById('openSpokeBtn').addEventListener('click', () => {
+  const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.underwood.route_optimiser';
+  const intentUrl = `intent://#Intent;scheme=spoke;package=com.underwood.route_optimiser;S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
+  window.location.href = intentUrl;
+});
+
+
+// ==================== ДОХОДЫ (считается по заявкам) ====================
+let viewedIncMonthOffset = 0;
+let incShowAllTime = false;
+let incFilter = 'all'; // 'all' | 'full' | 'partial' | 'none' | 'overdue'
+
+function computeIncomeMonth(offset){
+  const now = new Date();
+  const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
+  const key = offset ? monthKeyShift(nowKey, offset) : nowKey;
+  const list = notes.filter(n => {
+    if(n.trashed || n.archived || !n.amount || !n.createdAt) return false;
+    if(incShowAllTime) return true;
+    const d = new Date(n.createdAt);
+    return (d.getFullYear() + '-' + (d.getMonth() + 1)) === key;
+  });
+  let total = 0, paidTotal = 0, unpaidTotal = 0, partialTotal = 0;
+  let fullCount = 0, partialCount = 0, noneCount = 0;
+  list.forEach(n => {
+    total += n.amount;
+    const status = getPaymentStatus(n);
+    if(status === 'full'){ paidTotal += n.amount; fullCount++; }
+    else if(status === 'partial'){ partialTotal += (n.amount - (n.paidAmount || 0)); paidTotal += (n.paidAmount || 0); partialCount++; }
+    else { unpaidTotal += n.amount; noneCount++; }
+  });
+  return { list, key, total, paidTotal, unpaidTotal, partialTotal, fullCount, partialCount, noneCount };
+}
+
+function renderIncSummaryBar(){
+  const bar = document.getElementById('incSummaryBar');
+  const { list, key, total, paidTotal } = computeIncomeMonth(viewedIncMonthOffset);
+  const monthLabel = incShowAllTime ? 'Весь период' : (monthNameOf(key) + ' ' + key.split('-')[0]);
+  const nextDisabled = (incShowAllTime || viewedIncMonthOffset >= 0) ? 'disabled' : '';
+  const { total: expTotal } = computeExpenseMonth(viewedIncMonthOffset);
+  const profit = paidTotal - (incShowAllTime ? 0 : expTotal);
+  bar.innerHTML = `
+    <div class="summary-nav">
+      <button id="incPrevMonth" ${incShowAllTime ? 'disabled' : ''}>‹</button>
+      <span class="summary-month-label" id="incMonthLabel" style="cursor:pointer;text-decoration:underline dotted;">${monthLabel}</span>
+      <button id="incNextMonth" ${nextDisabled}>›</button>
+    </div>
+    <div>${list.length} заявок · ${formatAmount(total)}</div>
+    <div style="font-weight:400;font-size:12.5px;margin-top:2px;color:var(--muted);">
+      Получено ${formatAmount(paidTotal)}${incShowAllTime ? '' : ` · Расходы ${formatAmount(expTotal)} · Чистыми ${formatAmount(profit)}`}
+    </div>
+  `;
+  bar.style.display = 'block';
+}
+document.getElementById('incSummaryBar').addEventListener('click', (e) => {
+  if(e.target.closest('#incMonthLabel')){ incShowAllTime = !incShowAllTime; renderIncome(); return; }
+  if(incShowAllTime) return;
+  if(e.target.closest('#incPrevMonth')){ viewedIncMonthOffset--; renderIncome(); return; }
+  if(e.target.closest('#incNextMonth') && viewedIncMonthOffset < 0){ viewedIncMonthOffset++; renderIncome(); }
+});
+
+// "Вам должны" — сумма неоплаченного и недоплаченного по ВСЕМ заявкам, не только за месяц.
+function renderOwedBanner(){
+  const el = document.getElementById('incOwedBanner');
+  let owed = 0;
+  notes.forEach(n => {
+    if(n.trashed || n.archived || !n.amount) return;
+    const status = getPaymentStatus(n);
+    if(status === 'none') owed += n.amount;
+    else if(status === 'partial') owed += (n.amount - (n.paidAmount || 0));
+  });
+  if(owed > 0){
+    el.innerHTML = `Вам должны: <b>${formatAmount(owed)}</b> — по всем заявкам, за все месяцы`;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+document.getElementById('incFilterToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-incfilter]');
+  if(!btn) return;
+  incFilter = btn.getAttribute('data-incfilter');
+  renderIncome();
+});
+
+function renderIncome(){
+  renderIncSummaryBar();
+  renderOwedBanner();
+  document.querySelectorAll('#incFilterToggle .exp-view-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-incfilter') === incFilter);
+  });
+  const hasOverdue = notes.some(n => !n.trashed && !n.archived && n.amount && isOverdue(n));
+  document.getElementById('incOverdueBtn').classList.toggle('has-overdue', hasOverdue);
+  const { list } = computeIncomeMonth(viewedIncMonthOffset);
+  const filtered = incFilter === 'all' ? list
+    : incFilter === 'overdue' ? list.filter(n => isOverdue(n))
+    : list.filter(n => getPaymentStatus(n) === incFilter);
+  const el = document.getElementById('incList');
+  if(!filtered.length){
+    el.innerHTML = `<div class="empty">Заявок по этому фильтру ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
+    return;
+  }
+  const sorted = filtered.slice().sort((a,b) => b.createdAt - a.createdAt);
+  el.innerHTML = sorted.map(n => {
+    const status = getPaymentStatus(n);
+    const statusLabel = status === 'full' ? 'оплачено' : status === 'partial' ? 'частично' : 'не оплачено';
+    const route = n.title || (n.text || '').split('\n')[0].replace(/^Груз:\s*/, '') || 'Без названия';
+    const amountLine = status === 'partial'
+      ? `${formatAmount(n.paidAmount || 0)} из ${formatAmount(n.amount)}`
+      : formatAmount(n.amount);
+    return `
+      <div class="inc-card" data-incopen="${n.id}">
+        <div class="inc-main">
+          <span class="inc-route">${escapeHtml(route)}</span>
+          <span class="inc-meta">${n.number ? '№' + n.number + ' · ' : ''}${formatNoteDate(n.createdAt)}</span>
+        </div>
+        <div class="inc-right">
+          <span class="inc-amount">${amountLine}</span>
+          <span class="inc-status ${status}">${statusLabel}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+document.getElementById('incList').addEventListener('click', (e) => {
+  const card = e.target.closest('[data-incopen]');
+  if(!card) return;
+  const n = notes.find(x => x.id == card.getAttribute('data-incopen'));
+  if(n) openEditor(n);
+});
+
+function computeExpenseMonth(offset){
+  const now = new Date();
+  const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
+  const key = offset ? monthKeyShift(nowKey, offset) : nowKey;
+  const list = expenses.filter(e => {
+    const d = new Date(e.createdAt);
+    return (d.getFullYear() + '-' + (d.getMonth() + 1)) === key;
+  });
+  const total = list.reduce((s, e) => s + (e.amount || 0), 0);
+  return { list, total, key };
+}
+
+function renderExpSummaryBar(){
+  const bar = document.getElementById('expSummaryBar');
+  const { list, total, key } = computeExpenseMonth(viewedExpMonthOffset);
+  const monthLabel = monthNameOf(key) + ' ' + key.split('-')[0];
+  const nextDisabled = viewedExpMonthOffset >= 0 ? 'disabled' : '';
+  bar.innerHTML = `
+    <div class="summary-nav">
+      <button id="expPrevMonth">‹</button>
+      <span class="summary-month-label">${monthLabel}</span>
+      <button id="expNextMonth" ${nextDisabled}>›</button>
+    </div>
+    <div>${list.length} расходов · ${formatAmount(total)}</div>
+  `;
+  bar.style.display = 'block';
+}
+document.getElementById('expSummaryBar').addEventListener('click', (e) => {
+  if(e.target.closest('#expPrevMonth')){ viewedExpMonthOffset--; renderExpenses(); return; }
+  if(e.target.closest('#expNextMonth') && viewedExpMonthOffset < 0){ viewedExpMonthOffset++; renderExpenses(); }
+});
+
+document.getElementById('expViewToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-expview]');
+  if(!btn) return;
+  expView = btn.getAttribute('data-expview');
+  renderExpenses();
+});
+
+function renderExpenses(){
+  renderExpSummaryBar();
+  document.querySelectorAll('.exp-view-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-expview') === expView);
+  });
+  document.getElementById('expHistoryView').style.display = expView === 'history' ? 'block' : 'none';
+  document.getElementById('expGroupsView').style.display = expView === 'groups' ? 'block' : 'none';
+  if(expView === 'history') renderExpHistoryList();
+  else renderExpGroupsList();
+}
+
+function renderExpHistoryList(){
+  const { list } = computeExpenseMonth(viewedExpMonthOffset);
+  const el = document.getElementById('expList');
+  if(!list.length){
+    el.innerHTML = `<div class="empty">Расходов за этот месяц пока нет. Нажмите «+», чтобы добавить.</div>`;
+    return;
+  }
+  const sorted = list.slice().sort((a,b) => b.createdAt - a.createdAt);
+  el.innerHTML = sorted.map(e => `
+    <div class="exp-card" data-expopen="${e.id}">
+      <div class="exp-main">
+        <span class="exp-cat">${escapeHtml(e.category)}</span>
+        <span class="exp-amount">${formatAmount(e.amount)}</span>
+        <span class="exp-meta">${formatNoteDate(e.createdAt)}</span>
+      </div>
+      <button class="exp-edit" data-expedit="${e.id}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+document.getElementById('expList').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-expopen]') || e.target.closest('[data-expedit]');
+  if(!el) return;
+  const id = parseInt(el.getAttribute('data-expopen') || el.getAttribute('data-expedit'), 10);
+  openExpenseSheet(id);
+});
+
+function renderExpGroupsList(){
+  const { list } = computeExpenseMonth(viewedExpMonthOffset);
+  const el = document.getElementById('expGroupsList');
+  if(!list.length){
+    el.innerHTML = `<div class="empty">Расходов за этот месяц пока нет.</div>`;
+    return;
+  }
+  const groups = {};
+  list.forEach(e => {
+    if(!groups[e.category]) groups[e.category] = { total: 0, count: 0 };
+    groups[e.category].total += e.amount || 0;
+    groups[e.category].count++;
+  });
+  const sorted = Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
+  el.innerHTML = sorted.map(([cat, g]) => `
+    <div class="exp-group-card">
+      <div>
+        <div class="exp-group-name">${escapeHtml(cat)}</div>
+        <div class="exp-group-count">${g.count} ${g.count === 1 ? 'расход' : 'расходов'}</div>
+      </div>
+      <div class="exp-group-total">${formatAmount(g.total)}</div>
+    </div>
+  `).join('');
+}
+
+// ---- Нижнее окно добавления / редактирования расхода ----
+const expSheetOverlay = document.getElementById('expSheetOverlay');
+const expCatRow = document.getElementById('expCatRow');
+const expCatNewInput = document.getElementById('expCatNewInput');
+const expAmountInput = document.getElementById('expAmountInput');
+
+function renderExpCatRow(){
+  const chips = expenseCategories.map(cat => `
+    <button class="exp-cat-chip ${cat === expSelectedCategory ? 'active' : ''}" data-expcat="${escapeHtml(cat)}">${escapeHtml(cat)}</button>
+  `).join('');
+  expCatRow.innerHTML = chips + `<button class="exp-cat-chip exp-cat-add" id="expCatAddBtn">+ своя</button>`;
+}
+expCatRow.addEventListener('click', (e) => {
+  const addBtn = e.target.closest('#expCatAddBtn');
+  if(addBtn){
+    expCatRow.style.display = 'none';
+    expCatNewInput.style.display = 'block';
+    expCatNewInput.value = '';
+    expCatNewInput.focus();
+    return;
+  }
+  const chip = e.target.closest('[data-expcat]');
+  if(chip){
+    expSelectedCategory = chip.getAttribute('data-expcat');
+    renderExpCatRow();
+    updateExpSaveBtnState();
+  }
+});
+expCatNewInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); commitNewCategory(); }
+});
+function commitNewCategory(){
+  const val = expCatNewInput.value.trim();
+  expCatNewInput.style.display = 'none';
+  expCatRow.style.display = 'flex';
+  if(val){
+    if(!expenseCategories.includes(val)) expenseCategories.unshift(val);
+    expSelectedCategory = val;
+  }
+  renderExpCatRow();
+  updateExpSaveBtnState();
+  expAmountInput.focus();
+}
+expCatNewInput.addEventListener('blur', () => {
+  if(expCatNewInput.style.display !== 'none') commitNewCategory();
+});
+
+function updateExpSaveBtnState(){
+  const amount = parseFloat((expAmountInput.value || '').replace(',', '.'));
+  const ok = expSelectedCategory && amount > 0;
+  document.getElementById('expSaveBtn').disabled = !ok;
+}
+expAmountInput.addEventListener('input', updateExpSaveBtnState);
+expAmountInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); expAmountInput.blur(); }
+});
+
+function openExpenseSheet(id){
+  editingExpenseId = id;
+  const entry = id != null ? expenses.find(x => x.id === id) : null;
+  expSelectedCategory = entry ? entry.category : (expenseCategories[0] || null);
+  expCatRow.style.display = 'flex';
+  expCatNewInput.style.display = 'none';
+  renderExpCatRow();
+  expAmountInput.value = entry ? String(entry.amount).replace('.', ',') : '';
+  document.getElementById('expSaveBtn').textContent = entry ? 'Сохранить' : 'Добавить';
+  document.getElementById('expDeleteBtn').style.display = entry ? 'block' : 'none';
+  updateExpSaveBtnState();
+  expSheetOverlay.classList.add('show');
+  setTimeout(() => expAmountInput.focus(), 150);
+}
+function closeExpenseSheet(){
+  expSheetOverlay.classList.remove('show');
+  editingExpenseId = null;
+}
+expSheetOverlay.addEventListener('click', (e) => {
+  if(e.target === expSheetOverlay) closeExpenseSheet();
+});
+document.getElementById('expSaveBtn').addEventListener('click', () => {
+  const amount = parseFloat((expAmountInput.value || '').replace(',', '.'));
+  if(!expSelectedCategory || !(amount > 0)) return;
+  if(editingExpenseId != null){
+    const entry = expenses.find(x => x.id === editingExpenseId);
+    if(entry){ entry.category = expSelectedCategory; entry.amount = amount; }
+    showToast('Расход изменён');
+  } else {
+    expenses.push({ id: expenseIdSeq++, category: expSelectedCategory, amount, createdAt: Date.now() });
+    showToast('Расход добавлен');
+  }
+  saveState();
+  closeExpenseSheet();
+  renderExpenses();
+});
+document.getElementById('expDeleteBtn').addEventListener('click', () => {
+  if(editingExpenseId == null) return;
+  expenses = expenses.filter(x => x.id !== editingExpenseId);
+  saveState();
+  closeExpenseSheet();
+  renderExpenses();
+  showToast('Расход удалён');
+});
+
+// ---- persistence (работает в обычном браузере; в превью Claude недоступно) ----
+const STORAGE_KEY = 'moyreys_notes_v1';
+function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories }));
+  } catch(e){
+    console.warn('Не удалось сохранить (возможно, переполнено хранилище из-за фото):', e);
+  }
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    notes = s.notes || [];
+    idSeq = s.idSeq || 1;
+    monthKey = s.monthKey || null;
+    monthlyGoal = s.monthlyGoal || null;
+    expenses = s.expenses || [];
+    expenseIdSeq = s.expenseIdSeq || 1;
+    expenseCategories = s.expenseCategories || [];
+  } catch(e){
+    console.warn('Не удалось загрузить сохранённые данные:', e);
+  }
+}
+loadState();
+
+// ---- Экспорт / импорт данных (для переноса между версиями файла) ----
+// localStorage привязан к конкретному файлу/источнику, поэтому при получении
+// новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
+// позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
+function exportData(){
+  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  const stamp = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  a.href = url;
+  a.download = 'moyreys-backup-' + stamp + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('Копия данных сохранена в Загрузки');
+}
+function importDataFromFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const s = JSON.parse(reader.result);
+      if(!s || !Array.isArray(s.notes)) throw new Error('bad format');
+      if(!confirm('Загрузить эту копию? Текущие данные в приложении будут заменены.')) return;
+      notes = s.notes || [];
+      idSeq = s.idSeq || 1;
+      monthKey = s.monthKey || null;
+      monthlyGoal = s.monthlyGoal || null;
+      expenses = s.expenses || [];
+      expenseIdSeq = s.expenseIdSeq || 1;
+      expenseCategories = s.expenseCategories || [];
+      saveState();
+      renderContent();
+      showToast('Данные загружены');
+    } catch(e){
+      alert('Не удалось прочитать файл — проверьте, что это копия данных из этого приложения.');
+    }
+  };
+  reader.readAsText(file);
+}
+document.getElementById('exportDataBtn').addEventListener('click', () => {
+  exportData();
+  drawer.classList.remove('show'); overlay.classList.remove('show');
+});
+document.getElementById('importDataBtn').addEventListener('click', () => {
+  document.getElementById('importFileInput').click();
+});
+document.getElementById('importFileInput').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if(file) importDataFromFile(file);
+  e.target.value = '';
+  drawer.classList.remove('show'); overlay.classList.remove('show');
+});
+
+// ---- Итоги за завершённый месяц (будет переделано вместе с новым разделом "Расходы") ----
+function monthKeyShift(key, delta){
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, (m - 1) + delta, 1);
+  return d.getFullYear() + '-' + (d.getMonth() + 1);
+}
+function monthNameOf(key){
+  const [y, m] = key.split('-').map(Number);
+  return MONTHS_FULL[m - 1];
+}
+
+// Подстраивает высоту редактора под реальную видимую область экрана —
+// когда открывается клавиатура, окно уменьшается, и нижняя панель остаётся видна сразу,
+// без необходимости скроллить.
+function adjustEditorForViewport(){
+  if(!editorOverlay.classList.contains('show')) return;
+  if(window.visualViewport){
+    editorOverlay.style.height = window.visualViewport.height + 'px';
+    editorOverlay.style.top = window.visualViewport.offsetTop + 'px';
+  } else {
+    editorOverlay.style.height = window.innerHeight + 'px';
+  }
+}
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', adjustEditorForViewport);
+  window.visualViewport.addEventListener('scroll', adjustEditorForViewport);
+}
+
+renderContent();
+</script>
+
+</body>
+</html>
