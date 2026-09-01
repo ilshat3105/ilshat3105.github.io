@@ -717,6 +717,7 @@
   };
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
+  auth.useDeviceLanguage();
   const db = firebase.firestore();
 </script>
 </head>
@@ -3524,7 +3525,12 @@ function loadFromCloud(){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       suppressCloudSave = false;
     } else {
-      // первый вход с этого аккаунта — заливаем то, что уже накоплено локально
+      // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
+      // в памяти телефона от предыдущего входа под другим аккаунтом
+      suppressCloudSave = true;
+      applyState({});
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+      suppressCloudSave = false;
       scheduleCloudSave();
     }
     renderContent();
@@ -3554,6 +3560,11 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
   auth.signOut();
   drawer.classList.remove('show'); overlay.classList.remove('show');
+  suppressCloudSave = true;
+  applyState({});
+  try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
+  suppressCloudSave = false;
+  renderContent();
 });
 
 // ---- Смена пароля ----
