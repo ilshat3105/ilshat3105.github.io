@@ -730,7 +730,12 @@
       <div style="font-size:13px;color:#5f6368;margin-top:6px;" id="authSubtitle">Войдите, чтобы продолжить</div>
     </div>
     <input id="authEmail" type="email" autocomplete="email" placeholder="Email" style="width:100%;box-sizing:border-box;padding:14px 16px;border:1px solid #e0e0e0;border-radius:10px;font-size:15px;margin-bottom:10px;font-family:'Inter',sans-serif;">
-    <input id="authPassword" type="password" autocomplete="current-password" placeholder="Пароль" style="width:100%;box-sizing:border-box;padding:14px 16px;border:1px solid #e0e0e0;border-radius:10px;font-size:15px;margin-bottom:6px;font-family:'Inter',sans-serif;">
+    <div style="position:relative;width:100%;margin-bottom:6px;">
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="Пароль" style="width:100%;box-sizing:border-box;padding:14px 44px 14px 16px;border:1px solid #e0e0e0;border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;">
+      <button id="authPassToggle" type="button" aria-label="Показать пароль" style="position:absolute;right:4px;top:0;bottom:0;width:40px;background:none;border:none;color:#5f6368;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">
+        <svg id="authPassEyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
     <div id="authError" style="color:#d93025;font-size:13px;min-height:18px;margin:4px 2px;"></div>
     <button id="authSubmitBtn" type="button" style="width:100%;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:600;margin-top:6px;cursor:pointer;">Войти</button>
     <button id="authToggleBtn" type="button" style="width:100%;background:none;border:none;color:#2563eb;font-size:13.5px;margin-top:16px;cursor:pointer;padding:6px;">Нет аккаунта? Зарегистрироваться</button>
@@ -3419,6 +3424,15 @@ function scheduleCloudSave(){
 const authOverlay = document.getElementById('authOverlay');
 const authEmail = document.getElementById('authEmail');
 const authPassword = document.getElementById('authPassword');
+const authPassToggle = document.getElementById('authPassToggle');
+const authPassEyeIcon = document.getElementById('authPassEyeIcon');
+authPassToggle.addEventListener('click', () => {
+  const showing = authPassword.type === 'text';
+  authPassword.type = showing ? 'password' : 'text';
+  authPassEyeIcon.innerHTML = showing
+    ? '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.6 18.6 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+});
 const authError = document.getElementById('authError');
 const authSubmitBtn = document.getElementById('authSubmitBtn');
 const authToggleBtn = document.getElementById('authToggleBtn');
