@@ -240,12 +240,7 @@
   .editor-body textarea.body{width:100%;border:none;outline:none;font-size:14.5px;line-height:1.6;
     resize:none;font-family:'Inter',sans-serif;background:transparent;min-height:80px;overflow:hidden;
     flex-shrink:0;}
-  .editor-body textarea.body.body-dim{color:var(--faint);opacity:.55;pointer-events:none;}
-  .paste-order-btn{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:8px;
-    width:calc(100% - 40px);margin:0 20px 14px;padding:13px;border:none;border-radius:12px;
-    background:#2563eb;color:#fff;font-size:14.5px;font-weight:700;font-family:'Inter',sans-serif;
-    cursor:pointer;-webkit-tap-highlight-color:transparent;}
-  .paste-order-btn:active{background:#1d4ed8;}
+  .editor-body textarea.body.body-dim{cursor:pointer;}
   .cl-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .cl-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
   .cl-row input[type=text]{flex:1;border:none;outline:none;font-size:14.5px;background:transparent;font-family:'Inter',sans-serif;}
@@ -861,10 +856,6 @@
         </div>
       </div>
     </div>
-    <button type="button" id="pasteOrderBtn" class="paste-order-btn" style="display:none;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-      Вставить заявку
-    </button>
     <div class="ed-photos-wrap">
       <div class="ed-photos" id="edPhotos"></div>
     </div>
@@ -1730,25 +1721,29 @@ function autoResizeBody(){
     bodyInput.style.height = available + 'px';
   }
 }
-const pasteOrderBtn = document.getElementById('pasteOrderBtn');
 function updatePasteOrderBtn(){
   const empty = !bodyInput.value.trim();
   if(isNewNote && empty && !editingNote.checklist){
-    pasteOrderBtn.style.display = 'flex';
+    bodyInput.placeholder = 'Вставить заявку';
+    bodyInput.readOnly = true;
     bodyInput.classList.add('body-dim');
   } else {
-    pasteOrderBtn.style.display = 'none';
+    bodyInput.placeholder = 'Заметка...';
+    bodyInput.readOnly = false;
     bodyInput.classList.remove('body-dim');
   }
 }
-pasteOrderBtn.addEventListener('click', async () => {
+bodyInput.addEventListener('click', async () => {
+  if(!bodyInput.readOnly) return; // обычное поле — стандартное поведение
   let text = '';
   try{
     text = await navigator.clipboard.readText();
   } catch(err){
-    // Clipboard API недоступна (нет HTTPS или нет разрешения) — просто открываем
-    // поле для ввода, чтобы вставить текст через системное меню вручную.
+    // Clipboard API недоступна (нет HTTPS или нет разрешения) — снимаем readOnly,
+    // чтобы можно было вставить текст вручную через системное меню.
+    bodyInput.readOnly = false;
     bodyInput.classList.remove('body-dim');
+    bodyInput.placeholder = 'Заметка...';
     bodyInput.focus();
     return;
   }
