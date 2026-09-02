@@ -1634,7 +1634,6 @@ function openEditor(note, isNew){
   bodyInput.value = (editingNote.text || '').replace(/\s+$/, '');
   editingNote.text = bodyInput.value;
   lastBodyValue = bodyInput.value;
-  updatePasteOrderBtn();
   const edNum = document.getElementById('edNum');
   if(editingNote.number){ edNum.textContent = '№' + editingNote.number + (editingNote.createdAt ? ' · ' + formatNoteDate(editingNote.createdAt) : ''); edNum.style.display='block'; }
   else { edNum.style.display='none'; }
@@ -1655,6 +1654,7 @@ function openEditor(note, isNew){
   editorOverlay.classList.add('show');
   adjustEditorForViewport();
   autoResizeBody();
+  updatePasteOrderBtn();
   renderPalette();
   history = [snapshotNote()];
   historyIndex = 0;
@@ -1729,8 +1729,8 @@ function updatePasteOrderBtn(){
     bodyInput.classList.add('body-dim');
     // сдвигаем плейсхолдер почти к самому низу поля — туда, где удобно
     // тапнуть большим пальцем, не тянясь наверх экрана
-    const parentH = bodyInput.parentElement.clientHeight || 0;
-    bodyInput.style.paddingTop = parentH ? Math.round(parentH * 0.82) + 'px' : '';
+    const parentH = bodyInput.parentElement.clientHeight || Math.round(window.innerHeight * 0.55);
+    bodyInput.style.paddingTop = Math.round(parentH * 0.82) + 'px';
   } else {
     bodyInput.placeholder = 'Заметка...';
     bodyInput.readOnly = false;
