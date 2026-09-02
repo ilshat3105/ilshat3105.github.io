@@ -239,7 +239,7 @@
   .flag-chip:has(input:checked){background:var(--concrete);border-color:#5f6368;font-weight:600;}
   .editor-body textarea.body{width:100%;border:none;outline:none;font-size:14.5px;line-height:1.6;
     resize:none;font-family:'Inter',sans-serif;background:transparent;min-height:80px;overflow:hidden;
-    flex-shrink:0;}
+    flex-shrink:0;box-sizing:border-box;}
   .editor-body textarea.body.body-dim{cursor:pointer;}
   .cl-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .cl-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
@@ -1727,10 +1727,15 @@ function updatePasteOrderBtn(){
     bodyInput.placeholder = 'Вставить заявку';
     bodyInput.readOnly = true;
     bodyInput.classList.add('body-dim');
+    // сдвигаем плейсхолдер пониже — там, где удобно тапнуть большим пальцем,
+    // не тянясь наверх экрана
+    const parentH = bodyInput.parentElement.clientHeight || 0;
+    bodyInput.style.paddingTop = parentH ? Math.round(parentH * 0.5) + 'px' : '';
   } else {
     bodyInput.placeholder = 'Заметка...';
     bodyInput.readOnly = false;
     bodyInput.classList.remove('body-dim');
+    bodyInput.style.paddingTop = '';
   }
 }
 bodyInput.addEventListener('click', async () => {
