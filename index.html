@@ -131,6 +131,8 @@
   .ed-photo-checking .pct{color:#fff;font-size:10px;font-weight:700;}
   .ed-add-photo{width:64px;height:64px;border-radius:10px;border:1.5px dashed #c9c5b8;background:none;
     color:var(--faint);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;}
+  .ed-add-photo.labeled{width:76px;height:76px;font-size:10.5px;font-weight:700;line-height:1.25;text-align:center;
+    padding:4px;font-family:'Inter',sans-serif;white-space:normal;word-break:break-word;}
 
   .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:60;display:none;
     align-items:center;justify-content:center;}
@@ -1724,7 +1726,7 @@ function autoResizeBody(){
 function updatePasteOrderBtn(){
   const empty = !bodyInput.value.trim();
   if(isNewNote && empty && !editingNote.checklist){
-    bodyInput.placeholder = 'Вставить скопированную заявку';
+    bodyInput.placeholder = 'Вставить скопированную заявку с АТИ';
     bodyInput.readOnly = true;
     bodyInput.classList.add('body-dim');
     // сдвигаем плейсхолдер почти к самому низу поля — туда, где удобно
@@ -1818,7 +1820,9 @@ function renderEditorPhotos(){
       ${ocrPendingPhotos.has(ids[i]) ? `<div class="ed-photo-checking"><span class="spinner"></span>${typeof pct === 'number' ? `<span class="pct">${pct}%</span>` : ''}</div>` : ''}
       <button class="ed-rm" data-edphotorm="${i}">×</button>
     </div>`;
-  }).join('') + `<button class="ed-add-photo" id="edAddPhotoBtn">+</button>`;
+  }).join('') + `<button class="ed-add-photo${photos.length < 2 ? ' labeled' : ''}" id="edAddPhotoBtn">${
+    photos.length === 0 ? 'Загрузить заявку' : photos.length === 1 ? 'Загрузить платёжку' : '+'
+  }</button>`;
 }
 document.getElementById('editorOverlay').addEventListener('click', (e) => {
   const view = e.target.closest('[data-viewphoto]');
