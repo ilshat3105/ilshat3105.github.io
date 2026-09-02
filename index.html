@@ -240,7 +240,7 @@
   .editor-body textarea.body{width:100%;border:none;outline:none;font-size:14.5px;line-height:1.6;
     resize:none;font-family:'Inter',sans-serif;background:transparent;min-height:80px;overflow:hidden;
     flex-shrink:0;box-sizing:border-box;}
-  .editor-body textarea.body.body-dim{cursor:pointer;}
+  .editor-body textarea.body.body-dim{cursor:pointer;background:#dde1e6;color:var(--muted);}
   .cl-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .cl-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
   .cl-row input[type=text]{flex:1;border:none;outline:none;font-size:14.5px;background:transparent;font-family:'Inter',sans-serif;}
@@ -1724,13 +1724,13 @@ function autoResizeBody(){
 function updatePasteOrderBtn(){
   const empty = !bodyInput.value.trim();
   if(isNewNote && empty && !editingNote.checklist){
-    bodyInput.placeholder = 'Вставить заявку';
+    bodyInput.placeholder = 'Вставить скопированную заявку';
     bodyInput.readOnly = true;
     bodyInput.classList.add('body-dim');
-    // сдвигаем плейсхолдер пониже — там, где удобно тапнуть большим пальцем,
-    // не тянясь наверх экрана
+    // сдвигаем плейсхолдер почти к самому низу поля — туда, где удобно
+    // тапнуть большим пальцем, не тянясь наверх экрана
     const parentH = bodyInput.parentElement.clientHeight || 0;
-    bodyInput.style.paddingTop = parentH ? Math.round(parentH * 0.5) + 'px' : '';
+    bodyInput.style.paddingTop = parentH ? Math.round(parentH * 0.82) + 'px' : '';
   } else {
     bodyInput.placeholder = 'Заметка...';
     bodyInput.readOnly = false;
