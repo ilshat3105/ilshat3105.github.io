@@ -447,8 +447,11 @@
   .sv-pull-card.dragging{transition:none;}
   .sv-pull-card.ready{opacity:1;box-shadow:0 6px 18px rgba(0,0,0,.12);
     border-color:#3c4043;}
+  .sv-pull-card.reload{opacity:1;box-shadow:0 6px 18px rgba(0,0,0,.18);
+    border-color:#202124;background:#f1f3f4;}
   .sv-pull-card .sv-pull-card-text{color:var(--faint);pointer-events:none;}
   .sv-pull-card.ready .sv-pull-card-text{color:#202124;font-weight:700;}
+  .sv-pull-card.reload .sv-pull-card-text{color:#202124;font-weight:700;}
 
   .exp-amount-row{display:flex;align-items:center;gap:8px;border:1.5px solid var(--card-line);
     border-radius:14px;padding:10px 16px;}
@@ -3662,6 +3665,19 @@ function renderSvNotes(){
   svSetupDrums();
 }
 function svCreateNote(){
+  // Смысла плодить пустые заметки нет — если уже есть незаполненная, открываем её же,
+  // а не создаём ещё одну.
+  const existingEmpty = svNotes.find(n => !n.text || !n.text.trim());
+  if(existingEmpty){
+    showToast('Сначала заполните пустую заметку');
+    svCatFilter = existingEmpty.category || null;
+    renderSvNotes();
+    setTimeout(() => {
+      const ta = document.querySelector(`[data-svnotetext="${existingEmpty.id}"]`);
+      if(ta){ ta.focus(); ta.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }, 60);
+    return;
+  }
   const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, category: svCatFilter || null };
   svNotes.unshift(note);
   saveState();
@@ -3790,19 +3806,25 @@ document.getElementById('svNotesList').addEventListener('pointercancel', svFinis
 // и список уже прокручен до самого верха (иначе это была бы обычная прокрутка).
 // Карточка-«резинка» растёт вместе с пальцем 1-в-1 (без анимации, пока тянем), а если
 // отпустить раньше порога — плавно пружинит обратно к нулю, никакая заметка не создаётся.
+// Дотянули совсем сильно (второй порог) и отпустили — вместо заметки страница сама
+// перезагружается с сервера в обход кэша: удобный способ проверить, подтянулись ли правки.
 let svPullStartY = null;
 let svPulling = false;
 const SV_PULL_THRESHOLD = 70;
-const SV_PULL_MAX = 96;
+const SV_PULL_RELOAD_THRESHOLD = 160;
+const SV_PULL_MAX = 170;
 const svMainEl = document.getElementById('main');
 const svPullCard = document.getElementById('svPullCard');
-function svSetPullHeight(px, ready){
+const svPullCardText = svPullCard.querySelector('.sv-pull-card-text');
+function svSetPullHeight(px, stage){
   svPullCard.style.height = px + 'px';
   const t = Math.min(1, px / SV_PULL_MAX);
   svPullCard.style.paddingTop = (14 * t) + 'px';
   svPullCard.style.paddingBottom = (14 * t) + 'px';
   svPullCard.style.marginBottom = (10 * t) + 'px';
-  svPullCard.classList.toggle('ready', !!ready);
+  svPullCard.classList.toggle('ready', stage === 1);
+  svPullCard.classList.toggle('reload', stage === 2);
+  if(svPullCardText) svPullCardText.textContent = stage === 2 ? '↻ Обновить страницу' : 'Заметка...';
 }
 svMainEl.addEventListener('touchstart', (e) => {
   if(currentSection !== 'service' || svMainEl.scrollTop > 0 || e.target.closest('.sv-drum')){
@@ -3820,21 +3842,41 @@ svMainEl.addEventListener('touchmove', (e) => {
     // срабатывает раньше нашего и перезагружает сайт вместо создания заметки.
     e.preventDefault();
     svPullCard.classList.add('dragging'); // без анимации — карточка идёт ровно за пальцем
-    svSetPullHeight(Math.min(dy, SV_PULL_MAX), dy > SV_PULL_THRESHOLD);
+    const stage = dy > SV_PULL_RELOAD_THRESHOLD ? 2 : dy > SV_PULL_THRESHOLD ? 1 : 0;
+    svSetPullHeight(Math.min(dy, SV_PULL_MAX), stage);
   }
 }, { passive: false });
 function svResetPullCard(){
   svPullCard.classList.remove('dragging'); // возвращаем transition — обратный ход будет плавным
-  svSetPullHeight(0, false);
+  svSetPullHeight(0, 0);
 }
 function svEndPull(e){
   if(currentSection !== 'service' || svPullStartY == null) return;
   const touch = e.changedTouches ? e.changedTouches[0] : null;
   const dy = touch ? touch.clientY - svPullStartY : 0;
   svPullStartY = null;
-  if(svPulling && dy > SV_PULL_THRESHOLD){
+  if(svPulling && dy > SV_PULL_RELOAD_THRESHOLD){
     svPullCard.classList.remove('dragging');
-    svSetPullHeight(SV_PULL_MAX, true); // короткая пауза «защёлкивания» перед созданием
+    svSetPullHeight(SV_PULL_MAX, 2);
+    // Простой переход по адресу с новым параметром не помогает, если сам service worker
+    // перехватывает загрузку и подсовывает страницу из своего кэша независимо от адреса —
+    // поэтому сначала отключаем его и чистим его кэш, и только потом переходим заново.
+    setTimeout(async () => {
+      try{
+        if('serviceWorker' in navigator){
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+        if(window.caches){
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+      } catch(err){ /* если не получилось — всё равно переходим ниже */ }
+      location.href = location.pathname + '?_r=' + Date.now();
+    }, 150);
+  } else if(svPulling && dy > SV_PULL_THRESHOLD){
+    svPullCard.classList.remove('dragging');
+    svSetPullHeight(SV_PULL_MAX, 1); // короткая пауза «защёлкивания» перед созданием
     setTimeout(() => { svResetPullCard(); svCreateNote(); }, 110);
   } else {
     svResetPullCard(); // отпустили раньше времени — плавно схлопывается назад, ничего не создаётся
