@@ -419,18 +419,20 @@
   /* Барабан папки прямо в строке заметки — как выбор времени на iPhone, только горизонтально:
      листаете пальцем, нужный пункт сам «примагничивается» по центру и сразу применяется,
      без отдельного окна и кнопки подтверждения. */
-  .sv-hwheel-wrap{position:relative;height:32px;margin-top:8px;}
+  .sv-hwheel-wrap{position:relative;height:32px;margin-top:8px;width:190px;max-width:100%;
+    overflow:hidden;}
   .sv-hwheel{height:32px;display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;
-    -webkit-overflow-scrolling:touch;scrollbar-width:none;padding:0 calc(50% - 44px);}
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;padding:0 calc(50% - 40px);}
   .sv-hwheel::-webkit-scrollbar{display:none;}
-  .sv-hwheel-item{flex:0 0 88px;width:88px;height:32px;line-height:32px;text-align:center;
+  .sv-hwheel-item{flex:0 0 80px;width:80px;height:32px;line-height:32px;text-align:center;
     font-size:12.5px;color:var(--faint);scroll-snap-align:center;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;font-family:'Inter',sans-serif;
-    transition:color .1s ease, font-weight .1s ease;}
-  .sv-hwheel-item.center{color:#202124;font-weight:700;}
+    overflow:hidden;text-overflow:ellipsis;font-family:'Inter',sans-serif;opacity:.4;
+    transform:scale(.9);
+    transition:color .12s ease, font-weight .12s ease, opacity .12s ease, transform .12s ease;}
+  .sv-hwheel-item.center{color:#202124;font-weight:700;opacity:1;transform:scale(1);}
   .sv-hwheel-item.add.center{color:var(--accent);}
-  .sv-hwheel-selection{position:absolute;left:50%;top:0;transform:translateX(-44px);
-    width:88px;height:32px;border-left:1.5px solid var(--card-line);
+  .sv-hwheel-selection{position:absolute;left:50%;top:0;transform:translateX(-40px);
+    width:80px;height:32px;border-left:1.5px solid var(--card-line);
     border-right:1.5px solid var(--card-line);border-radius:8px;
     pointer-events:none;background:rgba(0,0,0,.025);}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
@@ -3491,7 +3493,7 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
 let svCatFilter = null; // null = все категории
-const SV_HWHEEL_ITEM_W = 88;
+const SV_HWHEEL_ITEM_W = 80;
 
 function svCategoryCounts(){
   const counts = {};
