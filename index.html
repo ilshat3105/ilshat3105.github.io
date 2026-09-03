@@ -389,6 +389,61 @@
   .exp-cat-new-input{width:100%;border:1.5px solid var(--card-line);border-radius:12px;
     padding:12px 14px;font-size:15px;font-family:'Inter',sans-serif;outline:none;}
   .exp-cat-new-input:focus{border-color:var(--accent);}
+
+  /* ---- Автосервис: одометр, журнал, регламент ---- */
+  .sv-odo-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:#fff;border:1px solid var(--card-line);border-radius:16px;padding:12px 16px;
+    margin-bottom:12px;box-shadow:0 6px 18px rgba(15,23,42,.055);}
+  .sv-odo-bar #svOdoLabel{font-size:13.5px;font-weight:700;color:var(--navy);}
+  .sv-odo-bar button{background:var(--accent);color:#fff;border:none;border-radius:10px;
+    padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;
+    flex-shrink:0;}
+  .sv-card{background:#fff;border:1px solid var(--card-line);border-radius:16px;padding:14px 16px;
+    margin-bottom:10px;display:flex;gap:12px;cursor:pointer;box-shadow:0 6px 18px rgba(15,23,42,.045);}
+  .sv-card-thumb{width:56px;height:56px;border-radius:10px;flex-shrink:0;overflow:hidden;
+    background:var(--concrete);}
+  .sv-card-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .sv-card-main{min-width:0;flex:1;}
+  .sv-card-title{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sv-card-cat{display:inline-block;font-size:11px;font-weight:700;color:var(--accent);
+    background:#eff6ff;border-radius:8px;padding:2px 7px;margin-bottom:4px;}
+  .sv-card-text{font-size:13px;color:#475569;overflow:hidden;text-overflow:ellipsis;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+  .sv-card-meta{font-size:11.5px;color:var(--faint);margin-top:4px;}
+  .sv-card-text a{color:#2563eb;}
+
+  .sv-group{background:#fff;border:1px solid var(--card-line);border-radius:16px;
+    margin-bottom:10px;box-shadow:0 6px 18px rgba(15,23,42,.045);overflow:hidden;}
+  .sv-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:14px 16px;cursor:pointer;}
+  .sv-group-title{font-size:15px;font-weight:700;color:var(--navy);}
+  .sv-group-badge{font-size:11.5px;font-weight:700;border-radius:999px;padding:4px 10px;
+    white-space:nowrap;flex-shrink:0;}
+  .sv-group-badge.ok{background:#e6f4ea;color:#1e7e34;}
+  .sv-group-badge.soon{background:#fff4e5;color:#b35c00;}
+  .sv-group-badge.overdue{background:#fbe4e1;color:#c5221f;}
+  .sv-group-badge.unknown{background:#f1f3f4;color:#5f6368;}
+  .sv-group-body{display:none;padding:0 16px 16px;}
+  .sv-group.open .sv-group-body{display:block;}
+  .sv-group-list{margin:0 0 10px;padding-left:18px;font-size:13.5px;color:#3c4043;line-height:1.6;}
+  .sv-group-list li{margin-bottom:2px;}
+  .sv-group-last{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .sv-group-last input{width:100px;border:1px solid var(--line);border-radius:8px;padding:7px 8px;
+    font-size:13px;font-family:'Inter',sans-serif;outline:none;}
+  .sv-group-last button{background:var(--concrete);border:none;border-radius:8px;padding:7px 12px;
+    font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer;font-family:'Inter',sans-serif;}
+  .sv-ref-block{background:#fff;border:1px solid var(--card-line);border-radius:16px;
+    padding:14px 16px;margin-bottom:10px;box-shadow:0 6px 18px rgba(15,23,42,.045);}
+  .sv-ref-block h5{margin:0 0 8px;font-size:14px;font-weight:700;color:var(--navy);}
+  .sv-ref-block .sv-ref-row{display:flex;justify-content:space-between;gap:10px;font-size:13px;
+    color:#3c4043;padding:5px 0;border-bottom:1px solid #f1f3f4;}
+  .sv-ref-block .sv-ref-row:last-child{border-bottom:none;}
+  .sv-ref-block .sv-ref-row span:first-child{color:var(--muted);flex-shrink:0;padding-right:10px;}
+  .sv-ref-block .sv-ref-row span:last-child{text-align:right;font-weight:600;}
+  .sv-ref-note{font-size:12px;color:var(--faint);margin-bottom:12px;line-height:1.5;}
+  #svOdoRow > input, #svOdometerInput{width:110px;}
+
   .exp-amount-row{display:flex;align-items:center;gap:8px;border:1.5px solid var(--card-line);
     border-radius:14px;padding:10px 16px;}
   .exp-amount-input{flex:1;border:none;outline:none;font-size:28px;font-weight:700;
@@ -753,6 +808,7 @@
 
   <div class="top-tabs" id="topTabs">
     <button class="top-tab active" data-section="notes">Заявки</button>
+    <button class="top-tab" data-section="service">Автосервис</button>
     <button class="top-tab" data-section="fuel">Расходы</button>
     <button class="top-tab" data-section="income">Доходы</button>
   </div>
@@ -772,6 +828,23 @@
         <button class="exp-view-btn" id="incOverdueBtn" data-incfilter="overdue">⚠ Просрочено</button>
       </div>
       <div id="incList"></div>
+    </div>
+    <div id="serviceSection" style="display:none;">
+      <div class="sv-odo-bar" id="svOdoBar">
+        <span id="svOdoLabel">Пробег не указан</span>
+        <button type="button" id="svOdoEditBtn">Указать пробег</button>
+      </div>
+      <div class="exp-view-toggle" id="serviceViewToggle">
+        <button class="exp-view-btn active" data-serviceview="journal">Журнал</button>
+        <button class="exp-view-btn" data-serviceview="schedule">Регламент ТО</button>
+      </div>
+      <div id="serviceJournalView">
+        <div class="exp-cat-row" id="svCatFilterRow"></div>
+        <div id="svEntriesList"></div>
+      </div>
+      <div id="serviceScheduleView" style="display:none;">
+        <div id="svScheduleGroups"></div>
+      </div>
     </div>
     <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
@@ -892,6 +965,40 @@
     </div>
   </div>
 
+  <div class="editor-overlay" id="svEditorOverlay">
+    <div class="editor-top">
+      <button class="icon-btn" id="svCloseBtn" title="Назад">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      </button>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="svDeleteBtn" title="Удалить">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button>
+    </div>
+    <div class="editor-fields">
+      <input class="title" id="svTitleInput" placeholder="Название (например, Топливный фильтр)">
+    </div>
+    <div style="padding:0 20px 10px;flex-shrink:0;">
+      <div class="exp-cat-row" id="svCatRow"></div>
+    </div>
+    <div class="editor-body">
+      <textarea class="body" id="svBodyInput" placeholder="Для чего нужно, как выглядит оригинал, ссылки на магазины..."></textarea>
+    </div>
+    <div class="ed-photos-wrap">
+      <div class="ed-photos" id="svPhotos"></div>
+    </div>
+    <div class="amount-row" id="svOdoRow">
+      <input id="svOdometerInput" inputmode="numeric" pattern="[0-9]*" placeholder="Пробег, км">
+      <span style="font-size:12.5px;color:var(--muted);">— на момент записи</span>
+    </div>
+    <div class="editor-toolbar">
+      <button class="icon-btn" id="svPhotoBtn" title="Прикрепить фото">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
+      <button class="close-btn" id="svDoneBtn">Сохранить</button>
+    </div>
+  </div>
+
   <div class="route-import-overlay" id="paymentTypeOverlay">
     <div class="route-import-sheet" style="max-height:none;">
       <div class="route-import-title">Как оплата — без НДС или наличными?</div>
@@ -983,6 +1090,7 @@
 
 <div class="toast" id="toast"></div>
 <input type="file" accept="image/*" id="photoInput" style="display:none;">
+<input type="file" accept="image/*" id="svPhotoInput" style="display:none;">
 
 <script>
 const COLORS = [
@@ -1566,7 +1674,10 @@ document.getElementById('content').addEventListener('pointercancel', finishDrag)
 
 document.getElementById('searchInput').addEventListener('input', (e) => {
   searchQuery = e.target.value;
-  renderContent();
+  if(currentSection === 'fuel') renderExpenses();
+  else if(currentSection === 'income') renderIncome();
+  else if(currentSection === 'service') renderServiceSection();
+  else renderContent();
 });
 
 // drawer
@@ -3065,24 +3176,28 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
   btn.classList.add('active');
   const isFuel = currentSection === 'fuel';
   const isIncome = currentSection === 'income';
+  const isService = currentSection === 'service';
   document.getElementById('composeBar').style.display = 'none';
   document.getElementById('summaryBar').style.display = 'none';
-  document.getElementById('content').style.display = (isFuel || isIncome) ? 'none' : 'block';
+  document.getElementById('content').style.display = (isFuel || isIncome || isService) ? 'none' : 'block';
   document.getElementById('fuelSection').style.display = isFuel ? 'block' : 'none';
   document.getElementById('incomeSection').style.display = isIncome ? 'block' : 'none';
+  document.getElementById('serviceSection').style.display = isService ? 'block' : 'none';
   document.getElementById('globalFab').style.display = 'flex';
   document.getElementById('searchInput').placeholder =
-    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : 'Поиск';
+    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : isService ? 'Поиск по автосервису' : 'Поиск';
   if(isFuel) renderExpenses();
   else if(isIncome) renderIncome();
+  else if(isService) renderServiceSection();
   else renderContent();
 });
 
-// Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу.
-// На "Доходы" отдельного добавления нет.
+// Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу,
+// на "Автосервис" — новую запись журнала. На "Доходы" отдельного добавления нет.
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
   if(currentSection === 'income') return;
+  if(currentSection === 'service'){ openServiceEditor(null); return; }
   document.getElementById('composeBar').click();
 });
 
@@ -3416,10 +3531,375 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
   showToast('Расход удалён');
 });
 
+// ==================== АВТОСЕРВИС ====================
+// Журнал по запчастям (фото + описание + ссылки, как в телеграм-чате) и
+// регламент ТО из бумажной книги, с учётом текущего пробега — приложение само
+// подсказывает, когда что пора делать.
+
+let serviceEntries = []; // { id, title, category, text, photos[], photoDates[], photoIds[], createdAt, odometerAtEntry }
+let serviceEntryIdSeq = 1;
+let editingServiceEntry = null;
+let isNewServiceEntry = false;
+let svCatFilter = 'all';
+let serviceView = 'journal'; // 'journal' | 'schedule'
+
+const SERVICE_CATEGORIES = ['Фильтры','Масла и жидкости','Тормоза','Подвеска','Двигатель','Электрика','Шины','Кузов','Другое'];
+
+let currentOdometer = null; // { km, updatedAt }
+let toLastServiceKm = {}; // { '5000': 123456, '20000': ... } — пробег на момент последнего прохождения интервала
+
+// Периодические группы регламента ТО (из книжки по обслуживанию), с интервалом в км —
+// приложение считает, сколько осталось/просрочено по каждой группе относительно текущего пробега.
+const TO_SCHEDULE = [
+  {
+    km: 5000,
+    title: 'Межсервисное ТО — 5000 км',
+    items: [
+      'Воздушный фильтр с влагоотделителем — слив конденсата',
+      'Топливный фильтр с влагоотделителем — слив конденсата',
+      'Уровень и утечки масла МКПП',
+      'Доведение до нормы и проверка уровня и утечек моторного масла',
+      'Уровень охлаждающей жидкости',
+      'Проводка, разъёмы, зажимы жгутов — осмотр на повреждения',
+      'Приводные ремни — натяжение и степень износа',
+      'Ролики и натяжитель ремней — плавность вращения, работоспособность',
+      'Крепёж и герметичность впускной/выпускной системы — момент затяжки',
+      'Агрегаты двигателя — повреждения, надёжность крепления',
+      'Узлы шасси — смазка по карте применения консистентной смазки',
+      'Стремянки рессор — протяжка гаек',
+    ],
+  },
+  {
+    km: 20000,
+    title: 'Большое ТО — 20000 км',
+    items: [
+      'Трансмиссионное масло МКПП — проверка/замена',
+      'Масло дифференциала — проверка/замена',
+      'Жидкость гидропривода сцепления — проверка/замена',
+      'Ступичные подшипники передних и задних колёс — фиксация, люфт',
+      'Карданные валы — люфт, повреждения, смазка крестовин',
+      'Рабочая и стояночная тормозная система — функционирование',
+      'Свободный и рабочий ход педали тормоза',
+      'Зазор в тормозных механизмах, степень износа колодок',
+      'Слив воды из ресивера, осушитель сжатого воздуха',
+      'Рабочая жидкость рулевого механизма — уровень, утечки, фильтр-сетка бачка',
+      'Свободный ход (люфт) рулевого колеса',
+      'Люфт в соединениях передней балки и поворотного кулака',
+      'Амортизаторы — исправность',
+      'Колёсные гайки — протяжка, шины — степень износа, ротация по необходимости',
+      'Световая и звуковая сигнализация, приборы, электрооборудование',
+      'Стёкла, стеклоподъёмники, зеркала, стеклоочиститель и омыватель',
+      'Заряд и плотность электролита АКБ, клеммы',
+    ],
+  },
+];
+
+// Точки смазки консистентной смазкой — после обкатки на 3000 км, далее каждые 5000 и 10000 км
+const SV_GREASE_POINTS = [
+  'Подшипник крестовины карданного вала', 'Промежуточная опора приводного вала',
+  'Скользящая вилка карданного вала', 'Пальцы передних и задних рессор',
+  'Шкворни поворотных кулаков', 'Шаровой палец продольной тяги',
+  'Шаровой палец поперечной тяги', 'Скользящая вилка и подшипник крестовины рулевого вала',
+  'Вал вилки переключения сцепления КПП',
+  'Подшипник выключения сцепления КПП (масленка в корпусе сцепления)',
+  'Блокировка механизма опрокидывания кабины',
+  'Опорная точка рычага торсиона механизма опрокидывания кабины', 'Дверные петли',
+];
+
+// Горюче-смазочные материалы — справочно, без привязки к пробегу
+const SV_FLUIDS = [
+  ['Двигатель Cummins ISF3.8', 'CH-4, CI-4 или выше, 15W-40'],
+  ['Двигатель Nissan ZD30', 'CH-4, CI-4 или выше, 5W-30'],
+  ['КПП', 'API GL-4, 85W-90 / 75W-90 / 80W-90'],
+  ['Ведущий мост', 'API GL-4, GL-5, 75W-90 / 80W-90'],
+  ['Усилитель рулевого управления', 'ATF III, CHF S11'],
+  ['Сцепление и тормозная система', 'DOT3 или DOT4'],
+  ['Ступичные подшипники, шаровые пальцы', 'Универсальная литиевая консистентная смазка'],
+  ['Радиатор и система охлаждения', 'Антифриз без силикатов и боратов, температура замерзания на 10°C ниже местной минимальной'],
+  ['Бак для мочевины (AdBlue)', 'Водный раствор мочевины 32,5%'],
+];
+
+// Регулировочные данные двигателей
+const SV_ADJUST = [
+  ['Клапанный зазор впускные (ISF3.8 / ZD30)', '0,330 мм / 0,3–0,4 мм'],
+  ['Клапанный зазор выпускные (ISF3.8 / ZD30)', '0,584 мм / 0,3–0,4 мм'],
+  ['Свободный ход педали сцепления', '25–40 мм'],
+  ['Люфт рулевого колеса', 'не более ±15°'],
+  ['Зазор колодка — барабан (пневмотормоза)', '0,7 мм'],
+];
+
+function svCurrentKm(){ return currentOdometer ? currentOdometer.km : null; }
+
+function svDueStatus(intervalKm){
+  const cur = svCurrentKm();
+  if(cur == null) return { label: 'Укажите пробег', cls: 'unknown' };
+  const last = toLastServiceKm[intervalKm] || 0;
+  const remain = intervalKm - (cur - last);
+  if(remain <= 0) return { label: 'Пора — просрочено на ' + Math.abs(remain).toLocaleString('ru-RU') + ' км', cls: 'overdue' };
+  if(remain <= Math.round(intervalKm * 0.1)) return { label: 'Скоро — через ' + remain.toLocaleString('ru-RU') + ' км', cls: 'soon' };
+  return { label: 'Ок — через ' + remain.toLocaleString('ru-RU') + ' км', cls: 'ok' };
+}
+
+function renderSvOdoBar(){
+  document.getElementById('svOdoLabel').textContent = currentOdometer
+    ? 'Пробег: ' + currentOdometer.km.toLocaleString('ru-RU') + ' км'
+    : 'Пробег не указан';
+  document.getElementById('svOdoEditBtn').textContent = currentOdometer ? 'Изменить' : 'Указать пробег';
+}
+document.getElementById('svOdoEditBtn').addEventListener('click', () => {
+  const val = prompt('Текущий пробег, км', currentOdometer ? currentOdometer.km : '');
+  if(val == null) return;
+  const km = parseInt(val.replace(/\D/g,''), 10);
+  if(!km || km <= 0) return;
+  currentOdometer = { km, updatedAt: Date.now() };
+  saveState();
+  renderSvOdoBar();
+  if(serviceView === 'schedule') renderSvSchedule();
+});
+
+function renderServiceSection(){
+  renderSvOdoBar();
+  document.querySelectorAll('#serviceViewToggle .exp-view-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-serviceview') === serviceView);
+  });
+  document.getElementById('serviceJournalView').style.display = serviceView === 'journal' ? 'block' : 'none';
+  document.getElementById('serviceScheduleView').style.display = serviceView === 'schedule' ? 'block' : 'none';
+  if(serviceView === 'journal') renderSvJournal();
+  else renderSvSchedule();
+}
+document.getElementById('serviceViewToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-serviceview]');
+  if(!btn) return;
+  serviceView = btn.getAttribute('data-serviceview');
+  renderServiceSection();
+});
+
+// ---- Журнал ----
+function renderSvCatFilterRow(){
+  const row = document.getElementById('svCatFilterRow');
+  const chip = (name, label) => `<button class="exp-cat-chip ${svCatFilter===name?'active':''}" data-svcatfilter="${escapeHtml(name)}">${escapeHtml(label)}</button>`;
+  row.innerHTML = chip('all','Все') + SERVICE_CATEGORIES.map(c => chip(c,c)).join('');
+}
+document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-svcatfilter]');
+  if(!chip) return;
+  svCatFilter = chip.getAttribute('data-svcatfilter');
+  renderSvJournal();
+});
+
+function linkifyText(text){
+  const escaped = escapeHtml(text);
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${url}</a>`);
+}
+
+function renderSvJournal(){
+  renderSvCatFilterRow();
+  let list = serviceEntries.slice();
+  if(svCatFilter !== 'all') list = list.filter(e => e.category === svCatFilter);
+  const q = searchQuery.trim().toLowerCase();
+  if(q) list = list.filter(e => (e.title||'').toLowerCase().includes(q) || (e.text||'').toLowerCase().includes(q));
+  list.sort((a,b) => b.createdAt - a.createdAt);
+  const el = document.getElementById('svEntriesList');
+  if(!list.length){
+    el.innerHTML = `<div class="empty">Записей пока нет. Нажмите «+», чтобы добавить первую — например, фото фильтра и ссылку на магазин.</div>`;
+    return;
+  }
+  el.innerHTML = list.map(entry => `
+    <div class="sv-card" data-svopen="${entry.id}">
+      ${entry.photos && entry.photos.length ? `<div class="sv-card-thumb"><img src="${entry.photos[0]}"></div>` : ''}
+      <div class="sv-card-main">
+        ${entry.category ? `<span class="sv-card-cat">${escapeHtml(entry.category)}</span>` : ''}
+        <div class="sv-card-title">${escapeHtml(entry.title || 'Без названия')}</div>
+        ${entry.text ? `<div class="sv-card-text">${linkifyText(entry.text)}</div>` : ''}
+        <div class="sv-card-meta">${formatNoteDate(entry.createdAt)}${entry.odometerAtEntry ? ' · ' + entry.odometerAtEntry.toLocaleString('ru-RU') + ' км' : ''}</div>
+      </div>
+    </div>`).join('');
+}
+document.getElementById('svEntriesList').addEventListener('click', (e) => {
+  if(e.target.closest('a')) return; // клик по ссылке — не открываем редактор
+  const card = e.target.closest('[data-svopen]');
+  if(!card) return;
+  const entry = serviceEntries.find(x => x.id == card.getAttribute('data-svopen'));
+  if(entry) openServiceEditor(entry);
+});
+
+// ---- Регламент ТО ----
+let svOpenGroups = {}; // km -> bool, раскрыта ли карточка
+
+function svRefTable(rows){
+  return rows.map(([a,b]) => `<div class="sv-ref-row"><span>${escapeHtml(a)}</span><span>${escapeHtml(b)}</span></div>`).join('');
+}
+
+function renderSvSchedule(){
+  const el = document.getElementById('svScheduleGroups');
+  let html = `<div class="sv-ref-note">Данные перенесены из бумажной книги по обслуживанию — при сомнениях в конкретной цифре сверяйтесь с оригиналом.</div>`;
+
+  html += TO_SCHEDULE.map(group => {
+    const status = svDueStatus(group.km);
+    const open = !!svOpenGroups[group.km];
+    const lastVal = toLastServiceKm[group.km] || '';
+    return `
+    <div class="sv-group ${open?'open':''}" data-svgroup="${group.km}">
+      <div class="sv-group-head" data-svgrouptoggle="${group.km}">
+        <span class="sv-group-title">${escapeHtml(group.title)}</span>
+        <span class="sv-group-badge ${status.cls}">${escapeHtml(status.label)}</span>
+      </div>
+      <div class="sv-group-body">
+        <ul class="sv-group-list">${group.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+        <div class="sv-group-last">
+          <span style="font-size:12.5px;color:var(--muted);">Последний раз на, км:</span>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="svLastInput${group.km}" value="${lastVal}" placeholder="—">
+          <button type="button" data-svsavelast="${group.km}">Сохранить</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  html += `<div class="sv-ref-block"><h5>Точки смазки консистентной смазкой</h5>
+    <div class="sv-ref-note">После обкатки — на 3000 км, далее каждые 5000 и 10000 км.</div>
+    <ul class="sv-group-list">${SV_GREASE_POINTS.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
+  </div>`;
+
+  html += `<div class="sv-ref-block"><h5>Горюче-смазочные материалы</h5>${svRefTable(SV_FLUIDS)}</div>`;
+  html += `<div class="sv-ref-block"><h5>Регулировочные данные</h5>${svRefTable(SV_ADJUST)}</div>`;
+
+  el.innerHTML = html;
+}
+document.getElementById('svScheduleGroups').addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-svgrouptoggle]');
+  if(toggle){
+    const km = toggle.getAttribute('data-svgrouptoggle');
+    svOpenGroups[km] = !svOpenGroups[km];
+    renderSvSchedule();
+    return;
+  }
+  const saveBtn = e.target.closest('[data-svsavelast]');
+  if(saveBtn){
+    const km = saveBtn.getAttribute('data-svsavelast');
+    const input = document.getElementById('svLastInput' + km);
+    const val = parseInt((input.value||'').replace(/\D/g,''), 10);
+    if(val > 0) toLastServiceKm[km] = val;
+    else delete toLastServiceKm[km];
+    svOpenGroups[km] = true;
+    saveState();
+    renderSvSchedule();
+    showToast('Сохранено');
+  }
+});
+
+// ---- Редактор записи журнала ----
+const svEditorOverlay = document.getElementById('svEditorOverlay');
+const svBodyInput = document.getElementById('svBodyInput');
+let svPhotoIdSeq = 1;
+function newSvPhotoId(){ return 'svph' + (svPhotoIdSeq++); }
+
+function renderSvCatRow(){
+  const row = document.getElementById('svCatRow');
+  row.innerHTML = SERVICE_CATEGORIES.map(c => `
+    <button type="button" class="exp-cat-chip ${editingServiceEntry.category===c?'active':''}" data-svsetcat="${escapeHtml(c)}">${escapeHtml(c)}</button>
+  `).join('');
+}
+document.getElementById('svCatRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-svsetcat]');
+  if(!chip) return;
+  editingServiceEntry.category = chip.getAttribute('data-svsetcat');
+  renderSvCatRow();
+});
+
+function renderSvPhotos(){
+  const wrap = document.getElementById('svPhotos');
+  const photos = editingServiceEntry.photos || [];
+  wrap.innerHTML = photos.map((p, i) => `
+    <div class="ed-photo-thumb">
+      <img src="${p}">
+      <button class="ed-rm" data-svphotorm="${i}">×</button>
+    </div>`).join('') + `<button class="ed-add-photo" id="svAddPhotoBtn">+</button>`;
+}
+document.getElementById('svPhotos').addEventListener('click', (e) => {
+  const add = e.target.closest('#svAddPhotoBtn');
+  if(add){ document.getElementById('svPhotoInput').click(); return; }
+  const rm = e.target.closest('[data-svphotorm]');
+  if(rm){
+    const idx = parseInt(rm.getAttribute('data-svphotorm'), 10);
+    editingServiceEntry.photos.splice(idx, 1);
+    editingServiceEntry.photoDates.splice(idx, 1);
+    editingServiceEntry.photoIds.splice(idx, 1);
+    renderSvPhotos();
+  }
+});
+document.getElementById('svPhotoBtn').addEventListener('click', () => {
+  document.getElementById('svPhotoInput').click();
+});
+
+function openServiceEditor(entry){
+  isNewServiceEntry = !entry;
+  editingServiceEntry = entry ? Object.assign({}, entry, {
+    photos: (entry.photos||[]).slice(), photoDates: (entry.photoDates||[]).slice(), photoIds: (entry.photoIds||[]).slice(),
+  }) : { id:null, title:'', category:'', text:'', photos:[], photoDates:[], photoIds:[], createdAt:null, odometerAtEntry:null };
+  document.getElementById('svTitleInput').value = editingServiceEntry.title || '';
+  svBodyInput.value = editingServiceEntry.text || '';
+  document.getElementById('svOdometerInput').value = editingServiceEntry.odometerAtEntry || (isNewServiceEntry && currentOdometer ? currentOdometer.km : '') || '';
+  document.getElementById('svDeleteBtn').style.display = isNewServiceEntry ? 'none' : 'flex';
+  renderSvCatRow();
+  renderSvPhotos();
+  svEditorOverlay.classList.add('show');
+  setTimeout(() => document.getElementById('svTitleInput').focus(), 150);
+}
+function closeServiceEditor(commit){
+  editingServiceEntry.title = document.getElementById('svTitleInput').value.trim();
+  editingServiceEntry.text = svBodyInput.value;
+  const odoVal = parseInt((document.getElementById('svOdometerInput').value||'').replace(/\D/g,''), 10);
+  editingServiceEntry.odometerAtEntry = odoVal > 0 ? odoVal : null;
+  if(commit){
+    const isEmpty = !editingServiceEntry.title && !editingServiceEntry.text.trim() && !editingServiceEntry.photos.length;
+    if(!isEmpty){
+      if(isNewServiceEntry){
+        editingServiceEntry.id = serviceEntryIdSeq++;
+        editingServiceEntry.createdAt = Date.now();
+        serviceEntries.unshift(editingServiceEntry);
+      } else {
+        const idx = serviceEntries.findIndex(x => x.id === editingServiceEntry.id);
+        serviceEntries[idx] = editingServiceEntry;
+      }
+      saveState();
+    }
+  }
+  svEditorOverlay.classList.remove('show');
+  editingServiceEntry = null;
+  renderSvJournal();
+}
+document.getElementById('svDoneBtn').addEventListener('click', () => closeServiceEditor(true));
+document.getElementById('svCloseBtn').addEventListener('click', () => closeServiceEditor(true));
+document.getElementById('svDeleteBtn').addEventListener('click', () => {
+  showConfirm('Удалить запись?', () => {
+    serviceEntries = serviceEntries.filter(x => x.id !== editingServiceEntry.id);
+    saveState();
+    svEditorOverlay.classList.remove('show');
+    editingServiceEntry = null;
+    renderSvJournal();
+    showToast('Запись удалена');
+  });
+});
+document.getElementById('svPhotoInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  try{
+    const dataUrl = await compressImage(file);
+    editingServiceEntry.photos.push(dataUrl);
+    editingServiceEntry.photoDates.push(Date.now());
+    editingServiceEntry.photoIds.push(newSvPhotoId());
+    renderSvPhotos();
+  } catch(err){
+    showToast('Не удалось загрузить фото');
+  }
+});
+
 // ---- persistence (localStorage — быстрый локальный кэш) ----
 const STORAGE_KEY = 'moyreys_notes_v1';
 function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories };
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories,
+    serviceEntries, serviceEntryIdSeq, currentOdometer, toLastServiceKm };
 }
 function applyState(s){
   notes = s.notes || [];
@@ -3429,6 +3909,10 @@ function applyState(s){
   expenses = s.expenses || [];
   expenseIdSeq = s.expenseIdSeq || 1;
   expenseCategories = s.expenseCategories || [];
+  serviceEntries = s.serviceEntries || [];
+  serviceEntryIdSeq = s.serviceEntryIdSeq || 1;
+  currentOdometer = s.currentOdometer || null;
+  toLastServiceKm = s.toLastServiceKm || {};
 }
 function saveState(){
   try{
@@ -3628,7 +4112,8 @@ cpSaveBtn.addEventListener('click', () => {
 // новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
 // позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
 function exportData(){
-  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories };
+  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories,
+    serviceEntries, serviceEntryIdSeq, currentOdometer, toLastServiceKm };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3656,6 +4141,10 @@ function importDataFromFile(file){
       expenses = s.expenses || [];
       expenseIdSeq = s.expenseIdSeq || 1;
       expenseCategories = s.expenseCategories || [];
+      serviceEntries = s.serviceEntries || [];
+      serviceEntryIdSeq = s.serviceEntryIdSeq || 1;
+      currentOdometer = s.currentOdometer || null;
+      toLastServiceKm = s.toLastServiceKm || {};
       saveState();
       renderContent();
       showToast('Данные загружены');
