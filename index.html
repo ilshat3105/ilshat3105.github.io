@@ -407,9 +407,6 @@
   .sv-note-rm{background:none;border:none;color:var(--faint);font-size:17px;
     line-height:1;cursor:pointer;padding:2px;}
   .sv-note-rm:active{color:#3c4043;}
-  .sv-note-tag{background:none;border:none;color:var(--faint);cursor:pointer;padding:2px;
-    display:flex;align-items:center;justify-content:center;}
-  .sv-note-tag.set{color:var(--ink);}
   .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
@@ -419,18 +416,22 @@
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
-  /* Барабан выбора папки — как выбор времени на iPhone: список прокручивается,
-     останавливается («примагничивается» через scroll-snap) на нужном пункте по центру. */
-  .sv-wheel-wrap{position:relative;height:180px;}
-  .sv-wheel{height:180px;overflow-y:scroll;scroll-snap-type:y mandatory;
-    -webkit-overflow-scrolling:touch;padding:72px 0;scrollbar-width:none;}
-  .sv-wheel::-webkit-scrollbar{display:none;}
-  .sv-wheel-item{height:36px;line-height:36px;text-align:center;font-size:16px;
-    color:var(--faint);scroll-snap-align:center;font-family:'Inter',sans-serif;
-    transition:color .1s ease, font-size .1s ease, font-weight .1s ease;}
-  .sv-wheel-item.center{color:#202124;font-weight:700;font-size:18.5px;}
-  .sv-wheel-selection{position:absolute;left:0;right:0;top:72px;height:36px;
-    border-top:1.5px solid var(--card-line);border-bottom:1.5px solid var(--card-line);
+  /* Барабан папки прямо в строке заметки — как выбор времени на iPhone, только горизонтально:
+     листаете пальцем, нужный пункт сам «примагничивается» по центру и сразу применяется,
+     без отдельного окна и кнопки подтверждения. */
+  .sv-hwheel-wrap{position:relative;height:32px;margin-top:8px;}
+  .sv-hwheel{height:32px;display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;padding:0 calc(50% - 44px);}
+  .sv-hwheel::-webkit-scrollbar{display:none;}
+  .sv-hwheel-item{flex:0 0 88px;width:88px;height:32px;line-height:32px;text-align:center;
+    font-size:12.5px;color:var(--faint);scroll-snap-align:center;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;font-family:'Inter',sans-serif;
+    transition:color .1s ease, font-weight .1s ease;}
+  .sv-hwheel-item.center{color:#202124;font-weight:700;}
+  .sv-hwheel-item.add.center{color:var(--accent);}
+  .sv-hwheel-selection{position:absolute;left:50%;top:0;transform:translateX(-44px);
+    width:88px;height:32px;border-left:1.5px solid var(--card-line);
+    border-right:1.5px solid var(--card-line);border-radius:8px;
     pointer-events:none;background:rgba(0,0,0,.025);}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
      убирает transition, чтобы движение было 1-в-1 с пальцем), а без класса .dragging плавно
@@ -963,20 +964,6 @@
         <button class="route-save-btn" id="paymentTypeCash" type="button" style="flex:1;">Нал</button>
       </div>
       <button class="route-import-close" id="paymentTypeSkip" type="button">Пропустить (с НДС, безнал)</button>
-    </div>
-  </div>
-
-  <div class="route-import-overlay" id="svCatPickerOverlay">
-    <div class="route-import-sheet" style="max-height:none;">
-      <div class="route-import-title">Выберите папку</div>
-      <div class="sv-wheel-wrap">
-        <div class="sv-wheel-selection"></div>
-        <div class="sv-wheel" id="svCatWheel"></div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="route-save-btn" id="svCatPickerAddBtn" type="button" style="flex:1;background:#fff;color:var(--ink);border:1.5px solid var(--card-line);">+ Новая</button>
-        <button class="route-save-btn" id="svCatPickerDoneBtn" type="button" style="flex:1;background:#202124;">Готово</button>
-      </div>
     </div>
   </div>
 
@@ -3504,8 +3491,7 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
 let svCatFilter = null; // null = все категории
-
-const SV_TAG_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>';
+const SV_HWHEEL_ITEM_W = 88;
 
 function svCategoryCounts(){
   const counts = {};
@@ -3518,7 +3504,7 @@ function renderSvCatRow(){
   const cats = Object.keys(counts).sort();
   if(!cats.length){ row.style.display = 'none'; row.innerHTML = ''; if(svCatFilter) svCatFilter = null; return; }
   row.style.display = 'flex';
-  const chip = (val, label, count) => `<button type="button" class="sv-cat-chip ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
+  const chip = (val, label) => `<button type="button" class="sv-cat-chip ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
   row.innerHTML = chip(null, 'Все') + cats.map(c => chip(c, `${c} (${counts[c]})`)).join('');
 }
 document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
@@ -3528,62 +3514,51 @@ document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   renderSvNotes();
 });
 
-// ---- Барабан выбора папки для заметки (как выбор времени на iPhone) ----
-const SV_WHEEL_ITEM_H = 36;
-let svCatPickerNoteId = null;
-let svWheelSelectedIndex = 0;
-let svWheelScrollTimer = null;
-function svWheelUpdateCenter(){
-  const wheel = document.getElementById('svCatWheel');
-  const items = wheel.querySelectorAll('.sv-wheel-item');
-  const idx = Math.max(0, Math.min(items.length - 1, Math.round(wheel.scrollTop / SV_WHEEL_ITEM_H)));
-  items.forEach((it, i) => it.classList.toggle('center', i === idx));
-  svWheelSelectedIndex = idx;
-}
-function svOpenCatPicker(noteId){
-  svCatPickerNoteId = noteId;
-  const note = svNotes.find(n => n.id == noteId);
+// ---- Барабан папки прямо в строке заметки — листаете горизонтально, нужный пункт сам
+// «примагничивается» по центру и сразу применяется, без отдельного окна и подтверждения.
+function svHWheelItemsFor(note){
   const cats = Object.keys(svCategoryCounts()).sort();
-  const items = ['Без папки', ...cats];
-  const wheel = document.getElementById('svCatWheel');
-  wheel.innerHTML = items.map(t => `<div class="sv-wheel-item">${escapeHtml(t)}</div>`).join('');
-  const curIdx = note && note.category ? items.indexOf(note.category) : 0;
-  svWheelSelectedIndex = curIdx >= 0 ? curIdx : 0;
-  document.getElementById('svCatPickerOverlay').classList.add('show');
-  requestAnimationFrame(() => {
-    wheel.scrollTop = svWheelSelectedIndex * SV_WHEEL_ITEM_H;
-    svWheelUpdateCenter();
+  return ['Без папки', ...cats, '+ Новая'];
+}
+function svSetupHWheels(){
+  document.querySelectorAll('[data-svhwheel]').forEach(wheel => {
+    const noteId = wheel.getAttribute('data-svhwheel');
+    const note = svNotes.find(n => n.id == noteId);
+    if(!note) return;
+    const items = Array.from(wheel.querySelectorAll('.sv-hwheel-item'));
+    let curIdx = items.findIndex(it => it.textContent === (note.category || 'Без папки'));
+    if(curIdx < 0) curIdx = 0;
+    wheel.scrollLeft = curIdx * SV_HWHEEL_ITEM_W;
+    const updateCenter = () => {
+      const idx = Math.max(0, Math.min(items.length - 1, Math.round(wheel.scrollLeft / SV_HWHEEL_ITEM_W)));
+      items.forEach((it, i) => it.classList.toggle('center', i === idx));
+      return idx;
+    };
+    updateCenter();
+    let settleTimer = null;
+    wheel.addEventListener('scroll', () => {
+      updateCenter();
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        const idx = updateCenter();
+        const label = items[idx].textContent;
+        if(label === '+ Новая'){
+          const val = prompt('Название новой папки');
+          if(val && val.trim()) note.category = val.trim();
+          saveState();
+          renderSvNotes(); // список пунктов пересобирается уже с новой папкой
+          return;
+        }
+        const newCat = label === 'Без папки' ? null : label;
+        if(note.category !== newCat){
+          note.category = newCat;
+          saveState();
+          renderSvNotes(); // счётчики папок наверху и подпись даты у заметки обновятся сами
+        }
+      }, 150);
+    }, { passive: true });
   });
 }
-document.getElementById('svCatWheel').addEventListener('scroll', () => {
-  svWheelUpdateCenter(); // подсвечиваем центральный пункт прямо во время прокрутки
-  clearTimeout(svWheelScrollTimer);
-  svWheelScrollTimer = setTimeout(svWheelUpdateCenter, 100);
-});
-document.getElementById('svCatPickerAddBtn').addEventListener('click', () => {
-  const val = prompt('Название новой папки');
-  if(!val || !val.trim()) return;
-  const wheel = document.getElementById('svCatWheel');
-  const div = document.createElement('div');
-  div.className = 'sv-wheel-item';
-  div.textContent = val.trim();
-  wheel.appendChild(div);
-  const idx = wheel.querySelectorAll('.sv-wheel-item').length - 1;
-  requestAnimationFrame(() => {
-    wheel.scrollTo({ top: idx * SV_WHEEL_ITEM_H, behavior: 'smooth' });
-  });
-});
-document.getElementById('svCatPickerDoneBtn').addEventListener('click', () => {
-  const items = Array.from(document.getElementById('svCatWheel').querySelectorAll('.sv-wheel-item'));
-  const label = items[svWheelSelectedIndex] ? items[svWheelSelectedIndex].textContent : 'Без папки';
-  const note = svNotes.find(n => n.id == svCatPickerNoteId);
-  if(note){
-    note.category = (label === 'Без папки') ? null : label;
-    saveState();
-    renderSvNotes();
-  }
-  document.getElementById('svCatPickerOverlay').classList.remove('show');
-});
 
 function renderSvNotes(){
   renderSvCatRow();
@@ -3605,16 +3580,20 @@ function renderSvNotes(){
     <div class="sv-note-card" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
-        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.category ? ' · ' + escapeHtml(n.category) : ''}</div>
+        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
+        <div class="sv-hwheel-wrap">
+          <div class="sv-hwheel-selection"></div>
+          <div class="sv-hwheel" data-svhwheel="${n.id}">${svHWheelItemsFor(n).map(t => `<div class="sv-hwheel-item${t==='+ Новая'?' add':''}">${escapeHtml(t)}</div>`).join('')}</div>
+        </div>
       </div>
       <div class="sv-note-right">
         <button type="button" class="sv-note-rm" data-svnoterm="${n.id}">×</button>
-        <button type="button" class="sv-note-tag${n.category ? ' set' : ''}" data-svnotetag="${n.id}" title="Папка">${SV_TAG_ICON}</button>
         ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
     </div>`).join('');
   el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
+  svSetupHWheels();
 }
 function svCreateNote(){
   const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, category: svCatFilter || null };
@@ -3650,11 +3629,6 @@ document.getElementById('svNotesList').addEventListener('change', (e) => {
   renderSvNotes(); // отмеченная сразу перечёркивается и уходит вниз списка
 });
 document.getElementById('svNotesList').addEventListener('click', (e) => {
-  const tag = e.target.closest('[data-svnotetag]');
-  if(tag){
-    svOpenCatPicker(tag.getAttribute('data-svnotetag'));
-    return;
-  }
   const rm = e.target.closest('[data-svnoterm]');
   if(!rm) return;
   const id = rm.getAttribute('data-svnoterm');
