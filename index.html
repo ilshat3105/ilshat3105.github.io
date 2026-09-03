@@ -416,6 +416,20 @@
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
+  .sv-folder-add-row{display:flex;gap:8px;margin-bottom:14px;}
+  .sv-folder-add-row input{flex:1;border:1.5px solid var(--card-line);border-radius:12px;
+    padding:11px 14px;font-size:14px;font-family:'Inter',sans-serif;outline:none;}
+  .sv-folder-add-row input:focus{border-color:#202124;}
+  .sv-folder-add-row button{background:#202124;color:#fff;border:none;border-radius:12px;
+    padding:0 18px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+  .sv-folder-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:#fff;border:1px solid var(--card-line);border-radius:12px;padding:12px 14px;
+    margin-bottom:8px;}
+  .sv-folder-row-name{font-size:14.5px;font-weight:600;color:var(--ink);}
+  .sv-folder-row-count{font-size:12px;color:var(--faint);margin-left:6px;}
+  .sv-folder-rm{background:none;border:none;color:var(--faint);font-size:18px;
+    line-height:1;cursor:pointer;padding:2px 6px;}
+  .sv-folder-rm:active{color:#3c4043;}
   /* Барабан папки прямо в строке заметки — как выбор времени на iPhone, только горизонтально:
      листаете пальцем, нужный пункт сам «примагничивается» по центру и сразу применяется,
      без отдельного окна и кнопки подтверждения. */
@@ -833,11 +847,24 @@
       <div id="incList"></div>
     </div>
     <div id="serviceSection" style="display:none;">
-      <div class="sv-cat-row" id="svCatFilterRow" style="display:none;"></div>
-      <div class="sv-note-card sv-pull-card" id="svPullCard">
-        <div class="sv-note-text sv-pull-card-text">Заметка...</div>
+      <div class="exp-view-toggle" id="svViewToggle">
+        <button class="exp-view-btn active" data-svview="notes">Заметки</button>
+        <button class="exp-view-btn" data-svview="folders">Папки</button>
       </div>
-      <div id="svNotesList"></div>
+      <div id="svNotesView">
+        <div class="sv-cat-row" id="svCatFilterRow" style="display:none;"></div>
+        <div class="sv-note-card sv-pull-card" id="svPullCard">
+          <div class="sv-note-text sv-pull-card-text">Заметка...</div>
+        </div>
+        <div id="svNotesList"></div>
+      </div>
+      <div id="svFoldersView" style="display:none;">
+        <div class="sv-folder-add-row">
+          <input id="svFolderNewInput" placeholder="Название новой папки — например «Работа»">
+          <button type="button" id="svFolderAddBtn">Добавить</button>
+        </div>
+        <div id="svFoldersList"></div>
+      </div>
     </div>
     <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
@@ -3492,7 +3519,9 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 // прокручен до самого верха), отпустил — наверху появляется новая пустая заметка с курсором.
 let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
+let svFolders = []; // ['Работа', 'Дом', ...] — список папок, управляется на вкладке «Папки»
 let svCatFilter = null; // null = все категории
+let svView = 'notes'; // 'notes' | 'folders'
 const SV_HWHEEL_ITEM_W = 80;
 
 function svCategoryCounts(){
@@ -3502,12 +3531,11 @@ function svCategoryCounts(){
 }
 function renderSvCatRow(){
   const row = document.getElementById('svCatFilterRow');
+  if(!svFolders.length){ row.style.display = 'none'; row.innerHTML = ''; if(svCatFilter) svCatFilter = null; return; }
   const counts = svCategoryCounts();
-  const cats = Object.keys(counts).sort();
-  if(!cats.length){ row.style.display = 'none'; row.innerHTML = ''; if(svCatFilter) svCatFilter = null; return; }
   row.style.display = 'flex';
   const chip = (val, label) => `<button type="button" class="sv-cat-chip ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
-  row.innerHTML = chip(null, 'Все') + cats.map(c => chip(c, `${c} (${counts[c]})`)).join('');
+  row.innerHTML = chip(null, 'Все') + svFolders.map(c => chip(c, `${c} (${counts[c] || 0})`)).join('');
 }
 document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   const chip = e.target.closest('[data-svcatfilter]');
@@ -3516,11 +3544,69 @@ document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   renderSvNotes();
 });
 
+// ---- Вкладка «Заметки» / «Папки» ----
+document.getElementById('svViewToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-svview]');
+  if(!btn) return;
+  svView = btn.getAttribute('data-svview');
+  document.querySelectorAll('#svViewToggle .exp-view-btn').forEach(b => b.classList.toggle('active', b === btn));
+  document.getElementById('svNotesView').style.display = svView === 'notes' ? 'block' : 'none';
+  document.getElementById('svFoldersView').style.display = svView === 'folders' ? 'block' : 'none';
+  if(svView === 'folders') renderSvFoldersList();
+});
+
+// ---- Управление списком папок — то, что здесь добавили, сразу появляется в барабане ----
+function renderSvFoldersList(){
+  const el = document.getElementById('svFoldersList');
+  if(!svFolders.length){
+    el.innerHTML = `<div class="empty">Папок пока нет — добавьте первую выше, например «Работа».</div>`;
+    return;
+  }
+  const counts = svCategoryCounts();
+  el.innerHTML = svFolders.map(f => `
+    <div class="sv-folder-row" data-svfolderrow="${escapeHtml(f)}">
+      <span><span class="sv-folder-row-name">${escapeHtml(f)}</span><span class="sv-folder-row-count">${counts[f] || 0}</span></span>
+      <button type="button" class="sv-folder-rm" data-svfolderrm="${escapeHtml(f)}">×</button>
+    </div>`).join('');
+}
+function svAddFolder(name){
+  name = (name || '').trim();
+  if(!name || svFolders.includes(name)) return;
+  svFolders.push(name);
+  saveState();
+  renderSvFoldersList();
+}
+document.getElementById('svFolderAddBtn').addEventListener('click', () => {
+  const input = document.getElementById('svFolderNewInput');
+  svAddFolder(input.value);
+  input.value = '';
+  input.focus();
+});
+document.getElementById('svFolderNewInput').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    svAddFolder(e.target.value);
+    e.target.value = '';
+  }
+});
+document.getElementById('svFoldersList').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-svfolderrm]');
+  if(!rm) return;
+  const name = rm.getAttribute('data-svfolderrm');
+  showConfirm(`Удалить папку «${name}»? У заметок внутри неё просто снимется эта метка.`, () => {
+    svFolders = svFolders.filter(f => f !== name);
+    if(svCatFilter === name) svCatFilter = null;
+    svNotes.forEach(n => { if(n.category === name) n.category = null; });
+    saveState();
+    renderSvFoldersList();
+  });
+});
+
 // ---- Барабан папки прямо в строке заметки — листаете горизонтально, нужный пункт сам
 // «примагничивается» по центру и сразу применяется, без отдельного окна и подтверждения.
+// Список пунктов барабана = «Без папки» + всё, что заведено на вкладке «Папки».
 function svHWheelItemsFor(note){
-  const cats = Object.keys(svCategoryCounts()).sort();
-  return ['Без папки', ...cats, '+ Новая'];
+  return ['Без папки', ...svFolders];
 }
 function svSetupHWheels(){
   document.querySelectorAll('[data-svhwheel]').forEach(wheel => {
@@ -3544,13 +3630,6 @@ function svSetupHWheels(){
       settleTimer = setTimeout(() => {
         const idx = updateCenter();
         const label = items[idx].textContent;
-        if(label === '+ Новая'){
-          const val = prompt('Название новой папки');
-          if(val && val.trim()) note.category = val.trim();
-          saveState();
-          renderSvNotes(); // список пунктов пересобирается уже с новой папкой
-          return;
-        }
         const newCat = label === 'Без папки' ? null : label;
         if(note.category !== newCat){
           note.category = newCat;
@@ -3741,7 +3820,9 @@ function svSetPullHeight(px, ready){
   svPullCard.classList.toggle('ready', !!ready);
 }
 svMainEl.addEventListener('touchstart', (e) => {
-  if(currentSection !== 'service' || svMainEl.scrollTop > 0) { svPullStartY = null; return; }
+  if(currentSection !== 'service' || svMainEl.scrollTop > 0 || e.target.closest('.sv-hwheel')){
+    svPullStartY = null; return; // палец на барабане папок — это не жест «потянуть вниз»
+  }
   svPullStartY = e.touches[0].clientY;
   svPulling = false;
 }, { passive: true });
@@ -3781,7 +3862,7 @@ svMainEl.addEventListener('touchcancel', svEndPull);
 // ---- persistence (localStorage — быстрый локальный кэш) ----
 const STORAGE_KEY = 'moyreys_notes_v1';
 function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq };
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq, svFolders };
 }
 function applyState(s){
   notes = s.notes || [];
@@ -3793,11 +3874,14 @@ function applyState(s){
   expenseCategories = s.expenseCategories || [];
   svNotes = s.svNotes || [];
   svNoteIdSeq = s.svNoteIdSeq || 1;
+  svFolders = s.svFolders || [];
   // На случай старых заметок, сохранённых до появления чекбоксов/перетаскивания —
   // достраиваем недостающие поля, чтобы сортировка и отметки не ломались.
   svNotes.forEach(n => {
     if(n.order == null) n.order = n.createdAt || Date.now();
     if(n.done == null) n.done = false;
+    // папка была проставлена ещё до появления отдельного списка папок — не теряем её
+    if(n.category && !svFolders.includes(n.category)) svFolders.push(n.category);
   });
 }
 function saveState(){
@@ -3998,7 +4082,7 @@ cpSaveBtn.addEventListener('click', () => {
 // новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
 // позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
 function exportData(){
-  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq };
+  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq, svFolders };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -4028,9 +4112,11 @@ function importDataFromFile(file){
       expenseCategories = s.expenseCategories || [];
       svNotes = s.svNotes || [];
       svNoteIdSeq = s.svNoteIdSeq || 1;
+      svFolders = s.svFolders || [];
       svNotes.forEach(n => {
         if(n.order == null) n.order = n.createdAt || Date.now();
         if(n.done == null) n.done = false;
+        if(n.category && !svFolders.includes(n.category)) svFolders.push(n.category);
       });
       saveState();
       renderContent();
