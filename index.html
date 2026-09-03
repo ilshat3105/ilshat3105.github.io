@@ -430,30 +430,23 @@
   .sv-folder-rm{background:none;border:none;color:var(--faint);font-size:18px;
     line-height:1;cursor:pointer;padding:2px 6px;}
   .sv-folder-rm:active{color:#3c4043;}
-  /* Барабан папки прямо в строке заметки — как выбор времени на iPhone, только горизонтально:
-     листаете пальцем, нужный пункт сам «примагничивается» по центру и сразу применяется,
-     без отдельного окна и кнопки подтверждения. Стрелочки по бокам — просто подсказка,
-     что это листается, сами по себе не нажимаются (палец проходит сквозь них).*/
-  .sv-hwheel-wrap{position:relative;height:32px;margin-top:8px;width:222px;max-width:100%;}
-  .sv-hwheel{height:32px;width:190px;margin:0 auto;display:flex;overflow-x:scroll;
-    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;
-    padding:0 calc(50% - 40px);}
-  .sv-hwheel::-webkit-scrollbar{display:none;}
-  .sv-hwheel-item{flex:0 0 80px;width:80px;height:32px;line-height:32px;text-align:center;
-    font-size:12.5px;color:var(--faint);scroll-snap-align:center;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;font-family:'Inter',sans-serif;opacity:.4;
-    transform:scale(.9);
-    transition:color .12s ease, font-weight .12s ease, opacity .12s ease, transform .12s ease;}
-  .sv-hwheel-item.center{color:#202124;font-weight:700;opacity:1;transform:scale(1);}
-  .sv-hwheel-item.add.center{color:var(--accent);}
-  .sv-hwheel-selection{position:absolute;left:50%;top:0;transform:translateX(-40px);
-    width:80px;height:32px;border-left:1.5px solid var(--card-line);
-    border-right:1.5px solid var(--card-line);border-radius:8px;
+  /* Настоящий вращающийся барабан папки (3D, как лотерейный/как в будильнике на iPhone) —
+     пункты расположены на внутренней стороне цилиндра, тянете пальцем вверх/вниз, барабан
+     реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте. */
+  .sv-drum{position:relative;width:150px;height:96px;margin-top:8px;perspective:340px;
+    touch-action:none;cursor:grab;}
+  .sv-drum-track{position:absolute;inset:0;transform-style:preserve-3d;}
+  .sv-drum-item{position:absolute;left:0;right:0;top:50%;height:30px;margin-top:-15px;
+    line-height:30px;text-align:center;font-size:13px;color:var(--faint);
+    backface-visibility:hidden;font-family:'Inter',sans-serif;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
+  .sv-drum-item.center{color:#202124;font-weight:700;}
+  .sv-drum-selection{position:absolute;left:4px;right:4px;top:50%;height:30px;margin-top:-15px;
+    border-top:1.5px solid var(--card-line);border-bottom:1.5px solid var(--card-line);
     pointer-events:none;background:rgba(0,0,0,.025);}
-  .sv-hwheel-arrow{position:absolute;top:0;width:16px;height:32px;line-height:32px;
-    text-align:center;font-size:15px;color:var(--faint);pointer-events:none;}
-  .sv-hwheel-arrow.left{left:0;}
-  .sv-hwheel-arrow.right{right:0;}
+  .sv-drum-fade{position:absolute;left:0;right:0;height:33px;pointer-events:none;z-index:6;}
+  .sv-drum-fade.top{top:0;background:linear-gradient(to bottom, #fff, rgba(255,255,255,0));}
+  .sv-drum-fade.bottom{bottom:0;background:linear-gradient(to top, #fff, rgba(255,255,255,0));}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
      убирает transition, чтобы движение было 1-в-1 с пальцем), а без класса .dragging плавно
      пружинит к текущей высоте — этим и создаётся ощущение отпускания/защёлкивания. */
@@ -3527,7 +3520,6 @@ let svNoteIdSeq = 1;
 let svFolders = []; // ['Работа', 'Дом', ...] — список папок, управляется на вкладке «Папки»
 let svCatFilter = null; // null = все категории
 let svView = 'notes'; // 'notes' | 'folders'
-const SV_HWHEEL_ITEM_W = 80;
 
 function svCategoryCounts(){
   const counts = {};
@@ -3607,42 +3599,77 @@ document.getElementById('svFoldersList').addEventListener('click', (e) => {
   });
 });
 
-// ---- Барабан папки прямо в строке заметки — листаете горизонтально, нужный пункт сам
-// «примагничивается» по центру и сразу применяется, без отдельного окна и подтверждения.
+// ---- Настоящий вращающийся 3D-барабан папки прямо в строке заметки ----
 // Список пунктов барабана = «Без папки» + всё, что заведено на вкладке «Папки».
-function svHWheelItemsFor(note){
+const SV_DRUM_ITEM_H = 30;   // шаг между пунктами по вертикали, px
+const SV_DRUM_ANGLE = 24;    // угол на один пункт, град — задаёт «кривизну» цилиндра
+const SV_DRUM_RADIUS = SV_DRUM_ITEM_H / (2 * Math.tan((SV_DRUM_ANGLE * Math.PI / 180) / 2));
+
+function svDrumItemsFor(note){
   return ['Без папки', ...svFolders];
 }
-function svSetupHWheels(){
-  document.querySelectorAll('[data-svhwheel]').forEach(wheel => {
-    const noteId = wheel.getAttribute('data-svhwheel');
+// Расставляет пункты по поверхности цилиндра для текущего (возможно, дробного —
+// во время вращения пальцем) положения cur. animate=true — плавно доворачивается
+// после отпускания пальца (класс защёлкивания), animate=false — идёт впритык за пальцем.
+function svLayoutDrum(items, cur, animate){
+  items.forEach((el, i) => {
+    const offset = i - cur;
+    const angleDeg = offset * SV_DRUM_ANGLE;
+    el.style.transition = animate ? 'transform .22s ease, opacity .22s ease' : 'none';
+    if(Math.abs(angleDeg) > 88){
+      el.style.opacity = '0';
+    } else {
+      const rad = angleDeg * Math.PI / 180;
+      el.style.opacity = String(Math.max(0, Math.cos(rad)));
+      el.style.transform = `rotateX(${-angleDeg}deg) translateZ(${SV_DRUM_RADIUS}px)`;
+    }
+    el.classList.toggle('center', Math.abs(cur - i) < 0.5);
+  });
+}
+function svSetupDrums(){
+  document.querySelectorAll('[data-svdrum]').forEach(drum => {
+    const noteId = drum.getAttribute('data-svdrum');
     const note = svNotes.find(n => n.id == noteId);
     if(!note) return;
-    const items = Array.from(wheel.querySelectorAll('.sv-hwheel-item'));
-    let curIdx = items.findIndex(it => it.textContent === (note.category || 'Без папки'));
+    const track = drum.querySelector('[data-svdrumtrack]');
+    const items = Array.from(track.querySelectorAll('.sv-drum-item'));
+    const labels = items.map(it => it.textContent);
+    let curIdx = labels.indexOf(note.category || 'Без папки');
     if(curIdx < 0) curIdx = 0;
-    wheel.scrollLeft = curIdx * SV_HWHEEL_ITEM_W;
-    const updateCenter = () => {
-      const idx = Math.max(0, Math.min(items.length - 1, Math.round(wheel.scrollLeft / SV_HWHEEL_ITEM_W)));
-      items.forEach((it, i) => it.classList.toggle('center', i === idx));
-      return idx;
-    };
-    updateCenter();
-    let settleTimer = null;
-    wheel.addEventListener('scroll', () => {
-      updateCenter();
-      clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => {
-        const idx = updateCenter();
-        const label = items[idx].textContent;
-        const newCat = label === 'Без папки' ? null : label;
-        if(note.category !== newCat){
-          note.category = newCat;
-          saveState();
-          renderSvNotes(); // счётчики папок наверху и подпись даты у заметки обновятся сами
-        }
-      }, 150);
-    }, { passive: true });
+    let cur = curIdx;
+    svLayoutDrum(items, cur, false);
+
+    let drag = null;
+    drum.addEventListener('pointerdown', (e) => {
+      drum.setPointerCapture(e.pointerId);
+      drag = { startY: e.clientY, startCur: cur, pointerId: e.pointerId };
+      drum.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    drum.addEventListener('pointermove', (e) => {
+      if(!drag || e.pointerId !== drag.pointerId) return;
+      const dy = e.clientY - drag.startY;
+      cur = drag.startCur - dy / SV_DRUM_ITEM_H;
+      cur = Math.max(0, Math.min(items.length - 1, cur));
+      svLayoutDrum(items, cur, false);
+      e.preventDefault();
+    });
+    function finishDrag(e){
+      if(!drag || (e && e.pointerId !== drag.pointerId)) return;
+      drag = null;
+      drum.style.cursor = 'grab';
+      const snapped = Math.max(0, Math.min(items.length - 1, Math.round(cur)));
+      cur = snapped;
+      svLayoutDrum(items, cur, true); // «довращивается» и мягко защёлкивается
+      const newCat = labels[snapped] === 'Без папки' ? null : labels[snapped];
+      if(note.category !== newCat){
+        note.category = newCat;
+        saveState();
+        setTimeout(renderSvNotes, 240); // ждём, пока доиграет анимация щелчка
+      }
+    }
+    drum.addEventListener('pointerup', finishDrag);
+    drum.addEventListener('pointercancel', finishDrag);
   });
 }
 
@@ -3667,11 +3694,11 @@ function renderSvNotes(){
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
         <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
-        <div class="sv-hwheel-wrap">
-          <span class="sv-hwheel-arrow left">‹</span>
-          <div class="sv-hwheel-selection"></div>
-          <div class="sv-hwheel" data-svhwheel="${n.id}">${svHWheelItemsFor(n).map(t => `<div class="sv-hwheel-item${t==='+ Новая'?' add':''}">${escapeHtml(t)}</div>`).join('')}</div>
-          <span class="sv-hwheel-arrow right">›</span>
+        <div class="sv-drum" data-svdrum="${n.id}">
+          <div class="sv-drum-fade top"></div>
+          <div class="sv-drum-selection"></div>
+          <div class="sv-drum-track" data-svdrumtrack="${n.id}">${svDrumItemsFor(n).map(t => `<div class="sv-drum-item">${escapeHtml(t)}</div>`).join('')}</div>
+          <div class="sv-drum-fade bottom"></div>
         </div>
       </div>
       <div class="sv-note-right">
@@ -3681,7 +3708,7 @@ function renderSvNotes(){
       </div>
     </div>`).join('');
   el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
-  svSetupHWheels();
+  svSetupDrums();
 }
 function svCreateNote(){
   const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, category: svCatFilter || null };
@@ -3827,7 +3854,7 @@ function svSetPullHeight(px, ready){
   svPullCard.classList.toggle('ready', !!ready);
 }
 svMainEl.addEventListener('touchstart', (e) => {
-  if(currentSection !== 'service' || svMainEl.scrollTop > 0 || e.target.closest('.sv-hwheel')){
+  if(currentSection !== 'service' || svMainEl.scrollTop > 0 || e.target.closest('.sv-drum')){
     svPullStartY = null; return; // палец на барабане папок — это не жест «потянуть вниз»
   }
   svPullStartY = e.touches[0].clientY;
