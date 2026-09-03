@@ -390,6 +390,21 @@
     padding:12px 14px;font-size:15px;font-family:'Inter',sans-serif;outline:none;}
   .exp-cat-new-input:focus{border-color:var(--accent);}
 
+  /* ---- Автосервис: заметки с жестом «потянуть вниз, чтобы создать» ---- */
+  .sv-pull-hint{text-align:center;font-size:12.5px;font-weight:600;color:var(--accent);
+    padding:0;max-height:0;overflow:hidden;opacity:0;transition:opacity .15s ease;}
+  .sv-pull-hint.show{opacity:1;padding:8px 0;max-height:40px;}
+  .sv-note-card{position:relative;background:#fff;border:1px solid var(--card-line);
+    border-radius:14px;padding:14px 40px 14px 16px;margin-bottom:10px;
+    box-shadow:0 6px 18px rgba(15,23,42,.045);}
+  .sv-note-text{width:100%;border:none;outline:none;font-size:14.5px;line-height:1.55;
+    font-family:'Inter',sans-serif;background:transparent;resize:none;color:var(--ink);
+    overflow:hidden;min-height:24px;}
+  .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
+  .sv-note-rm{position:absolute;top:10px;right:10px;background:none;border:none;
+    color:var(--faint);font-size:19px;line-height:1;cursor:pointer;padding:4px;}
+  .sv-note-rm:active{color:#d93025;}
+
   .exp-amount-row{display:flex;align-items:center;gap:8px;border:1.5px solid var(--card-line);
     border-radius:14px;padding:10px 16px;}
   .exp-amount-input{flex:1;border:none;outline:none;font-size:28px;font-weight:700;
@@ -776,7 +791,8 @@
       <div id="incList"></div>
     </div>
     <div id="serviceSection" style="display:none;">
-      <div class="empty">Раздел «Автосервис» — в разработке.</div>
+      <div class="sv-pull-hint" id="svPullHint">↓ Потяните ещё, чтобы создать заметку</div>
+      <div id="svNotesList"></div>
     </div>
     <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
@@ -3084,7 +3100,8 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
     isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : 'Поиск';
   if(isFuel) renderExpenses();
   else if(isIncome) renderIncome();
-  else if(!isService) renderContent();
+  else if(isService) renderSvNotes();
+  else renderContent();
 });
 
 // Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу.
@@ -3425,10 +3442,111 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
   showToast('Расход удалён');
 });
 
+// ==================== АВТОСЕРВИС ====================
+// Заметки, как в старом iPhone-приложении Clear: потянул экран вниз внизу списка (когда он
+// прокручен до самого верха), отпустил — наверху появляется новая пустая заметка с курсором.
+let svNotes = []; // { id, text, createdAt }
+let svNoteIdSeq = 1;
+
+function renderSvNotes(){
+  const el = document.getElementById('svNotesList');
+  if(!svNotes.length){
+    el.innerHTML = `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`;
+    return;
+  }
+  const sorted = svNotes.slice().sort((a,b) => b.createdAt - a.createdAt);
+  el.innerHTML = sorted.map(n => `
+    <div class="sv-note-card">
+      <textarea class="sv-note-text" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
+      <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
+      <button class="sv-note-rm" data-svnoterm="${n.id}">×</button>
+    </div>`).join('');
+  el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
+}
+function svCreateNote(){
+  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now() };
+  svNotes.unshift(note);
+  saveState();
+  renderSvNotes();
+  setTimeout(() => {
+    const ta = document.querySelector(`[data-svnotetext="${note.id}"]`);
+    if(ta) ta.focus();
+  }, 60);
+}
+let svNotesSaveTimer = null;
+function scheduleSvNotesSave(){
+  clearTimeout(svNotesSaveTimer);
+  svNotesSaveTimer = setTimeout(saveState, 500);
+}
+document.getElementById('svNotesList').addEventListener('input', (e) => {
+  const ta = e.target.closest('[data-svnotetext]');
+  if(!ta) return;
+  const note = svNotes.find(n => n.id == ta.getAttribute('data-svnotetext'));
+  if(note) note.text = ta.value;
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
+  scheduleSvNotesSave();
+});
+document.getElementById('svNotesList').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-svnoterm]');
+  if(!rm) return;
+  const id = rm.getAttribute('data-svnoterm');
+  showConfirm('Удалить заметку?', () => {
+    svNotes = svNotes.filter(n => n.id != id);
+    saveState();
+    renderSvNotes();
+  });
+});
+// Пустые заметки (передумали, ничего не написали) сами убираются, когда уходишь с поля.
+document.getElementById('svNotesList').addEventListener('focusout', (e) => {
+  const ta = e.target.closest('[data-svnotetext]');
+  if(!ta) return;
+  const id = ta.getAttribute('data-svnotetext');
+  const note = svNotes.find(n => n.id == id);
+  if(note && !note.text.trim()){
+    svNotes = svNotes.filter(n => n.id != id);
+    saveState();
+    renderSvNotes();
+  }
+});
+
+// Жест «потянуть вниз, чтобы создать» — работает только когда открыта вкладка «Автосервис»
+// и список уже прокручен до самого верха (иначе это была бы обычная прокрутка).
+let svPullStartY = null;
+let svPulling = false;
+const SV_PULL_THRESHOLD = 70;
+const svMainEl = document.getElementById('main');
+svMainEl.addEventListener('touchstart', (e) => {
+  if(currentSection !== 'service' || svMainEl.scrollTop > 0) { svPullStartY = null; return; }
+  svPullStartY = e.touches[0].clientY;
+  svPulling = false;
+}, { passive: true });
+svMainEl.addEventListener('touchmove', (e) => {
+  if(currentSection !== 'service' || svPullStartY == null) return;
+  const dy = e.touches[0].clientY - svPullStartY;
+  if(dy > 6){
+    svPulling = true;
+    const hint = document.getElementById('svPullHint');
+    hint.classList.add('show');
+    hint.textContent = dy > SV_PULL_THRESHOLD ? '↓ Отпустите, чтобы создать заметку' : '↓ Потяните ещё, чтобы создать заметку';
+  }
+}, { passive: true });
+function svEndPull(e){
+  if(currentSection !== 'service' || svPullStartY == null) return;
+  const touch = e.changedTouches ? e.changedTouches[0] : null;
+  const dy = touch ? touch.clientY - svPullStartY : 0;
+  document.getElementById('svPullHint').classList.remove('show');
+  svPullStartY = null;
+  if(svPulling && dy > SV_PULL_THRESHOLD) svCreateNote();
+  svPulling = false;
+}
+svMainEl.addEventListener('touchend', svEndPull);
+svMainEl.addEventListener('touchcancel', svEndPull);
+
 // ---- persistence (localStorage — быстрый локальный кэш) ----
 const STORAGE_KEY = 'moyreys_notes_v1';
 function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories };
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq };
 }
 function applyState(s){
   notes = s.notes || [];
@@ -3438,6 +3556,8 @@ function applyState(s){
   expenses = s.expenses || [];
   expenseIdSeq = s.expenseIdSeq || 1;
   expenseCategories = s.expenseCategories || [];
+  svNotes = s.svNotes || [];
+  svNoteIdSeq = s.svNoteIdSeq || 1;
 }
 function saveState(){
   try{
@@ -3637,7 +3757,7 @@ cpSaveBtn.addEventListener('click', () => {
 // новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
 // позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
 function exportData(){
-  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories };
+  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -3665,6 +3785,8 @@ function importDataFromFile(file){
       expenses = s.expenses || [];
       expenseIdSeq = s.expenseIdSeq || 1;
       expenseCategories = s.expenseCategories || [];
+      svNotes = s.svNotes || [];
+      svNoteIdSeq = s.svNoteIdSeq || 1;
       saveState();
       renderContent();
       showToast('Данные загружены');
