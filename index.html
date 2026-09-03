@@ -263,15 +263,6 @@
 
   .ed-photos-wrap{padding:12px 20px 0;flex-shrink:0;}
 
-  /* ---- Раздел "Маршруты" — отдельная вкладка: только переход в Spoke ---- */
-  .spoke-panel{display:flex;flex-direction:column;align-items:center;text-align:center;
-    padding:70px 24px 0;}
-  .spoke-panel-title{font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px;}
-  .spoke-panel-text{font-size:13.5px;color:var(--muted);line-height:1.5;margin-bottom:22px;max-width:280px;}
-  .open-spoke-btn{width:100%;max-width:280px;background:#3730a3;border:none;border-radius:12px;
-    padding:14px;font-size:14.5px;font-weight:700;color:#fff;cursor:pointer;
-    font-family:'Inter',sans-serif;}
-
   /* ---- Окно с распознанным текстом фото (OCR) — переиспользует те же стили листа ---- */
   .route-import-overlay{position:fixed;inset:0;background:transparent;z-index:70;
     display:none;align-items:flex-end;justify-content:center;pointer-events:none;}
@@ -762,7 +753,6 @@
 
   <div class="top-tabs" id="topTabs">
     <button class="top-tab active" data-section="notes">Заявки</button>
-    <button class="top-tab" data-section="routes">Маршруты</button>
     <button class="top-tab" data-section="fuel">Расходы</button>
     <button class="top-tab" data-section="income">Доходы</button>
   </div>
@@ -782,13 +772,6 @@
         <button class="exp-view-btn" id="incOverdueBtn" data-incfilter="overdue">⚠ Просрочено</button>
       </div>
       <div id="incList"></div>
-    </div>
-    <div id="routesSection" style="display:none;">
-      <div class="spoke-panel">
-        <div class="spoke-panel-title">Маршруты ведутся в Spoke</div>
-        <div class="spoke-panel-text">Постройте и оптимизируйте маршрут в приложении Spoke — здесь только быстрый переход туда.</div>
-        <button class="open-spoke-btn" id="openSpokeBtn" type="button">Открыть Spoke</button>
-      </div>
     </div>
     <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
@@ -3082,38 +3065,25 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
   btn.classList.add('active');
   const isFuel = currentSection === 'fuel';
   const isIncome = currentSection === 'income';
-  const isRoutes = currentSection === 'routes';
   document.getElementById('composeBar').style.display = 'none';
   document.getElementById('summaryBar').style.display = 'none';
-  document.getElementById('content').style.display = (isFuel || isIncome || isRoutes) ? 'none' : 'block';
+  document.getElementById('content').style.display = (isFuel || isIncome) ? 'none' : 'block';
   document.getElementById('fuelSection').style.display = isFuel ? 'block' : 'none';
   document.getElementById('incomeSection').style.display = isIncome ? 'block' : 'none';
-  document.getElementById('routesSection').style.display = isRoutes ? 'block' : 'none';
-  document.getElementById('globalFab').style.display = isRoutes ? 'none' : 'flex';
+  document.getElementById('globalFab').style.display = 'flex';
   document.getElementById('searchInput').placeholder =
-    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : isRoutes ? 'Поиск по маршрутам' : 'Поиск';
+    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : 'Поиск';
   if(isFuel) renderExpenses();
   else if(isIncome) renderIncome();
-  else if(isRoutes){ /* раздел статичный — только кнопка перехода в Spoke */ }
   else renderContent();
 });
 
 // Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу.
-// На "Доходы" и "Маршруты" отдельного добавления нет (маршруты — это кнопка Spoke).
+// На "Доходы" отдельного добавления нет.
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
   if(currentSection === 'income') return;
-  if(currentSection === 'routes') return;
   document.getElementById('composeBar').click();
-});
-
-// ==================== МАРШРУТЫ (переход в Spoke) ====================
-// Раздел "Маршруты" теперь состоит только из кнопки перехода в Spoke — вся
-// работа с точками и оптимизацией маршрута ведётся в самом Spoke.
-document.getElementById('openSpokeBtn').addEventListener('click', () => {
-  const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.underwood.route_optimiser';
-  const intentUrl = `intent://#Intent;scheme=spoke;package=com.underwood.route_optimiser;S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
-  window.location.href = intentUrl;
 });
 
 
