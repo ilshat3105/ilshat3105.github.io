@@ -406,10 +406,19 @@
     flex-shrink:0;padding-top:1px;}
   .sv-note-rm{background:none;border:none;color:var(--faint);font-size:17px;
     line-height:1;cursor:pointer;padding:2px;}
-  .sv-note-rm:active{color:#d93025;}
+  .sv-note-rm:active{color:#3c4043;}
+  .sv-note-tag{background:none;border:none;color:var(--faint);cursor:pointer;padding:2px;
+    display:flex;align-items:center;justify-content:center;}
+  .sv-note-tag.set{color:var(--ink);}
   .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
-  .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#188038;cursor:pointer;}
+  .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
+  .sv-cat-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:10px;
+    -webkit-overflow-scrolling:touch;}
+  .sv-cat-chip{flex-shrink:0;background:#fff;border:1px solid var(--card-line);color:var(--muted);
+    border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
+    font-family:'Inter',sans-serif;white-space:nowrap;}
+  .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
      убирает transition, чтобы движение было 1-в-1 с пальцем), а без класса .dragging плавно
      пружинит к текущей высоте — этим и создаётся ощущение отпускания/защёлкивания. */
@@ -417,10 +426,10 @@
     opacity:.55;transition:height .2s cubic-bezier(.34,1.56,.64,1), padding .2s ease,
     margin-bottom .2s ease, opacity .2s ease;}
   .sv-pull-card.dragging{transition:none;}
-  .sv-pull-card.ready{opacity:1;box-shadow:0 6px 18px rgba(37,99,235,.18);
-    border-color:var(--accent);}
+  .sv-pull-card.ready{opacity:1;box-shadow:0 6px 18px rgba(0,0,0,.12);
+    border-color:#3c4043;}
   .sv-pull-card .sv-pull-card-text{color:var(--faint);pointer-events:none;}
-  .sv-pull-card.ready .sv-pull-card-text{color:var(--accent);font-weight:700;}
+  .sv-pull-card.ready .sv-pull-card-text{color:#202124;font-weight:700;}
 
   .exp-amount-row{display:flex;align-items:center;gap:8px;border:1.5px solid var(--card-line);
     border-radius:14px;padding:10px 16px;}
@@ -808,6 +817,7 @@
       <div id="incList"></div>
     </div>
     <div id="serviceSection" style="display:none;">
+      <div class="sv-cat-row" id="svCatFilterRow" style="display:none;"></div>
       <div class="sv-note-card sv-pull-card" id="svPullCard">
         <div class="sv-note-text sv-pull-card-text">Заметка...</div>
       </div>
@@ -3464,18 +3474,46 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 // ==================== АВТОСЕРВИС ====================
 // Заметки, как в старом iPhone-приложении Clear: потянул экран вниз внизу списка (когда он
 // прокручен до самого верха), отпустил — наверху появляется новая пустая заметка с курсором.
-let svNotes = []; // { id, text, createdAt, order, done }
+let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
+let svCatFilter = null; // null = все категории
+
+const SV_TAG_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>';
+
+function svCategoryCounts(){
+  const counts = {};
+  svNotes.forEach(n => { if(n.category) counts[n.category] = (counts[n.category] || 0) + 1; });
+  return counts;
+}
+function renderSvCatRow(){
+  const row = document.getElementById('svCatFilterRow');
+  const counts = svCategoryCounts();
+  const cats = Object.keys(counts).sort();
+  if(!cats.length){ row.style.display = 'none'; row.innerHTML = ''; if(svCatFilter) svCatFilter = null; return; }
+  row.style.display = 'flex';
+  const chip = (val, label, count) => `<button type="button" class="sv-cat-chip ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
+  row.innerHTML = chip(null, 'Все') + cats.map(c => chip(c, `${c} (${counts[c]})`)).join('');
+}
+document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-svcatfilter]');
+  if(!chip) return;
+  svCatFilter = chip.getAttribute('data-svcatfilter') || null;
+  renderSvNotes();
+});
 
 function renderSvNotes(){
+  renderSvCatRow();
   const el = document.getElementById('svNotesList');
-  if(!svNotes.length){
-    el.innerHTML = `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`;
+  const list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes;
+  if(!list.length){
+    el.innerHTML = svCatFilter
+      ? `<div class="empty">В этой папке пока пусто.</div>`
+      : `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`;
     return;
   }
   // Невыполненные — сверху (по порядку, который можно менять руками через «≡»),
-  // выполненные — все ниже, тоже своим порядком.
-  const sorted = svNotes.slice().sort((a,b) => {
+  // выполненные — все ниже, тоже своим порядком, но их уже нельзя перетаскивать.
+  const sorted = list.slice().sort((a,b) => {
     if(!!a.done !== !!b.done) return a.done ? 1 : -1;
     return (b.order || 0) - (a.order || 0);
   });
@@ -3483,18 +3521,19 @@ function renderSvNotes(){
     <div class="sv-note-card" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
-        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
+        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.category ? ' · ' + escapeHtml(n.category) : ''}</div>
       </div>
       <div class="sv-note-right">
         <button type="button" class="sv-note-rm" data-svnoterm="${n.id}">×</button>
-        <span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>
+        <button type="button" class="sv-note-tag${n.category ? ' set' : ''}" data-svnotetag="${n.id}" title="Папка">${SV_TAG_ICON}</button>
+        ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
     </div>`).join('');
   el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
 }
 function svCreateNote(){
-  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false };
+  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, category: svCatFilter || null };
   svNotes.unshift(note);
   saveState();
   renderSvNotes();
@@ -3527,6 +3566,18 @@ document.getElementById('svNotesList').addEventListener('change', (e) => {
   renderSvNotes(); // отмеченная сразу перечёркивается и уходит вниз списка
 });
 document.getElementById('svNotesList').addEventListener('click', (e) => {
+  const tag = e.target.closest('[data-svnotetag]');
+  if(tag){
+    const id = tag.getAttribute('data-svnotetag');
+    const note = svNotes.find(n => n.id == id);
+    if(!note) return;
+    const val = prompt('Папка (категория) для этой заметки — например «Дом» или «Работа»', note.category || '');
+    if(val == null) return;
+    note.category = val.trim() || null;
+    saveState();
+    renderSvNotes();
+    return;
+  }
   const rm = e.target.closest('[data-svnoterm]');
   if(!rm) return;
   const id = rm.getAttribute('data-svnoterm');
