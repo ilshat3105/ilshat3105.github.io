@@ -433,18 +433,22 @@
   /* Настоящий вращающийся барабан папки (3D, как лотерейный/как в будильнике на iPhone) —
      пункты расположены на внутренней стороне цилиндра, тянете пальцем вверх/вниз, барабан
      реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте. */
-  .sv-drum{position:relative;width:150px;height:96px;margin-top:8px;perspective:340px;
-    touch-action:none;cursor:grab;overflow:hidden;border-radius:8px;}
+  /* Настоящий вращающийся барабан папки (3D, как лотерейный/как в будильнике на iPhone) —
+     пункты расположены на внутренней стороне цилиндра, тянете пальцем вверх/вниз, барабан
+     реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте.
+     Стоит справа, компактно — чтобы главным в карточке оставался текст заметки. */
+  .sv-drum{position:relative;width:84px;height:74px;flex-shrink:0;align-self:center;
+    perspective:260px;touch-action:none;cursor:grab;overflow:hidden;border-radius:8px;}
   .sv-drum-track{position:absolute;inset:0;transform-style:preserve-3d;}
-  .sv-drum-item{position:absolute;left:0;right:0;top:50%;height:30px;margin-top:-15px;
-    line-height:30px;text-align:center;font-size:13px;color:var(--faint);
+  .sv-drum-item{position:absolute;left:0;right:0;top:50%;height:24px;margin-top:-12px;
+    line-height:24px;text-align:center;font-size:11px;color:var(--faint);
     backface-visibility:hidden;font-family:'Inter',sans-serif;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
-  .sv-drum-item.center{color:#202124;font-weight:700;}
-  .sv-drum-selection{position:absolute;left:4px;right:4px;top:50%;height:30px;margin-top:-15px;
+    overflow:hidden;text-overflow:ellipsis;padding:0 3px;}
+  .sv-drum-item.center{color:#202124;font-weight:600;}
+  .sv-drum-selection{position:absolute;left:2px;right:2px;top:50%;height:24px;margin-top:-12px;
     border-top:1.5px solid var(--card-line);border-bottom:1.5px solid var(--card-line);
     pointer-events:none;background:rgba(0,0,0,.025);}
-  .sv-drum-fade{position:absolute;left:0;right:0;height:33px;pointer-events:none;z-index:6;}
+  .sv-drum-fade{position:absolute;left:0;right:0;height:26px;pointer-events:none;z-index:6;}
   .sv-drum-fade.top{top:0;background:linear-gradient(to bottom, #fff, rgba(255,255,255,0));}
   .sv-drum-fade.bottom{bottom:0;background:linear-gradient(to top, #fff, rgba(255,255,255,0));}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
@@ -3601,7 +3605,7 @@ document.getElementById('svFoldersList').addEventListener('click', (e) => {
 
 // ---- Настоящий вращающийся 3D-барабан папки прямо в строке заметки ----
 // Список пунктов барабана = «Без папки» + всё, что заведено на вкладке «Папки».
-const SV_DRUM_ITEM_H = 30;   // шаг между пунктами по вертикали, px
+const SV_DRUM_ITEM_H = 24;   // шаг между пунктами по вертикали, px
 const SV_DRUM_ANGLE = 24;    // угол на один пункт, град — задаёт «кривизну» цилиндра
 const SV_DRUM_RADIUS = SV_DRUM_ITEM_H / (2 * Math.tan((SV_DRUM_ANGLE * Math.PI / 180) / 2));
 
@@ -3694,12 +3698,12 @@ function renderSvNotes(){
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
         <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
-        <div class="sv-drum" data-svdrum="${n.id}">
-          <div class="sv-drum-fade top"></div>
-          <div class="sv-drum-selection"></div>
-          <div class="sv-drum-track" data-svdrumtrack="${n.id}">${svDrumItemsFor(n).map(t => `<div class="sv-drum-item">${escapeHtml(t)}</div>`).join('')}</div>
-          <div class="sv-drum-fade bottom"></div>
-        </div>
+      </div>
+      <div class="sv-drum" data-svdrum="${n.id}">
+        <div class="sv-drum-fade top"></div>
+        <div class="sv-drum-selection"></div>
+        <div class="sv-drum-track" data-svdrumtrack="${n.id}">${svDrumItemsFor(n).map(t => `<div class="sv-drum-item">${escapeHtml(t)}</div>`).join('')}</div>
+        <div class="sv-drum-fade bottom"></div>
       </div>
       <div class="sv-note-right">
         <button type="button" class="sv-note-rm" data-svnoterm="${n.id}">×</button>
