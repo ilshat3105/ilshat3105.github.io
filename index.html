@@ -416,20 +416,7 @@
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
-  .sv-folder-add-row{display:flex;gap:8px;margin-bottom:14px;}
-  .sv-folder-add-row input{flex:1;border:1.5px solid var(--card-line);border-radius:12px;
-    padding:11px 14px;font-size:14px;font-family:'Inter',sans-serif;outline:none;}
-  .sv-folder-add-row input:focus{border-color:#202124;}
-  .sv-folder-add-row button{background:#202124;color:#fff;border:none;border-radius:12px;
-    padding:0 18px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
-  .sv-folder-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    background:#fff;border:1px solid var(--card-line);border-radius:12px;padding:12px 14px;
-    margin-bottom:8px;}
-  .sv-folder-row-name{font-size:14.5px;font-weight:600;color:var(--ink);}
-  .sv-folder-row-count{font-size:12px;color:var(--faint);margin-left:6px;}
-  .sv-folder-rm{background:none;border:none;color:var(--faint);font-size:18px;
-    line-height:1;cursor:pointer;padding:2px 6px;}
-  .sv-folder-rm:active{color:#3c4043;}
+  .sv-cat-chip.sv-cat-add{background:none;border:1.5px dashed #c9c5b8;color:var(--muted);}
   /* Настоящий вращающийся барабан папки (3D, как лотерейный/как в будильнике на iPhone) —
      пункты расположены на внутренней стороне цилиндра, тянете пальцем вверх/вниз, барабан
      реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте. */
@@ -849,24 +836,11 @@
       <div id="incList"></div>
     </div>
     <div id="serviceSection" style="display:none;">
-      <div class="exp-view-toggle" id="svViewToggle">
-        <button class="exp-view-btn active" data-svview="notes">Заметки</button>
-        <button class="exp-view-btn" data-svview="folders">Папки</button>
+      <div class="sv-cat-row" id="svCatFilterRow"></div>
+      <div class="sv-note-card sv-pull-card" id="svPullCard">
+        <div class="sv-note-text sv-pull-card-text">Заметка...</div>
       </div>
-      <div id="svNotesView">
-        <div class="sv-cat-row" id="svCatFilterRow" style="display:none;"></div>
-        <div class="sv-note-card sv-pull-card" id="svPullCard">
-          <div class="sv-note-text sv-pull-card-text">Заметка...</div>
-        </div>
-        <div id="svNotesList"></div>
-      </div>
-      <div id="svFoldersView" style="display:none;">
-        <div class="sv-folder-add-row">
-          <input id="svFolderNewInput" placeholder="Название новой папки — например «Работа»">
-          <button type="button" id="svFolderAddBtn">Добавить</button>
-        </div>
-        <div id="svFoldersList"></div>
-      </div>
+      <div id="svNotesList"></div>
     </div>
     <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
@@ -3521,87 +3495,60 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 // прокручен до самого верха), отпустил — наверху появляется новая пустая заметка с курсором.
 let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
-let svFolders = []; // ['Работа', 'Дом', ...] — список папок, управляется на вкладке «Папки»
+let svFolders = []; // ['Работа', 'Дом', ...] — список папок, листается и пополняется прямо в строке фильтра
 let svCatFilter = null; // null = все категории
-let svView = 'notes'; // 'notes' | 'folders'
 
 function svCategoryCounts(){
   const counts = {};
   svNotes.forEach(n => { if(n.category) counts[n.category] = (counts[n.category] || 0) + 1; });
   return counts;
 }
+// Строка папок для фильтра: «Все» + все папки по порядку добавления + «+ Добавить» в самом
+// конце — новая папка встаёт перед ней, и «+ Добавить» просто каждый раз уезжает правее.
 function renderSvCatRow(){
   const row = document.getElementById('svCatFilterRow');
-  if(!svFolders.length){ row.style.display = 'none'; row.innerHTML = ''; if(svCatFilter) svCatFilter = null; return; }
   const counts = svCategoryCounts();
-  row.style.display = 'flex';
-  const chip = (val, label) => `<button type="button" class="sv-cat-chip ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
-  row.innerHTML = chip(null, 'Все') + svFolders.map(c => chip(c, `${c} (${counts[c] || 0})`)).join('');
+  const chip = (val, label, cls) => `<button type="button" class="sv-cat-chip ${cls||''} ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
+  row.innerHTML = chip(null, 'Все')
+    + svFolders.map(c => `<button type="button" class="sv-cat-chip ${svCatFilter===c?'active':''}" data-svcatfilter="${escapeHtml(c)}" data-svcatfolder="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c] || 0})</button>`).join('')
+    + `<button type="button" class="sv-cat-chip sv-cat-add" data-svcataddbtn="1">+ Добавить</button>`;
 }
 document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
+  const addBtn = e.target.closest('[data-svcataddbtn]');
+  if(addBtn){
+    const name = (prompt('Название новой папки — например «Работа»') || '').trim();
+    if(!name || svFolders.includes(name)) return;
+    svFolders.push(name);
+    saveState();
+    renderSvCatRow();
+    return;
+  }
   const chip = e.target.closest('[data-svcatfilter]');
   if(!chip) return;
   svCatFilter = chip.getAttribute('data-svcatfilter') || null;
   renderSvNotes();
 });
-
-// ---- Вкладка «Заметки» / «Папки» ----
-document.getElementById('svViewToggle').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-svview]');
-  if(!btn) return;
-  svView = btn.getAttribute('data-svview');
-  document.querySelectorAll('#svViewToggle .exp-view-btn').forEach(b => b.classList.toggle('active', b === btn));
-  document.getElementById('svNotesView').style.display = svView === 'notes' ? 'block' : 'none';
-  document.getElementById('svFoldersView').style.display = svView === 'folders' ? 'block' : 'none';
-  if(svView === 'folders') renderSvFoldersList();
-});
-
-// ---- Управление списком папок — то, что здесь добавили, сразу появляется в барабане ----
-function renderSvFoldersList(){
-  const el = document.getElementById('svFoldersList');
-  if(!svFolders.length){
-    el.innerHTML = `<div class="empty">Папок пока нет — добавьте первую выше, например «Работа».</div>`;
-    return;
-  }
-  const counts = svCategoryCounts();
-  el.innerHTML = svFolders.map(f => `
-    <div class="sv-folder-row" data-svfolderrow="${escapeHtml(f)}">
-      <span><span class="sv-folder-row-name">${escapeHtml(f)}</span><span class="sv-folder-row-count">${counts[f] || 0}</span></span>
-      <button type="button" class="sv-folder-rm" data-svfolderrm="${escapeHtml(f)}">×</button>
-    </div>`).join('');
-}
-function svAddFolder(name){
-  name = (name || '').trim();
-  if(!name || svFolders.includes(name)) return;
-  svFolders.push(name);
-  saveState();
-  renderSvFoldersList();
-}
-document.getElementById('svFolderAddBtn').addEventListener('click', () => {
-  const input = document.getElementById('svFolderNewInput');
-  svAddFolder(input.value);
-  input.value = '';
-  input.focus();
-});
-document.getElementById('svFolderNewInput').addEventListener('keydown', (e) => {
-  if(e.key === 'Enter'){
-    e.preventDefault();
-    svAddFolder(e.target.value);
-    e.target.value = '';
-  }
-});
-document.getElementById('svFoldersList').addEventListener('click', (e) => {
-  const rm = e.target.closest('[data-svfolderrm]');
-  if(!rm) return;
-  const name = rm.getAttribute('data-svfolderrm');
-  showConfirm(`Удалить папку «${name}»? У заметок внутри неё просто снимется эта метка.`, () => {
-    svFolders = svFolders.filter(f => f !== name);
-    if(svCatFilter === name) svCatFilter = null;
-    svNotes.forEach(n => { if(n.category === name) n.category = null; });
-    saveState();
-    renderSvFoldersList();
-  });
-});
+// Долгое нажатие на папку в строке фильтра — удалить её (у заметок внутри просто
+// снимется метка, никуда не денутся).
+let svCatLongPressTimer = null;
+document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => {
+  const chip = e.target.closest('[data-svcatfolder]');
+  if(!chip) return;
+  const name = chip.getAttribute('data-svcatfolder');
+  clearTimeout(svCatLongPressTimer);
+  svCatLongPressTimer = setTimeout(() => {
+    if(navigator.vibrate) navigator.vibrate(12);
+    showConfirm(`Удалить папку «${name}»? У заметок внутри неё просто снимется эта метка.`, () => {
+      svFolders = svFolders.filter(f => f !== name);
+      if(svCatFilter === name) svCatFilter = null;
+      svNotes.forEach(n => { if(n.category === name) n.category = null; });
+      saveState();
+      renderSvNotes();
+    });
+  }, 500);
+}, { passive: true });
+document.getElementById('svCatFilterRow').addEventListener('touchend', () => clearTimeout(svCatLongPressTimer));
+document.getElementById('svCatFilterRow').addEventListener('touchmove', () => clearTimeout(svCatLongPressTimer));
 
 // ---- Настоящий вращающийся 3D-барабан папки прямо в строке заметки ----
 // Список пунктов барабана = «Без папки» + всё, что заведено на вкладке «Папки».
