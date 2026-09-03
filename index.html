@@ -420,6 +420,8 @@
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
   .sv-cat-chip.sv-cat-add{background:none;border:1.5px dashed #c9c5b8;color:var(--muted);}
+  .sv-cat-chip.sv-archive-chip{margin-left:4px;}
+  .sv-cat-chip.sv-archive-chip.active{background:#3c4043;border-color:#3c4043;color:#fff;}
   /* Настоящий вращающийся барабан папки (3D, как лотерейный/как в будильнике на iPhone) —
      пункты расположены на внутренней стороне цилиндра, тянете пальцем вверх/вниз, барабан
      реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте. */
@@ -3500,6 +3502,7 @@ let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
 let svFolders = []; // ['Работа', 'Дом', ...] — список папок, листается и пополняется прямо в строке фильтра
 let svCatFilter = null; // null = все категории
+let svArchiveView = false; // false = обычный список (только невыполненные), true = архив (только выполненные)
 
 function svCategoryCounts(){
   const counts = {};
@@ -3511,12 +3514,20 @@ function svCategoryCounts(){
 function renderSvCatRow(){
   const row = document.getElementById('svCatFilterRow');
   const counts = svCategoryCounts();
+  const doneCount = svNotes.filter(n => n.done).length;
   const chip = (val, label, cls) => `<button type="button" class="sv-cat-chip ${cls||''} ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
   row.innerHTML = chip(null, 'Все')
     + svFolders.map(c => `<button type="button" class="sv-cat-chip ${svCatFilter===c?'active':''}" data-svcatfilter="${escapeHtml(c)}" data-svcatfolder="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c] || 0})</button>`).join('')
-    + `<button type="button" class="sv-cat-chip sv-cat-add" data-svcataddbtn="1">+ Добавить</button>`;
+    + `<button type="button" class="sv-cat-chip sv-cat-add" data-svcataddbtn="1">+ Добавить</button>`
+    + `<button type="button" class="sv-cat-chip sv-archive-chip ${svArchiveView?'active':''}" data-svarchivetoggle="1">🗄 Архив${doneCount ? ' ('+doneCount+')' : ''}</button>`;
 }
 document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
+  const archiveToggle = e.target.closest('[data-svarchivetoggle]');
+  if(archiveToggle){
+    svArchiveView = !svArchiveView;
+    renderSvNotes();
+    return;
+  }
   const addBtn = e.target.closest('[data-svcataddbtn]');
   if(addBtn){
     const name = (prompt('Название новой папки — например «Работа»') || '').trim();
@@ -3528,6 +3539,8 @@ document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   }
   const chip = e.target.closest('[data-svcatfilter]');
   if(!chip) return;
+  // Папка фильтрует список и в обычном режиме, и в архиве — режим (архив/не архив)
+  // при выборе папки не меняется.
   svCatFilter = chip.getAttribute('data-svcatfilter') || null;
   renderSvNotes();
 });
@@ -3630,19 +3643,20 @@ function svSetupDrums(){
 function renderSvNotes(){
   renderSvCatRow();
   const el = document.getElementById('svNotesList');
-  const list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes;
+  const pullCard = document.getElementById('svPullCard');
+  if(pullCard) pullCard.style.display = svArchiveView ? 'none' : '';
+  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.slice();
+  // В обычном списке — только невыполненные, выполненные автоматически уходят в архив.
+  list = list.filter(n => svArchiveView ? n.done : !n.done);
   if(!list.length){
-    el.innerHTML = svCatFilter
-      ? `<div class="empty">В этой папке пока пусто.</div>`
-      : `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`;
+    el.innerHTML = svArchiveView
+      ? `<div class="empty">В архиве пока пусто.</div>`
+      : (svCatFilter
+        ? `<div class="empty">В этой папке пока пусто.</div>`
+        : `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`);
     return;
   }
-  // Невыполненные — сверху (по порядку, который можно менять руками через «≡»),
-  // выполненные — все ниже, тоже своим порядком, но их уже нельзя перетаскивать.
-  const sorted = list.slice().sort((a,b) => {
-    if(!!a.done !== !!b.done) return a.done ? 1 : -1;
-    return (b.order || 0) - (a.order || 0);
-  });
+  const sorted = list.slice().sort((a,b) => (b.order || 0) - (a.order || 0));
   el.innerHTML = sorted.map(n => `
     <div class="sv-note-card${n.done ? ' done' : ''}" data-svnoteid="${n.id}">
       <div class="sv-note-left">
@@ -3821,7 +3835,7 @@ function svSetPullHeight(px, ready){
   svPullCard.classList.toggle('ready', !!ready);
 }
 svMainEl.addEventListener('touchstart', (e) => {
-  if(currentSection !== 'service' || svMainEl.scrollTop > 0 || e.target.closest('.sv-drum')){
+  if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 0 || e.target.closest('.sv-drum')){
     svPullStartY = null; return; // палец на барабане папок — это не жест «потянуть вниз»
   }
   svPullStartY = e.touches[0].clientY;
