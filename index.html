@@ -443,6 +443,30 @@
   .sv-ref-block .sv-ref-row span:last-child{text-align:right;font-weight:600;}
   .sv-ref-note{font-size:12px;color:var(--faint);margin-bottom:12px;line-height:1.5;}
   #svOdoRow > input, #svOdometerInput{width:110px;}
+  .sv-topic-list{list-style:none;margin:0 0 10px;padding:0;}
+  .sv-topic-row{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #f1f3f4;}
+  .sv-topic-row:last-child{border-bottom:none;}
+  .sv-topic-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#188038;margin-top:1px;}
+  .sv-topic-label{flex:1;font-size:13.5px;color:#3c4043;line-height:1.5;}
+  .sv-topic-label.done{color:var(--faint);text-decoration:line-through;}
+  .sv-topic-notes-btn{flex-shrink:0;background:#eff6ff;border:none;border-radius:8px;
+    padding:4px 9px;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;
+    font-family:'Inter',sans-serif;white-space:nowrap;}
+  .sv-topic-notes-btn.has-content{background:var(--accent);color:#fff;}
+  .sv-topic-rm-btn{flex-shrink:0;background:none;border:none;color:var(--faint);
+    font-size:18px;line-height:1;cursor:pointer;padding:2px 4px;}
+  .sv-topic-rm-btn:active{color:#d93025;}
+  .sv-add-item-btn{width:100%;background:none;border:1.5px dashed #c9c5b8;border-radius:10px;
+    padding:9px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;
+    font-family:'Inter',sans-serif;margin-top:4px;}
+  .sv-ref-row.sv-ref-row-topic{flex-direction:column;align-items:stretch;gap:2px;}
+  .sv-ref-row-topic .sv-ref-vals{display:flex;justify-content:space-between;gap:10px;}
+  .sv-topic-sheet-entry{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f3f4;cursor:pointer;}
+  .sv-topic-sheet-entry:last-child{border-bottom:none;}
+  .sv-topic-sheet-thumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;overflow:hidden;background:var(--concrete);}
+  .sv-topic-sheet-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .sv-topic-sheet-text{font-size:12.5px;color:#475569;overflow:hidden;text-overflow:ellipsis;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
 
   .exp-amount-row{display:flex;align-items:center;gap:8px;border:1.5px solid var(--card-line);
     border-radius:14px;padding:10px 16px;}
@@ -1072,6 +1096,15 @@
       <button class="exp-delete-btn" id="expDeleteBtn" style="display:none;">Удалить</button>
       <button class="exp-save-btn" id="expSaveBtn">Добавить</button>
     </div>
+  </div>
+</div>
+
+<div class="route-import-overlay" id="svTopicSheetOverlay">
+  <div class="route-import-sheet" style="max-height:70vh;">
+    <div class="route-import-title" id="svTopicSheetTitle">Материалы по теме</div>
+    <div id="svTopicEntriesList" style="overflow-y:auto;flex:1 1 auto;margin-bottom:10px;"></div>
+    <button class="route-save-btn" id="svTopicAddBtn" type="button" style="margin-bottom:8px;">+ Добавить материал</button>
+    <button class="route-import-close" id="svTopicSheetClose" type="button">Закрыть</button>
   </div>
 </div>
 
@@ -3547,10 +3580,13 @@ const SERVICE_CATEGORIES = ['Фильтры','Масла и жидкости','�
 
 let currentOdometer = null; // { km, updatedAt }
 let toLastServiceKm = {}; // { '5000': 123456, '20000': ... } — пробег на момент последнего прохождения интервала
+let topicDone = {}; // { topicKey: true } — какие пункты регламента/справочника отмечены выполненными/изученными
 
 // Периодические группы регламента ТО (из книжки по обслуживанию), с интервалом в км —
 // приложение считает, сколько осталось/просрочено по каждой группе относительно текущего пробега.
-const TO_SCHEDULE = [
+// Это только исходные («заводские») данные для первого запуска — дальше пользователь может
+// добавлять свои пункты и удалять любые, реальное состояние живёт в svItems (см. ниже).
+const TO_SCHEDULE_SEED = [
   {
     km: 5000,
     title: 'Межсервисное ТО — 5000 км',
@@ -3595,7 +3631,7 @@ const TO_SCHEDULE = [
 ];
 
 // Точки смазки консистентной смазкой — после обкатки на 3000 км, далее каждые 5000 и 10000 км
-const SV_GREASE_POINTS = [
+const SV_GREASE_SEED = [
   'Подшипник крестовины карданного вала', 'Промежуточная опора приводного вала',
   'Скользящая вилка карданного вала', 'Пальцы передних и задних рессор',
   'Шкворни поворотных кулаков', 'Шаровой палец продольной тяги',
@@ -3607,7 +3643,7 @@ const SV_GREASE_POINTS = [
 ];
 
 // Горюче-смазочные материалы — справочно, без привязки к пробегу
-const SV_FLUIDS = [
+const SV_FLUIDS_SEED = [
   ['Двигатель Cummins ISF3.8', 'CH-4, CI-4 или выше, 15W-40'],
   ['Двигатель Nissan ZD30', 'CH-4, CI-4 или выше, 5W-30'],
   ['КПП', 'API GL-4, 85W-90 / 75W-90 / 80W-90'],
@@ -3620,13 +3656,30 @@ const SV_FLUIDS = [
 ];
 
 // Регулировочные данные двигателей
-const SV_ADJUST = [
+const SV_ADJUST_SEED = [
   ['Клапанный зазор впускные (ISF3.8 / ZD30)', '0,330 мм / 0,3–0,4 мм'],
   ['Клапанный зазор выпускные (ISF3.8 / ZD30)', '0,584 мм / 0,3–0,4 мм'],
   ['Свободный ход педали сцепления', '25–40 мм'],
   ['Люфт рулевого колеса', 'не более ±15°'],
   ['Зазор колодка — барабан (пневмотормоза)', '0,7 мм'],
 ];
+
+// Редактируемое состояние регламента — заполняется из *_SEED один раз при первом запуске,
+// дальше пользователь может добавлять свои пункты и удалять любые (в т.ч. заводские).
+let svItems = null; // { schedule:[{km,title,items:[{id,text}]}], grease:[{id,text}], fluids:[{id,label,value}], adjust:[{id,label,value}] }
+let svItemIdSeq = 1;
+function seedSvItems(){
+  return {
+    schedule: TO_SCHEDULE_SEED.map(g => ({ km: g.km, title: g.title,
+      items: g.items.map((text,i) => ({ id: 'sch' + g.km + '-' + i, text })) })),
+    grease: SV_GREASE_SEED.map((text,i) => ({ id: 'gr' + i, text })),
+    fluids: SV_FLUIDS_SEED.map(([label,value],i) => ({ id: 'fl' + i, label, value })),
+    adjust: SV_ADJUST_SEED.map(([label,value],i) => ({ id: 'ad' + i, label, value })),
+  };
+}
+function ensureSvItems(){
+  if(!svItems) svItems = seedSvItems();
+}
 
 function svCurrentKm(){ return currentOdometer ? currentOdometer.km : null; }
 
@@ -3711,7 +3764,7 @@ function renderSvJournal(){
         ${entry.category ? `<span class="sv-card-cat">${escapeHtml(entry.category)}</span>` : ''}
         <div class="sv-card-title">${escapeHtml(entry.title || 'Без названия')}</div>
         ${entry.text ? `<div class="sv-card-text">${linkifyText(entry.text)}</div>` : ''}
-        <div class="sv-card-meta">${formatNoteDate(entry.createdAt)}${entry.odometerAtEntry ? ' · ' + entry.odometerAtEntry.toLocaleString('ru-RU') + ' км' : ''}</div>
+        <div class="sv-card-meta">${formatNoteDate(entry.createdAt)}${entry.odometerAtEntry ? ' · ' + entry.odometerAtEntry.toLocaleString('ru-RU') + ' км' : ''}${entry.linkedTopicLabel ? ' · 📎 ' + escapeHtml(entry.linkedTopicLabel) : ''}</div>
       </div>
     </div>`).join('');
 }
@@ -3723,18 +3776,36 @@ document.getElementById('svEntriesList').addEventListener('click', (e) => {
   if(entry) openServiceEditor(entry);
 });
 
-// ---- Регламент ТО ----
+// ---- Регламент ТО (редактируемый — можно добавлять свои пункты и удалять любые) ----
 let svOpenGroups = {}; // km -> bool, раскрыта ли карточка
+let svTopicSheetKey = null;
 
 function svRefTable(rows){
   return rows.map(([a,b]) => `<div class="sv-ref-row"><span>${escapeHtml(a)}</span><span>${escapeHtml(b)}</span></div>`).join('');
 }
 
-function renderSvSchedule(){
-  const el = document.getElementById('svScheduleGroups');
-  let html = `<div class="sv-ref-note">Данные перенесены из бумажной книги по обслуживанию — при сомнениях в конкретной цифре сверяйтесь с оригиналом.</div>`;
+// Строка-«тема»: чекбокс «сделано/изучено» + текст + кнопка со счётчиком привязанных
+// материалов (фото/ссылки/заметки) + кнопка удаления пункта.
+function svTopicRow(key, label, valueText){
+  const done = !!topicDone[key];
+  const count = serviceEntries.filter(e => e.linkedTopic === key).length;
+  return `<div class="sv-topic-row" data-svtopicwrap="${key}">
+    <input type="checkbox" data-svtopicdone="${key}" ${done?'checked':''}>
+    <span class="sv-topic-label ${done?'done':''}">${escapeHtml(label)}${valueText ? ' — <b>' + escapeHtml(valueText) + '</b>' : ''}</span>
+    <button type="button" class="sv-topic-notes-btn ${count?'has-content':''}" data-svtopicnotes="${key}" data-svtopiclabel="${escapeHtml(label)}">📎${count ? ' ' + count : ''}</button>
+    <button type="button" class="sv-topic-rm-btn" data-svtopicrm="${key}" title="Удалить пункт">×</button>
+  </div>`;
+}
+function svAddItemBtn(kind, groupKm){
+  return `<button type="button" class="sv-add-item-btn" data-svadditem="${kind}" ${groupKm?`data-svaddgroup="${groupKm}"`:''}>+ Добавить пункт</button>`;
+}
 
-  html += TO_SCHEDULE.map(group => {
+function renderSvSchedule(){
+  ensureSvItems();
+  const el = document.getElementById('svScheduleGroups');
+  let html = `<div class="sv-ref-note">Данные перенесены из бумажной книги по обслуживанию — при сомнениях в конкретной цифре сверяйтесь с оригиналом. Отмечайте птичкой, что уже сделано/изучено, кнопкой 📎 добавляйте свои фото/ссылки/заметки, а «+ Добавить пункт» — свои пункты в любой список.</div>`;
+
+  html += svItems.schedule.map(group => {
     const status = svDueStatus(group.km);
     const open = !!svOpenGroups[group.km];
     const lastVal = toLastServiceKm[group.km] || '';
@@ -3745,8 +3816,9 @@ function renderSvSchedule(){
         <span class="sv-group-badge ${status.cls}">${escapeHtml(status.label)}</span>
       </div>
       <div class="sv-group-body">
-        <ul class="sv-group-list">${group.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
-        <div class="sv-group-last">
+        <div class="sv-topic-list">${group.items.map(it => svTopicRow(it.id, it.text)).join('')}</div>
+        ${svAddItemBtn('schedule', group.km)}
+        <div class="sv-group-last" style="margin-top:12px;">
           <span style="font-size:12.5px;color:var(--muted);">Последний раз на, км:</span>
           <input type="text" inputmode="numeric" pattern="[0-9]*" id="svLastInput${group.km}" value="${lastVal}" placeholder="—">
           <button type="button" data-svsavelast="${group.km}">Сохранить</button>
@@ -3757,15 +3829,76 @@ function renderSvSchedule(){
 
   html += `<div class="sv-ref-block"><h5>Точки смазки консистентной смазкой</h5>
     <div class="sv-ref-note">После обкатки — на 3000 км, далее каждые 5000 и 10000 км.</div>
-    <ul class="sv-group-list">${SV_GREASE_POINTS.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
+    <div class="sv-topic-list">${svItems.grease.map(it => svTopicRow(it.id, it.text)).join('')}</div>
+    ${svAddItemBtn('grease')}
   </div>`;
 
-  html += `<div class="sv-ref-block"><h5>Горюче-смазочные материалы</h5>${svRefTable(SV_FLUIDS)}</div>`;
-  html += `<div class="sv-ref-block"><h5>Регулировочные данные</h5>${svRefTable(SV_ADJUST)}</div>`;
+  html += `<div class="sv-ref-block"><h5>Горюче-смазочные материалы</h5>
+    <div class="sv-topic-list">${svItems.fluids.map(it => svTopicRow(it.id, it.label, it.value)).join('')}</div>
+    ${svAddItemBtn('fluids')}
+  </div>`;
+  html += `<div class="sv-ref-block"><h5>Регулировочные данные</h5>
+    <div class="sv-topic-list">${svItems.adjust.map(it => svTopicRow(it.id, it.label, it.value)).join('')}</div>
+    ${svAddItemBtn('adjust')}
+  </div>`;
 
   el.innerHTML = html;
 }
 document.getElementById('svScheduleGroups').addEventListener('click', (e) => {
+  const done = e.target.closest('[data-svtopicdone]');
+  if(done){
+    const key = done.getAttribute('data-svtopicdone');
+    topicDone[key] = done.checked;
+    if(!done.checked) delete topicDone[key];
+    saveState();
+    done.closest('.sv-topic-row').querySelector('.sv-topic-label').classList.toggle('done', done.checked);
+    return;
+  }
+  const notesBtn = e.target.closest('[data-svtopicnotes]');
+  if(notesBtn){
+    openSvTopicSheet(notesBtn.getAttribute('data-svtopicnotes'), notesBtn.getAttribute('data-svtopiclabel'));
+    return;
+  }
+  const rmBtn = e.target.closest('[data-svtopicrm]');
+  if(rmBtn){
+    const key = rmBtn.getAttribute('data-svtopicrm');
+    showConfirm('Удалить этот пункт? Сохранённые материалы (📎) при этом не удаляются — они останутся в общем журнале.', () => {
+      ensureSvItems();
+      svItems.schedule.forEach(g => { g.items = g.items.filter(it => it.id !== key); });
+      svItems.grease = svItems.grease.filter(it => it.id !== key);
+      svItems.fluids = svItems.fluids.filter(it => it.id !== key);
+      svItems.adjust = svItems.adjust.filter(it => it.id !== key);
+      delete topicDone[key];
+      saveState();
+      renderSvSchedule();
+      showToast('Пункт удалён');
+    });
+    return;
+  }
+  const addBtn = e.target.closest('[data-svadditem]');
+  if(addBtn){
+    ensureSvItems();
+    const kind = addBtn.getAttribute('data-svadditem');
+    if(kind === 'schedule'){
+      const text = prompt('Текст нового пункта');
+      if(!text || !text.trim()) return;
+      const km = addBtn.getAttribute('data-svaddgroup');
+      const group = svItems.schedule.find(g => String(g.km) === km);
+      if(group) group.items.push({ id: 'custom' + (svItemIdSeq++), text: text.trim() });
+    } else if(kind === 'grease'){
+      const text = prompt('Текст нового пункта (точка смазки)');
+      if(!text || !text.trim()) return;
+      svItems.grease.push({ id: 'custom' + (svItemIdSeq++), text: text.trim() });
+    } else if(kind === 'fluids' || kind === 'adjust'){
+      const label = prompt('Название');
+      if(!label || !label.trim()) return;
+      const value = prompt('Значение') || '';
+      svItems[kind].push({ id: 'custom' + (svItemIdSeq++), label: label.trim(), value: value.trim() });
+    }
+    saveState();
+    renderSvSchedule();
+    return;
+  }
   const toggle = e.target.closest('[data-svgrouptoggle]');
   if(toggle){
     const km = toggle.getAttribute('data-svgrouptoggle');
@@ -3785,6 +3918,49 @@ document.getElementById('svScheduleGroups').addEventListener('click', (e) => {
     renderSvSchedule();
     showToast('Сохранено');
   }
+});
+
+// ---- Мини-окно «Материалы по теме» — фото/ссылки/заметки, привязанные к конкретному пункту ----
+function openSvTopicSheet(key, label){
+  svTopicSheetKey = key;
+  document.getElementById('svTopicSheetTitle').textContent = label;
+  renderSvTopicEntriesList();
+  document.getElementById('svTopicSheetOverlay').classList.add('show');
+}
+function renderSvTopicEntriesList(){
+  const list = serviceEntries.filter(e => e.linkedTopic === svTopicSheetKey).sort((a,b) => b.createdAt - a.createdAt);
+  const el = document.getElementById('svTopicEntriesList');
+  if(!list.length){
+    el.innerHTML = `<div class="empty" style="margin-top:10px;">Пока ничего не добавлено — нажмите «+ Добавить материал».</div>`;
+    return;
+  }
+  el.innerHTML = list.map(entry => `
+    <div class="sv-topic-sheet-entry" data-svtopicentry="${entry.id}">
+      ${entry.photos && entry.photos.length ? `<div class="sv-topic-sheet-thumb"><img src="${entry.photos[0]}"></div>` : ''}
+      <div style="min-width:0;flex:1;">
+        ${entry.title ? `<div style="font-size:13.5px;font-weight:700;color:var(--navy);">${escapeHtml(entry.title)}</div>` : ''}
+        ${entry.text ? `<div class="sv-topic-sheet-text">${linkifyText(entry.text)}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+document.getElementById('svTopicEntriesList').addEventListener('click', (e) => {
+  if(e.target.closest('a')) return;
+  const row = e.target.closest('[data-svtopicentry]');
+  if(!row) return;
+  const entry = serviceEntries.find(x => x.id == row.getAttribute('data-svtopicentry'));
+  if(entry){
+    document.getElementById('svTopicSheetOverlay').classList.remove('show');
+    openServiceEditor(entry);
+  }
+});
+document.getElementById('svTopicAddBtn').addEventListener('click', () => {
+  const label = document.getElementById('svTopicSheetTitle').textContent;
+  document.getElementById('svTopicSheetOverlay').classList.remove('show');
+  openServiceEditor(null, { linkedTopic: svTopicSheetKey, linkedTopicLabel: label, title: label });
+});
+document.getElementById('svTopicSheetClose').addEventListener('click', () => {
+  document.getElementById('svTopicSheetOverlay').classList.remove('show');
+  renderSvSchedule();
 });
 
 // ---- Редактор записи журнала ----
@@ -3831,11 +4007,12 @@ document.getElementById('svPhotoBtn').addEventListener('click', () => {
   document.getElementById('svPhotoInput').click();
 });
 
-function openServiceEditor(entry){
+function openServiceEditor(entry, prefill){
   isNewServiceEntry = !entry;
   editingServiceEntry = entry ? Object.assign({}, entry, {
     photos: (entry.photos||[]).slice(), photoDates: (entry.photoDates||[]).slice(), photoIds: (entry.photoIds||[]).slice(),
-  }) : { id:null, title:'', category:'', text:'', photos:[], photoDates:[], photoIds:[], createdAt:null, odometerAtEntry:null };
+  }) : Object.assign({ id:null, title:'', category:'', text:'', photos:[], photoDates:[], photoIds:[], createdAt:null,
+    odometerAtEntry:null, linkedTopic:null, linkedTopicLabel:null }, prefill || {});
   document.getElementById('svTitleInput').value = editingServiceEntry.title || '';
   svBodyInput.value = editingServiceEntry.text || '';
   document.getElementById('svOdometerInput').value = editingServiceEntry.odometerAtEntry || (isNewServiceEntry && currentOdometer ? currentOdometer.km : '') || '';
@@ -3867,6 +4044,7 @@ function closeServiceEditor(commit){
   svEditorOverlay.classList.remove('show');
   editingServiceEntry = null;
   renderSvJournal();
+  if(document.getElementById('serviceScheduleView').style.display !== 'none') renderSvSchedule();
 }
 document.getElementById('svDoneBtn').addEventListener('click', () => closeServiceEditor(true));
 document.getElementById('svCloseBtn').addEventListener('click', () => closeServiceEditor(true));
@@ -3899,7 +4077,7 @@ document.getElementById('svPhotoInput').addEventListener('change', async (e) => 
 const STORAGE_KEY = 'moyreys_notes_v1';
 function stateSnapshot(){
   return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories,
-    serviceEntries, serviceEntryIdSeq, currentOdometer, toLastServiceKm };
+    serviceEntries, serviceEntryIdSeq, currentOdometer, toLastServiceKm, topicDone, svItems, svItemIdSeq };
 }
 function applyState(s){
   notes = s.notes || [];
@@ -3913,6 +4091,9 @@ function applyState(s){
   serviceEntryIdSeq = s.serviceEntryIdSeq || 1;
   currentOdometer = s.currentOdometer || null;
   toLastServiceKm = s.toLastServiceKm || {};
+  topicDone = s.topicDone || {};
+  svItems = s.svItems || null;
+  svItemIdSeq = s.svItemIdSeq || 1;
 }
 function saveState(){
   try{
@@ -4113,7 +4294,7 @@ cpSaveBtn.addEventListener('click', () => {
 // позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
 function exportData(){
   const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories,
-    serviceEntries, serviceEntryIdSeq, currentOdometer, toLastServiceKm };
+    serviceEntries, serviceEntryIdSeq, currentOdometer, toLastServiceKm, topicDone, svItems, svItemIdSeq };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -4145,6 +4326,9 @@ function importDataFromFile(file){
       serviceEntryIdSeq = s.serviceEntryIdSeq || 1;
       currentOdometer = s.currentOdometer || null;
       toLastServiceKm = s.toLastServiceKm || {};
+      topicDone = s.topicDone || {};
+      svItems = s.svItems || null;
+      svItemIdSeq = s.svItemIdSeq || 1;
       saveState();
       renderContent();
       showToast('Данные загружены');
