@@ -3806,12 +3806,16 @@ document.getElementById('svNotesList').addEventListener('pointercancel', svFinis
 // и список уже прокручен до самого верха (иначе это была бы обычная прокрутка).
 // Карточка-«резинка» растёт вместе с пальцем 1-в-1 (без анимации, пока тянем), а если
 // отпустить раньше порога — плавно пружинит обратно к нулю, никакая заметка не создаётся.
-// Дотянули совсем сильно (второй порог) и отпустили — вместо заметки страница сама
-// перезагружается с сервера в обход кэша: удобный способ проверить, подтянулись ли правки.
+// Дотянули совсем сильно (второй порог) — но чтобы страница правда обновилась, нужно ещё
+// и задержать там палец примерно секунду (иначе слишком легко случайно перезапустить
+// страницу вместо того, чтобы просто создать заметку быстрым движением).
 let svPullStartY = null;
 let svPulling = false;
+let svReloadConfirmed = false;
+let svReloadHoldTimer = null;
 const SV_PULL_THRESHOLD = 70;
 const SV_PULL_RELOAD_THRESHOLD = 160;
+const SV_PULL_RELOAD_HOLD_MS = 900;
 const SV_PULL_MAX = 170;
 const svMainEl = document.getElementById('main');
 const svPullCard = document.getElementById('svPullCard');
@@ -3823,8 +3827,17 @@ function svSetPullHeight(px, stage){
   svPullCard.style.paddingBottom = (14 * t) + 'px';
   svPullCard.style.marginBottom = (10 * t) + 'px';
   svPullCard.classList.toggle('ready', stage === 1);
-  svPullCard.classList.toggle('reload', stage === 2);
-  if(svPullCardText) svPullCardText.textContent = stage === 2 ? '↻ Обновить страницу' : 'Заметка...';
+  svPullCard.classList.toggle('reload', stage >= 2);
+  if(svPullCardText){
+    svPullCardText.textContent = stage === 3 ? '↻ Отпустите — обновляется'
+      : stage === 2 ? 'Держите ещё немного…'
+      : 'Заметка...';
+  }
+}
+function svClearReloadHold(){
+  clearTimeout(svReloadHoldTimer);
+  svReloadHoldTimer = null;
+  svReloadConfirmed = false;
 }
 svMainEl.addEventListener('touchstart', (e) => {
   if(currentSection !== 'service' || svMainEl.scrollTop > 0 || e.target.closest('.sv-drum')){
@@ -3832,6 +3845,7 @@ svMainEl.addEventListener('touchstart', (e) => {
   }
   svPullStartY = e.touches[0].clientY;
   svPulling = false;
+  svClearReloadHold();
 }, { passive: true });
 svMainEl.addEventListener('touchmove', (e) => {
   if(currentSection !== 'service' || svPullStartY == null) return;
@@ -3842,7 +3856,13 @@ svMainEl.addEventListener('touchmove', (e) => {
     // срабатывает раньше нашего и перезагружает сайт вместо создания заметки.
     e.preventDefault();
     svPullCard.classList.add('dragging'); // без анимации — карточка идёт ровно за пальцем
-    const stage = dy > SV_PULL_RELOAD_THRESHOLD ? 2 : dy > SV_PULL_THRESHOLD ? 1 : 0;
+    const inReloadZone = dy > SV_PULL_RELOAD_THRESHOLD;
+    if(inReloadZone && !svReloadHoldTimer){
+      svReloadHoldTimer = setTimeout(() => { svReloadConfirmed = true; }, SV_PULL_RELOAD_HOLD_MS);
+    } else if(!inReloadZone){
+      svClearReloadHold(); // вышли из зоны обновления, не додержав — сбрасываем
+    }
+    const stage = svReloadConfirmed ? 3 : inReloadZone ? 2 : dy > SV_PULL_THRESHOLD ? 1 : 0;
     svSetPullHeight(Math.min(dy, SV_PULL_MAX), stage);
   }
 }, { passive: false });
@@ -3855,9 +3875,13 @@ function svEndPull(e){
   const touch = e.changedTouches ? e.changedTouches[0] : null;
   const dy = touch ? touch.clientY - svPullStartY : 0;
   svPullStartY = null;
-  if(svPulling && dy > SV_PULL_RELOAD_THRESHOLD){
+  const confirmed = svReloadConfirmed;
+  svClearReloadHold();
+  if(svPulling && confirmed){
+    // Палец продержали в зоне обновления достаточно — это точно осознанное действие,
+    // а не случайный перелёт при быстром движении для создания заметки.
     svPullCard.classList.remove('dragging');
-    svSetPullHeight(SV_PULL_MAX, 2);
+    svSetPullHeight(SV_PULL_MAX, 3);
     // Простой переход по адресу с новым параметром не помогает, если сам service worker
     // перехватывает загрузку и подсовывает страницу из своего кэша независимо от адреса —
     // поэтому сначала отключаем его и чистим его кэш, и только потом переходим заново.
@@ -3875,6 +3899,8 @@ function svEndPull(e){
       location.href = location.pathname + '?_r=' + Date.now();
     }, 150);
   } else if(svPulling && dy > SV_PULL_THRESHOLD){
+    // Быстрое движение (даже если пролетели глубже порога обновления, но не задержались) —
+    // это обычное «создать заметку», а не запрос на обновление страницы.
     svPullCard.classList.remove('dragging');
     svSetPullHeight(SV_PULL_MAX, 1); // короткая пауза «защёлкивания» перед созданием
     setTimeout(() => { svResetPullCard(); svCreateNote(); }, 110);
