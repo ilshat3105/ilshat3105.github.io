@@ -447,7 +447,7 @@
   .sv-topic-row{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #f1f3f4;}
   .sv-topic-row:last-child{border-bottom:none;}
   .sv-topic-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#188038;margin-top:1px;}
-  .sv-topic-label{flex:1;font-size:13.5px;color:#3c4043;line-height:1.5;}
+  .sv-topic-label{flex:1;font-size:13.5px;color:#3c4043;line-height:1.5;cursor:pointer;}
   .sv-topic-label.done{color:var(--faint);text-decoration:line-through;}
   .sv-topic-notes-btn{flex-shrink:0;background:#eff6ff;border:none;border-radius:8px;
     padding:4px 9px;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;
@@ -3844,7 +3844,36 @@ function renderSvSchedule(){
 
   el.innerHTML = html;
 }
+function svFindItem(key){
+  for(const g of svItems.schedule){ const it = g.items.find(i => i.id === key); if(it) return it; }
+  let it = svItems.grease.find(i => i.id === key); if(it) return it;
+  it = svItems.fluids.find(i => i.id === key); if(it) return it;
+  it = svItems.adjust.find(i => i.id === key); if(it) return it;
+  return null;
+}
 document.getElementById('svScheduleGroups').addEventListener('click', (e) => {
+  const label = e.target.closest('.sv-topic-label');
+  if(label){
+    ensureSvItems();
+    const key = label.closest('[data-svtopicwrap]').getAttribute('data-svtopicwrap');
+    const item = svFindItem(key);
+    if(!item) return;
+    if('value' in item){
+      const newLabel = prompt('Название', item.label);
+      if(newLabel == null || !newLabel.trim()) return;
+      const newValue = prompt('Значение', item.value);
+      if(newValue == null) return;
+      item.label = newLabel.trim();
+      item.value = newValue.trim();
+    } else {
+      const newText = prompt('Текст пункта', item.text);
+      if(newText == null || !newText.trim()) return;
+      item.text = newText.trim();
+    }
+    saveState();
+    renderSvSchedule();
+    return;
+  }
   const done = e.target.closest('[data-svtopicdone]');
   if(done){
     const key = done.getAttribute('data-svtopicdone');
