@@ -410,9 +410,6 @@
   .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
   .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
     flex-shrink:0;padding-top:1px;}
-  .sv-note-fav{background:none;border:none;color:var(--faint);font-size:18px;
-    line-height:1;cursor:pointer;padding:2px;}
-  .sv-note-fav.active{color:#f2b400;}
   .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
@@ -3676,7 +3673,6 @@ function renderSvNotes(){
         <div class="sv-drum-fade bottom"></div>
       </div>
       <div class="sv-note-right">
-        <button type="button" class="sv-note-fav${n.favorite ? ' active' : ''}" data-svnotefav="${n.id}" aria-label="Избранное">${n.favorite ? '★' : '☆'}</button>
         ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
@@ -3729,16 +3725,6 @@ document.getElementById('svNotesList').addEventListener('change', (e) => {
   note.done = chk.checked;
   saveState();
   renderSvNotes(); // отмеченная сразу перечёркивается и уходит вниз списка
-});
-document.getElementById('svNotesList').addEventListener('click', (e) => {
-  const fav = e.target.closest('[data-svnotefav]');
-  if(!fav) return;
-  const id = fav.getAttribute('data-svnotefav');
-  const note = svNotes.find(n => n.id == id);
-  if(!note) return;
-  note.favorite = !note.favorite;
-  saveState();
-  renderSvNotes();
 });
 // Пустые заметки (передумали, ничего не написали) сами убираются, когда уходишь с поля.
 document.getElementById('svNotesList').addEventListener('focusout', (e) => {
@@ -3829,7 +3815,7 @@ let svSwipe = null;
 const SV_SWIPE_THRESHOLD = 90; // px, после которого отпускание пальца удаляет заметку
 document.getElementById('svNotesList').addEventListener('pointerdown', (e) => {
   if(e.target.closest('.sv-drum') || e.target.closest('[data-svnotehandle]')
-    || e.target.closest('.sv-note-check') || e.target.closest('[data-svnotefav]')) return;
+    || e.target.closest('.sv-note-check')) return;
   const card = e.target.closest('.sv-note-card');
   if(!card) return;
   svSwipe = { id: card.getAttribute('data-svnoteid'), card, startX: e.clientX, startY: e.clientY,
@@ -3849,7 +3835,9 @@ document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
   }
   svSwipe.dx = dx;
   svSwipe.card.style.transform = `translateX(${dx}px)`;
-  svSwipe.card.style.opacity = String(Math.max(.15, 1 - Math.abs(dx) / 260));
+  // Подсветка направления: вправо — на удаление (красноватый), влево — в избранное (жёлтый).
+  const past = Math.abs(dx) > SV_SWIPE_THRESHOLD;
+  svSwipe.card.style.background = !past ? '' : (dx > 0 ? '#fdecea' : '#fef6d8');
   e.preventDefault();
 });
 function svFinishSwipe(e){
@@ -3858,25 +3846,35 @@ function svFinishSwipe(e){
   svSwipe = null;
   if(!active) return;
   card.classList.remove('swiping');
-  if(Math.abs(dx) > SV_SWIPE_THRESHOLD){
-    card.style.transition = 'transform .18s ease, opacity .18s ease';
-    card.style.transform = `translateX(${dx > 0 ? 420 : -420}px)`;
-    card.style.opacity = '0';
-    setTimeout(() => {
-      svNotes = svNotes.filter(n => n.id != id);
-      saveState();
-      renderSvNotes();
-    }, 160);
-  } else {
-    // Не дотянули до порога — карточка мягко возвращается на место, ничего не удаляется.
-    card.style.transition = 'transform .2s ease, opacity .2s ease';
-    card.style.transform = '';
-    card.style.opacity = '';
-    setTimeout(() => { card.style.transition = ''; }, 210);
+  card.style.background = '';
+  card.style.transition = 'transform .2s ease';
+  card.style.transform = '';
+  setTimeout(() => { card.style.transition = ''; }, 210);
+  if(dx > SV_SWIPE_THRESHOLD){
+    // Свайп вправо — удаление, но только после подтверждения «Да/Нет».
+    showConfirm('Удалить заметку?', () => {
+      const cardEl = document.querySelector(`.sv-note-card[data-svnoteid="${id}"]`);
+      if(cardEl){
+        cardEl.style.transition = 'transform .18s ease, opacity .18s ease';
+        cardEl.style.transform = 'translateX(420px)';
+        cardEl.style.opacity = '0';
+      }
+      setTimeout(() => {
+        svNotes = svNotes.filter(n => n.id != id);
+        saveState();
+        renderSvNotes();
+      }, cardEl ? 160 : 0);
+    });
+  } else if(dx < -SV_SWIPE_THRESHOLD){
+    // Свайп влево — сразу в избранное/из избранного, подтверждение не нужно.
+    const note = svNotes.find(n => n.id == id);
+    if(note){ note.favorite = !note.favorite; saveState(); }
+    setTimeout(renderSvNotes, 180);
   }
 }
 document.getElementById('svNotesList').addEventListener('pointerup', svFinishSwipe);
 document.getElementById('svNotesList').addEventListener('pointercancel', svFinishSwipe);
+
 
 // Жест «потянуть вниз, чтобы создать» — работает только когда открыта вкладка «Автосервис»
 // и список уже прокручен до самого верха (иначе это была бы обычная прокрутка).
