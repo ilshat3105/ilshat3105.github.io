@@ -211,12 +211,14 @@
   .sv-doc-link-row{display:flex;align-items:center;gap:8px;padding:9px 0;
     border-bottom:1px solid var(--card-line, var(--line));}
   .sv-doc-link-row a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    color:var(--steel, #2563eb);font-size:14px;text-decoration:none;}
+    color:#2563eb;font-size:14.5px;font-weight:600;text-decoration:underline;}
   .sv-doc-link-row button{background:none;border:none;color:var(--faint);font-size:17px;cursor:pointer;padding:2px;}
-  .sv-doc-add-link{display:flex;gap:8px;margin-top:8px;}
-  .sv-doc-add-link input{flex:1;border:1px solid var(--card-line, var(--line));border-radius:10px;
+  .sv-doc-add-link{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+  .sv-doc-add-link input{border:1px solid var(--card-line, var(--line));border-radius:10px;
     padding:10px 12px;font-size:14px;font-family:'Inter',sans-serif;background:transparent;color:var(--ink);}
-  .sv-doc-add-link button{flex-shrink:0;background:var(--steel, #2563eb);color:#fff;border:none;
+  .sv-doc-add-link-row{display:flex;gap:8px;}
+  .sv-doc-add-link-row input{flex:1;min-width:0;}
+  .sv-doc-add-link-row button{flex-shrink:0;background:var(--steel, #2563eb);color:#fff;border:none;
     border-radius:10px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;}
   .sv-doc-photos{display:flex;flex-wrap:wrap;gap:8px;}
   .sv-doc-photo{position:relative;width:88px;height:88px;border-radius:10px;overflow:hidden;flex-shrink:0;}
@@ -919,7 +921,10 @@
       <div id="svDocLinks"></div>
       <div class="sv-doc-add-link">
         <input id="svDocLinkInput" placeholder="Вставить ссылку" inputmode="url">
-        <button type="button" id="svDocLinkAddBtn">Добавить</button>
+        <div class="sv-doc-add-link-row">
+          <input id="svDocLinkLabelInput" placeholder="Название (необязательно)">
+          <button type="button" id="svDocLinkAddBtn">Добавить</button>
+        </div>
       </div>
 
       <div class="sv-doc-label">Фото</div>
@@ -3833,21 +3838,29 @@ document.getElementById('svDocDesc').addEventListener('input', (e) => {
 function renderSvDocLinks(){
   const note = svCurrentDocNote();
   if(!note) return;
-  document.getElementById('svDocLinks').innerHTML = (note.docLinks || []).map((l, i) => `
+  document.getElementById('svDocLinks').innerHTML = (note.docLinks || []).map((l, i) => {
+    // Старые ссылки хранились простой строкой — поддерживаем оба варианта.
+    const url = typeof l === 'string' ? l : l.url;
+    const label = (typeof l === 'string' ? '' : l.label) || url;
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    return `
     <div class="sv-doc-link-row">
-      <a href="${escapeHtml(/^https?:\/\//i.test(l) ? l : 'https://' + l)}" target="_blank" rel="noopener">${escapeHtml(l)}</a>
+      <a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>
       <button type="button" data-svdoclinkrm="${i}">×</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 document.getElementById('svDocLinkAddBtn').addEventListener('click', () => {
   const input = document.getElementById('svDocLinkInput');
+  const labelInput = document.getElementById('svDocLinkLabelInput');
   const val = input.value.trim();
   if(!val) return;
   const note = svCurrentDocNote();
   if(!note) return;
   if(!note.docLinks) note.docLinks = [];
-  note.docLinks.push(val);
+  note.docLinks.push({ url: val, label: labelInput.value.trim() });
   input.value = '';
+  labelInput.value = '';
   saveState();
   renderSvDocLinks();
 });
@@ -3865,12 +3878,22 @@ function renderSvDocPhotos(){
   if(!note) return;
   const wrap = document.getElementById('svDocPhotos');
   wrap.innerHTML = (note.docPhotos || []).map((p, i) => `
-    <div class="sv-doc-photo"><img src="${p}"><button type="button" data-svdocphotorm="${i}">×</button></div>`).join('')
+    <div class="sv-doc-photo" data-svdocphotoopen="${i}"><img src="${p}"><button type="button" data-svdocphotorm="${i}">×</button></div>`).join('')
     + `<button type="button" class="sv-doc-photo-add" id="svDocPhotoBtn">+ Фото</button>`;
   document.getElementById('svDocPhotoBtn').addEventListener('click', () => {
     document.getElementById('svDocPhotoInput').click();
   });
 }
+// Тап по миниатюре — открыть фото на весь экран, с листанием и зумом (тот же просмотрщик,
+// что и в «Заявках»), крестик поверх миниатюры — как и раньше, просто удаляет фото.
+document.getElementById('svDocPhotos').addEventListener('click', (e) => {
+  if(e.target.closest('[data-svdocphotorm]')) return; // крестик — удаление, обрабатывается ниже
+  const thumb = e.target.closest('[data-svdocphotoopen]');
+  if(!thumb) return;
+  const note = svCurrentDocNote();
+  if(!note) return;
+  openLightbox(parseInt(thumb.getAttribute('data-svdocphotoopen')), note.docPhotos);
+});
 document.getElementById('svDocPhotoInput').addEventListener('change', async (e) => {
   const files = Array.from(e.target.files || []);
   const note = svCurrentDocNote();
