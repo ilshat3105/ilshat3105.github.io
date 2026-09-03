@@ -434,7 +434,7 @@
      пункты расположены на внутренней стороне цилиндра, тянете пальцем вверх/вниз, барабан
      реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте. */
   .sv-drum{position:relative;width:150px;height:96px;margin-top:8px;perspective:340px;
-    touch-action:none;cursor:grab;}
+    touch-action:none;cursor:grab;overflow:hidden;border-radius:8px;}
   .sv-drum-track{position:absolute;inset:0;transform-style:preserve-3d;}
   .sv-drum-item{position:absolute;left:0;right:0;top:50%;height:30px;margin-top:-15px;
     line-height:30px;text-align:center;font-size:13px;color:var(--faint);
