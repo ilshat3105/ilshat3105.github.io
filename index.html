@@ -394,8 +394,11 @@
   /* ---- Автосервис: заметки с жестом «потянуть вниз, чтобы создать» ---- */
   .sv-note-card{display:flex;align-items:flex-start;gap:10px;background:#fff;
     border:1px solid var(--card-line);border-radius:14px;padding:14px 14px 14px 16px;
-    margin-bottom:10px;box-shadow:0 6px 18px rgba(15,23,42,.045);}
+    margin-bottom:10px;box-shadow:0 6px 18px rgba(15,23,42,.045);touch-action:pan-y;
+    position:relative;}
   .sv-note-card.dragging{opacity:.92;box-shadow:0 14px 30px rgba(0,0,0,.22);z-index:5;}
+  .sv-note-card.swiping{transition:none;}
+  .sv-note-card.favorite{background:#fef6d8;}
   /* Выполненная заявка — целиком приглушённая: текст, чекбокс, барабан папки, дата —
      всё разом выглядит неактивным, а не только зачёркнутый текст. */
   .sv-note-card.done{opacity:.5;box-shadow:none;}
@@ -407,9 +410,9 @@
   .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
   .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
     flex-shrink:0;padding-top:1px;}
-  .sv-note-rm{background:none;border:none;color:var(--faint);font-size:17px;
+  .sv-note-fav{background:none;border:none;color:var(--faint);font-size:18px;
     line-height:1;cursor:pointer;padding:2px;}
-  .sv-note-rm:active{color:#3c4043;}
+  .sv-note-fav.active{color:#f2b400;}
   .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
@@ -3656,9 +3659,12 @@ function renderSvNotes(){
         : `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`);
     return;
   }
-  const sorted = list.slice().sort((a,b) => (b.order || 0) - (a.order || 0));
+  const sorted = list.slice().sort((a,b) => {
+    if(!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1;
+    return (b.order || 0) - (a.order || 0);
+  });
   el.innerHTML = sorted.map(n => `
-    <div class="sv-note-card${n.done ? ' done' : ''}" data-svnoteid="${n.id}">
+    <div class="sv-note-card${n.done ? ' done' : ''}${n.favorite ? ' favorite' : ''}" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
         <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
@@ -3670,7 +3676,7 @@ function renderSvNotes(){
         <div class="sv-drum-fade bottom"></div>
       </div>
       <div class="sv-note-right">
-        <button type="button" class="sv-note-rm" data-svnoterm="${n.id}">×</button>
+        <button type="button" class="sv-note-fav${n.favorite ? ' active' : ''}" data-svnotefav="${n.id}" aria-label="Избранное">${n.favorite ? '★' : '☆'}</button>
         ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
@@ -3692,7 +3698,7 @@ function svCreateNote(){
     }, 60);
     return;
   }
-  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, category: svCatFilter || null };
+  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, favorite: false, category: svCatFilter || null };
   svNotes.unshift(note);
   saveState();
   renderSvNotes();
@@ -3725,14 +3731,14 @@ document.getElementById('svNotesList').addEventListener('change', (e) => {
   renderSvNotes(); // отмеченная сразу перечёркивается и уходит вниз списка
 });
 document.getElementById('svNotesList').addEventListener('click', (e) => {
-  const rm = e.target.closest('[data-svnoterm]');
-  if(!rm) return;
-  const id = rm.getAttribute('data-svnoterm');
-  showConfirm('Удалить заметку?', () => {
-    svNotes = svNotes.filter(n => n.id != id);
-    saveState();
-    renderSvNotes();
-  });
+  const fav = e.target.closest('[data-svnotefav]');
+  if(!fav) return;
+  const id = fav.getAttribute('data-svnotefav');
+  const note = svNotes.find(n => n.id == id);
+  if(!note) return;
+  note.favorite = !note.favorite;
+  saveState();
+  renderSvNotes();
 });
 // Пустые заметки (передумали, ничего не написали) сами убираются, когда уходишь с поля.
 document.getElementById('svNotesList').addEventListener('focusout', (e) => {
@@ -3815,6 +3821,62 @@ function svFinishDrag(e){
 }
 document.getElementById('svNotesList').addEventListener('pointerup', svFinishDrag);
 document.getElementById('svNotesList').addEventListener('pointercancel', svFinishDrag);
+
+// Свайп карточки влево или вправо — удаляет заметку (как в приложении Clear).
+// Не мешает вертикальной прокрутке списка и не мешает перетаскиванию за «≡»/барабану папки —
+// те гасят движение раньше через отдельные pointerdown-обработчики выше.
+let svSwipe = null;
+const SV_SWIPE_THRESHOLD = 90; // px, после которого отпускание пальца удаляет заметку
+document.getElementById('svNotesList').addEventListener('pointerdown', (e) => {
+  if(e.target.closest('.sv-drum') || e.target.closest('[data-svnotehandle]')
+    || e.target.closest('.sv-note-check') || e.target.closest('[data-svnotefav]')) return;
+  const card = e.target.closest('.sv-note-card');
+  if(!card) return;
+  svSwipe = { id: card.getAttribute('data-svnoteid'), card, startX: e.clientX, startY: e.clientY,
+    dx: 0, active: false, pointerId: e.pointerId };
+});
+document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
+  if(!svSwipe || e.pointerId !== svSwipe.pointerId) return;
+  const dx = e.clientX - svSwipe.startX;
+  const dy = e.clientY - svSwipe.startY;
+  if(!svSwipe.active){
+    // Пока непонятно, куда тянут — если движение в основном вертикальное, это прокрутка
+    // списка или работа с текстом, свайп не начинаем.
+    if(Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy)) return;
+    svSwipe.active = true;
+    svSwipe.card.setPointerCapture(e.pointerId);
+    svSwipe.card.classList.add('swiping');
+  }
+  svSwipe.dx = dx;
+  svSwipe.card.style.transform = `translateX(${dx}px)`;
+  svSwipe.card.style.opacity = String(Math.max(.15, 1 - Math.abs(dx) / 260));
+  e.preventDefault();
+});
+function svFinishSwipe(e){
+  if(!svSwipe || (e && e.pointerId !== svSwipe.pointerId)) return;
+  const { card, dx, active, id } = svSwipe;
+  svSwipe = null;
+  if(!active) return;
+  card.classList.remove('swiping');
+  if(Math.abs(dx) > SV_SWIPE_THRESHOLD){
+    card.style.transition = 'transform .18s ease, opacity .18s ease';
+    card.style.transform = `translateX(${dx > 0 ? 420 : -420}px)`;
+    card.style.opacity = '0';
+    setTimeout(() => {
+      svNotes = svNotes.filter(n => n.id != id);
+      saveState();
+      renderSvNotes();
+    }, 160);
+  } else {
+    // Не дотянули до порога — карточка мягко возвращается на место, ничего не удаляется.
+    card.style.transition = 'transform .2s ease, opacity .2s ease';
+    card.style.transform = '';
+    card.style.opacity = '';
+    setTimeout(() => { card.style.transition = ''; }, 210);
+  }
+}
+document.getElementById('svNotesList').addEventListener('pointerup', svFinishSwipe);
+document.getElementById('svNotesList').addEventListener('pointercancel', svFinishSwipe);
 
 // Жест «потянуть вниз, чтобы создать» — работает только когда открыта вкладка «Автосервис»
 // и список уже прокручен до самого верха (иначе это была бы обычная прокрутка).
