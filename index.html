@@ -448,6 +448,8 @@
   .sv-topic-row:last-child{border-bottom:none;}
   .sv-topic-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#188038;margin-top:1px;}
   .sv-topic-label{flex:1;font-size:13.5px;color:#3c4043;line-height:1.5;cursor:pointer;}
+  .sv-topic-label[contenteditable="true"]{outline:1.5px solid var(--accent);border-radius:6px;
+    padding:2px 5px;margin:-2px -5px;background:#eff6ff;cursor:text;}
   .sv-topic-label.done{color:var(--faint);text-decoration:line-through;}
   .sv-topic-notes-btn{flex-shrink:0;background:#eff6ff;border:none;border-radius:8px;
     padding:4px 9px;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;
@@ -3853,25 +3855,22 @@ function svFindItem(key){
 }
 document.getElementById('svScheduleGroups').addEventListener('click', (e) => {
   const label = e.target.closest('.sv-topic-label');
-  if(label){
+  if(label && !label.isContentEditable){
     ensureSvItems();
     const key = label.closest('[data-svtopicwrap]').getAttribute('data-svtopicwrap');
     const item = svFindItem(key);
     if(!item) return;
-    if('value' in item){
-      const newLabel = prompt('Название', item.label);
-      if(newLabel == null || !newLabel.trim()) return;
-      const newValue = prompt('Значение', item.value);
-      if(newValue == null) return;
-      item.label = newLabel.trim();
-      item.value = newValue.trim();
-    } else {
-      const newText = prompt('Текст пункта', item.text);
-      if(newText == null || !newText.trim()) return;
-      item.text = newText.trim();
-    }
-    saveState();
-    renderSvSchedule();
+    // Тап по тексту — редактируем прямо на месте: убираем жирное значение из разметки,
+    // показываем как обычный текст, ставим курсор в конец и открываем клавиатуру.
+    label.textContent = ('value' in item) ? item.label + (item.value ? ' — ' + item.value : '') : item.text;
+    label.contentEditable = 'true';
+    label.focus();
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
     return;
   }
   const done = e.target.closest('[data-svtopicdone]');
@@ -3946,6 +3945,35 @@ document.getElementById('svScheduleGroups').addEventListener('click', (e) => {
     saveState();
     renderSvSchedule();
     showToast('Сохранено');
+  }
+});
+// focusout (в отличие от blur) всплывает — можно повесить один делегированный обработчик
+// на весь контейнер вместо отдельного слушателя на каждую строку.
+document.getElementById('svScheduleGroups').addEventListener('focusout', (e) => {
+  const label = e.target.closest('.sv-topic-label');
+  if(!label || !label.isContentEditable) return;
+  label.contentEditable = 'false';
+  ensureSvItems();
+  const key = label.closest('[data-svtopicwrap]').getAttribute('data-svtopicwrap');
+  const item = svFindItem(key);
+  const text = label.textContent.trim();
+  if(item && text){
+    if('value' in item){
+      const idx = text.indexOf(' — ');
+      if(idx !== -1){ item.label = text.slice(0, idx).trim(); item.value = text.slice(idx + 3).trim(); }
+      else { item.label = text; item.value = ''; }
+    } else {
+      item.text = text;
+    }
+    saveState();
+  }
+  renderSvSchedule(); // возвращает обычный вид строки (жирное значение, чекбокс и т.д.)
+});
+document.getElementById('svScheduleGroups').addEventListener('keydown', (e) => {
+  const label = e.target.closest('.sv-topic-label');
+  if(label && label.isContentEditable && e.key === 'Enter'){
+    e.preventDefault();
+    label.blur();
   }
 });
 
