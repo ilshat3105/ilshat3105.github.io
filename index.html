@@ -405,7 +405,7 @@
   .sv-note-left{flex:1;min-width:0;}
   .sv-note-text{width:100%;border:none;outline:none;font-size:15.5px;font-weight:500;line-height:1.55;
     font-family:'Inter',sans-serif;background:transparent;resize:none;color:var(--ink);
-    overflow:hidden;min-height:24px;}
+    overflow:hidden;min-height:24px;touch-action:pan-y;}
   .sv-note-text.done{color:var(--faint);text-decoration:line-through;}
   .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
   .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
@@ -3808,29 +3808,34 @@ function svFinishDrag(e){
 document.getElementById('svNotesList').addEventListener('pointerup', svFinishDrag);
 document.getElementById('svNotesList').addEventListener('pointercancel', svFinishDrag);
 
-// Свайп карточки влево или вправо — удаляет заметку (как в приложении Clear).
-// Не мешает вертикальной прокрутке списка и не мешает перетаскиванию за «≡»/барабану папки —
-// те гасят движение раньше через отдельные pointerdown-обработчики выше.
+// Свайп карточки влево или вправо — удаляет заметку / добавляет в избранное (как в Clear).
+// Специально сделано через touch-события (а не Pointer Events) — так же, как жест
+// «потянуть вниз, чтобы создать», который в этом файле уже надёжно работает: Pointer Events
+// на телефоне иногда перехватываются самим textarea (выделение текста) раньше, чем наш
+// код успевает распознать свайп, и жест из-за этого «не появляется».
 let svSwipe = null;
-const SV_SWIPE_THRESHOLD = 90; // px, после которого отпускание пальца удаляет заметку
-document.getElementById('svNotesList').addEventListener('pointerdown', (e) => {
-  if(e.target.closest('.sv-drum') || e.target.closest('[data-svnotehandle]')
-    || e.target.closest('.sv-note-check')) return;
-  const card = e.target.closest('.sv-note-card');
+const SV_SWIPE_THRESHOLD = 90; // px, после которого отпускание пальца срабатывает
+const svNotesListEl = document.getElementById('svNotesList');
+svNotesListEl.addEventListener('touchstart', (e) => {
+  const t = e.target;
+  if(t.closest('.sv-drum') || t.closest('[data-svnotehandle]') || t.closest('.sv-note-check')) return;
+  const card = t.closest('.sv-note-card');
   if(!card) return;
-  svSwipe = { id: card.getAttribute('data-svnoteid'), card, startX: e.clientX, startY: e.clientY,
-    dx: 0, active: false, pointerId: e.pointerId };
-});
-document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
-  if(!svSwipe || e.pointerId !== svSwipe.pointerId) return;
-  const dx = e.clientX - svSwipe.startX;
-  const dy = e.clientY - svSwipe.startY;
+  const touch = e.touches[0];
+  svSwipe = { id: card.getAttribute('data-svnoteid'), card, startX: touch.clientX, startY: touch.clientY,
+    dx: 0, active: false, touchId: touch.identifier };
+}, { passive: true });
+svNotesListEl.addEventListener('touchmove', (e) => {
+  if(!svSwipe) return;
+  const touch = Array.from(e.touches).find(t => t.identifier === svSwipe.touchId) || e.touches[0];
+  if(!touch) return;
+  const dx = touch.clientX - svSwipe.startX;
+  const dy = touch.clientY - svSwipe.startY;
   if(!svSwipe.active){
     // Пока непонятно, куда тянут — если движение в основном вертикальное, это прокрутка
     // списка или работа с текстом, свайп не начинаем.
     if(Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy)) return;
     svSwipe.active = true;
-    svSwipe.card.setPointerCapture(e.pointerId);
     svSwipe.card.classList.add('swiping');
   }
   svSwipe.dx = dx;
@@ -3838,10 +3843,10 @@ document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
   // Подсветка направления: вправо — на удаление (красноватый), влево — в избранное (жёлтый).
   const past = Math.abs(dx) > SV_SWIPE_THRESHOLD;
   svSwipe.card.style.background = !past ? '' : (dx > 0 ? '#fdecea' : '#fef6d8');
-  e.preventDefault();
-});
-function svFinishSwipe(e){
-  if(!svSwipe || (e && e.pointerId !== svSwipe.pointerId)) return;
+  e.preventDefault(); // блокируем прокрутку/выделение текста — теперь точно свайп
+}, { passive: false });
+function svFinishSwipe(){
+  if(!svSwipe) return;
   const { card, dx, active, id } = svSwipe;
   svSwipe = null;
   if(!active) return;
@@ -3872,8 +3877,8 @@ function svFinishSwipe(e){
     setTimeout(renderSvNotes, 180);
   }
 }
-document.getElementById('svNotesList').addEventListener('pointerup', svFinishSwipe);
-document.getElementById('svNotesList').addEventListener('pointercancel', svFinishSwipe);
+svNotesListEl.addEventListener('touchend', svFinishSwipe);
+svNotesListEl.addEventListener('touchcancel', svFinishSwipe);
 
 
 // Жест «потянуть вниз, чтобы создать» — работает только когда открыта вкладка «Автосервис»
