@@ -392,16 +392,24 @@
   .exp-cat-new-input:focus{border-color:var(--accent);}
 
   /* ---- Автосервис: заметки с жестом «потянуть вниз, чтобы создать» ---- */
-  .sv-note-card{position:relative;background:#fff;border:1px solid var(--card-line);
-    border-radius:14px;padding:14px 40px 14px 16px;margin-bottom:10px;
-    box-shadow:0 6px 18px rgba(15,23,42,.045);}
+  .sv-note-card{display:flex;align-items:flex-start;gap:10px;background:#fff;
+    border:1px solid var(--card-line);border-radius:14px;padding:14px 14px 14px 16px;
+    margin-bottom:10px;box-shadow:0 6px 18px rgba(15,23,42,.045);}
+  .sv-note-card.dragging{opacity:.92;box-shadow:0 14px 30px rgba(0,0,0,.22);z-index:5;}
+  .sv-note-left{flex:1;min-width:0;}
   .sv-note-text{width:100%;border:none;outline:none;font-size:14.5px;line-height:1.55;
     font-family:'Inter',sans-serif;background:transparent;resize:none;color:var(--ink);
     overflow:hidden;min-height:24px;}
+  .sv-note-text.done{color:var(--faint);text-decoration:line-through;}
   .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
-  .sv-note-rm{position:absolute;top:10px;right:10px;background:none;border:none;
-    color:var(--faint);font-size:19px;line-height:1;cursor:pointer;padding:4px;}
+  .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
+    flex-shrink:0;padding-top:1px;}
+  .sv-note-rm{background:none;border:none;color:var(--faint);font-size:17px;
+    line-height:1;cursor:pointer;padding:2px;}
   .sv-note-rm:active{color:#d93025;}
+  .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
+    cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
+  .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#188038;cursor:pointer;}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
      убирает transition, чтобы движение было 1-в-1 с пальцем), а без класса .dragging плавно
      пружинит к текущей высоте — этим и создаётся ощущение отпускания/защёлкивания. */
@@ -3456,7 +3464,7 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 // ==================== АВТОСЕРВИС ====================
 // Заметки, как в старом iPhone-приложении Clear: потянул экран вниз внизу списка (когда он
 // прокручен до самого верха), отпустил — наверху появляется новая пустая заметка с курсором.
-let svNotes = []; // { id, text, createdAt }
+let svNotes = []; // { id, text, createdAt, order, done }
 let svNoteIdSeq = 1;
 
 function renderSvNotes(){
@@ -3465,17 +3473,28 @@ function renderSvNotes(){
     el.innerHTML = `<div class="empty">Потяните экран вниз, чтобы создать первую заметку.</div>`;
     return;
   }
-  const sorted = svNotes.slice().sort((a,b) => b.createdAt - a.createdAt);
+  // Невыполненные — сверху (по порядку, который можно менять руками через «≡»),
+  // выполненные — все ниже, тоже своим порядком.
+  const sorted = svNotes.slice().sort((a,b) => {
+    if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+    return (b.order || 0) - (a.order || 0);
+  });
   el.innerHTML = sorted.map(n => `
-    <div class="sv-note-card">
-      <textarea class="sv-note-text" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
-      <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
-      <button class="sv-note-rm" data-svnoterm="${n.id}">×</button>
+    <div class="sv-note-card" data-svnoteid="${n.id}">
+      <div class="sv-note-left">
+        <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
+        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
+      </div>
+      <div class="sv-note-right">
+        <button type="button" class="sv-note-rm" data-svnoterm="${n.id}">×</button>
+        <span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>
+        <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
+      </div>
     </div>`).join('');
   el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
 }
 function svCreateNote(){
-  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now() };
+  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false };
   svNotes.unshift(note);
   saveState();
   renderSvNotes();
@@ -3497,6 +3516,15 @@ document.getElementById('svNotesList').addEventListener('input', (e) => {
   ta.style.height = 'auto';
   ta.style.height = ta.scrollHeight + 'px';
   scheduleSvNotesSave();
+});
+document.getElementById('svNotesList').addEventListener('change', (e) => {
+  const chk = e.target.closest('[data-svnotedone]');
+  if(!chk) return;
+  const note = svNotes.find(n => n.id == chk.getAttribute('data-svnotedone'));
+  if(!note) return;
+  note.done = chk.checked;
+  saveState();
+  renderSvNotes(); // отмеченная сразу перечёркивается и уходит вниз списка
 });
 document.getElementById('svNotesList').addEventListener('click', (e) => {
   const rm = e.target.closest('[data-svnoterm]');
@@ -3520,6 +3548,75 @@ document.getElementById('svNotesList').addEventListener('focusout', (e) => {
     renderSvNotes();
   }
 });
+
+// Перетаскивание заметок за ручку «≡» (справа) — так же, как перетаскивание избранных
+// заявок в основном списке: смотрим, между какими соседями сейчас находится палец,
+// и при отпускании переставляем заметку туда.
+let svDragState = null;
+document.getElementById('svNotesList').addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-svnotehandle]');
+  if(!handle) return;
+  const card = handle.closest('.sv-note-card');
+  const list = document.getElementById('svNotesList');
+  const siblings = Array.from(list.children).filter(el => el !== card && el.classList.contains('sv-note-card'));
+  if(!siblings.length) return;
+  handle.setPointerCapture(e.pointerId);
+  svDragState = {
+    pointerId: e.pointerId,
+    id: handle.getAttribute('data-svnotehandle'),
+    card,
+    startY: e.clientY,
+    siblings: siblings.map(el => ({
+      id: el.getAttribute('data-svnoteid'),
+      mid: el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2
+    })),
+    hoverIndex: null
+  };
+  card.classList.add('dragging');
+  e.preventDefault();
+});
+document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
+  if(!svDragState || e.pointerId !== svDragState.pointerId) return;
+  const y = e.clientY;
+  svDragState.card.style.transform = `translateY(${y - svDragState.startY}px) scale(1.01)`;
+  let idx = svDragState.siblings.length;
+  for(let i = 0; i < svDragState.siblings.length; i++){
+    if(y < svDragState.siblings[i].mid){ idx = i; break; }
+  }
+  svDragState.hoverIndex = idx;
+  e.preventDefault();
+});
+function svFinishDrag(e){
+  if(!svDragState || (e && e.pointerId !== svDragState.pointerId)) return;
+  svDragState.card.classList.remove('dragging');
+  svDragState.card.style.transform = '';
+  const { id, siblings, hoverIndex } = svDragState;
+  svDragState = null;
+  if(hoverIndex == null) return;
+  const list = document.getElementById('svNotesList');
+  const visibleIds = Array.from(list.children)
+    .filter(el => el.classList.contains('sv-note-card'))
+    .map(el => el.getAttribute('data-svnoteid'));
+  const fromIdx = visibleIds.indexOf(id);
+  if(fromIdx === -1) return;
+  visibleIds.splice(fromIdx, 1);
+  let targetId, insertAfter;
+  if(hoverIndex < siblings.length){ targetId = siblings[hoverIndex].id; insertAfter = false; }
+  else { targetId = siblings[siblings.length - 1].id; insertAfter = true; }
+  let toIdx = visibleIds.indexOf(targetId);
+  if(toIdx === -1) toIdx = visibleIds.length;
+  if(insertAfter) toIdx++;
+  visibleIds.splice(toIdx, 0, id);
+  const n = visibleIds.length;
+  visibleIds.forEach((nid, i) => {
+    const note = svNotes.find(x => x.id == nid);
+    if(note) note.order = n - i; // самая верхняя — самое большое число
+  });
+  saveState();
+  renderSvNotes();
+}
+document.getElementById('svNotesList').addEventListener('pointerup', svFinishDrag);
+document.getElementById('svNotesList').addEventListener('pointercancel', svFinishDrag);
 
 // Жест «потянуть вниз, чтобы создать» — работает только когда открыта вкладка «Автосервис»
 // и список уже прокручен до самого верха (иначе это была бы обычная прокрутка).
@@ -3592,6 +3689,12 @@ function applyState(s){
   expenseCategories = s.expenseCategories || [];
   svNotes = s.svNotes || [];
   svNoteIdSeq = s.svNoteIdSeq || 1;
+  // На случай старых заметок, сохранённых до появления чекбоксов/перетаскивания —
+  // достраиваем недостающие поля, чтобы сортировка и отметки не ломались.
+  svNotes.forEach(n => {
+    if(n.order == null) n.order = n.createdAt || Date.now();
+    if(n.done == null) n.done = false;
+  });
 }
 function saveState(){
   try{
@@ -3821,6 +3924,10 @@ function importDataFromFile(file){
       expenseCategories = s.expenseCategories || [];
       svNotes = s.svNotes || [];
       svNoteIdSeq = s.svNoteIdSeq || 1;
+      svNotes.forEach(n => {
+        if(n.order == null) n.order = n.createdAt || Date.now();
+        if(n.done == null) n.done = false;
+      });
       saveState();
       renderContent();
       showToast('Данные загружены');
