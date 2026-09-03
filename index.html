@@ -190,6 +190,43 @@
   /* editor */
   .editor-overlay{position:fixed;left:0;top:0;width:100%;height:100vh;background:#fff;z-index:40;display:none;flex-direction:column;}
   .editor-overlay.show{display:flex;}
+
+  /* «документ» заметки в Автосервисе — описание, ссылки, фото */
+  .sv-doc-overlay{position:fixed;left:0;top:0;width:100%;height:100vh;background:#fff;z-index:41;
+    display:none;flex-direction:column;}
+  .sv-doc-overlay.show{display:flex;}
+  .sv-doc-top{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-shrink:0;
+    border-bottom:1px solid var(--card-line, var(--line));}
+  .sv-doc-top button{background:none;border:none;color:var(--steel, var(--accent));font-size:15px;
+    font-weight:600;cursor:pointer;padding:6px 4px;font-family:'Inter',sans-serif;}
+  .sv-doc-theme{font-size:16px;font-weight:700;color:var(--ink);flex:1;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .sv-doc-body{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch;}
+  .sv-doc-label{font-size:12px;font-weight:700;color:var(--faint);text-transform:uppercase;
+    letter-spacing:.3px;margin:18px 0 8px;}
+  .sv-doc-label:first-child{margin-top:0;}
+  .sv-doc-desc{width:100%;min-height:90px;border:1px solid var(--card-line, var(--line));
+    border-radius:12px;padding:12px;font-size:14.5px;line-height:1.5;font-family:'Inter',sans-serif;
+    color:var(--ink);resize:vertical;box-sizing:border-box;background:transparent;}
+  .sv-doc-link-row{display:flex;align-items:center;gap:8px;padding:9px 0;
+    border-bottom:1px solid var(--card-line, var(--line));}
+  .sv-doc-link-row a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--steel, #2563eb);font-size:14px;text-decoration:none;}
+  .sv-doc-link-row button{background:none;border:none;color:var(--faint);font-size:17px;cursor:pointer;padding:2px;}
+  .sv-doc-add-link{display:flex;gap:8px;margin-top:8px;}
+  .sv-doc-add-link input{flex:1;border:1px solid var(--card-line, var(--line));border-radius:10px;
+    padding:10px 12px;font-size:14px;font-family:'Inter',sans-serif;background:transparent;color:var(--ink);}
+  .sv-doc-add-link button{flex-shrink:0;background:var(--steel, #2563eb);color:#fff;border:none;
+    border-radius:10px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;}
+  .sv-doc-photos{display:flex;flex-wrap:wrap;gap:8px;}
+  .sv-doc-photo{position:relative;width:88px;height:88px;border-radius:10px;overflow:hidden;flex-shrink:0;}
+  .sv-doc-photo img{width:100%;height:100%;object-fit:cover;display:block;}
+  .sv-doc-photo button{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;
+    background:rgba(0,0,0,.55);color:#fff;border:none;font-size:13px;line-height:1;cursor:pointer;}
+  .sv-doc-photo-add{width:88px;height:88px;border-radius:10px;flex-shrink:0;background:none;
+    border:1.5px dashed #c9c5b8;color:var(--faint);font-size:13px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;text-align:center;font-family:'Inter',sans-serif;}
+
   .editor-top{display:flex;align-items:center;gap:4px;padding:10px 6px;border-bottom:1px solid transparent;flex-shrink:0;}
   .editor-top .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:9px;
     display:flex;align-items:center;justify-content:center;border-radius:50%;}
@@ -405,11 +442,17 @@
   .sv-note-left{flex:1;min-width:0;}
   .sv-note-text{width:100%;border:none;outline:none;font-size:15.5px;font-weight:500;line-height:1.55;
     font-family:'Inter',sans-serif;background:transparent;resize:none;color:var(--ink);
-    overflow:hidden;min-height:24px;touch-action:pan-y;}
+    overflow:hidden;min-height:24px;touch-action:pan-y;max-height:48px;transition:max-height .15s ease;}
+  .sv-note-text:focus{max-height:400px;}
   .sv-note-text.done{color:var(--faint);text-decoration:line-through;}
   .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
   .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
     flex-shrink:0;padding-top:1px;}
+  .sv-note-doc{background:none;border:none;color:var(--faint);font-size:16px;
+    line-height:1;cursor:pointer;padding:2px;position:relative;}
+  .sv-note-doc.has-doc{color:var(--steel);}
+  .sv-note-doc.has-doc::after{content:'';position:absolute;top:-1px;right:-1px;width:6px;height:6px;
+    border-radius:50%;background:#3d5a80;}
   .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
@@ -846,8 +889,7 @@
         <div class="sv-note-text sv-pull-card-text">Заметка...</div>
       </div>
       <div id="svNotesList"></div>
-    </div>
-    <div id="fuelSection" style="display:none;">
+    </div>    <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
       <div class="exp-view-toggle" id="expViewToggle">
         <button class="exp-view-btn active" data-expview="history">История</button>
@@ -863,6 +905,30 @@
   </main>
 
   <button class="global-fab" id="globalFab" type="button" aria-label="Добавить">+</button>
+
+  <div class="sv-doc-overlay" id="svDocOverlay">
+    <div class="sv-doc-top">
+      <button type="button" id="svDocCloseBtn">‹ Готово</button>
+      <div class="sv-doc-theme" id="svDocTheme"></div>
+    </div>
+    <div class="sv-doc-body">
+      <div class="sv-doc-label">Описание</div>
+      <textarea class="sv-doc-desc" id="svDocDesc" placeholder="Подробности, детали заказа, что нужно уточнить..."></textarea>
+
+      <div class="sv-doc-label">Ссылки</div>
+      <div id="svDocLinks"></div>
+      <div class="sv-doc-add-link">
+        <input id="svDocLinkInput" placeholder="Вставить ссылку" inputmode="url">
+        <button type="button" id="svDocLinkAddBtn">Добавить</button>
+      </div>
+
+      <div class="sv-doc-label">Фото</div>
+      <div class="sv-doc-photos" id="svDocPhotos">
+        <button type="button" class="sv-doc-photo-add" id="svDocPhotoBtn">+ Фото</button>
+      </div>
+    </div>
+  </div>
+  <input type="file" accept="image/*" id="svDocPhotoInput" style="display:none;" multiple>
 
   <div class="overlay" id="overlay"></div>
   <nav class="drawer" id="drawer">
@@ -3673,6 +3739,7 @@ function renderSvNotes(){
         <div class="sv-drum-fade bottom"></div>
       </div>
       <div class="sv-note-right">
+        <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
         ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
@@ -3726,6 +3793,109 @@ document.getElementById('svNotesList').addEventListener('change', (e) => {
   saveState();
   renderSvNotes(); // отмеченная сразу перечёркивается и уходит вниз списка
 });
+document.getElementById('svNotesList').addEventListener('click', (e) => {
+  const docBtn = e.target.closest('[data-svnotedoc]');
+  if(!docBtn) return;
+  svOpenDoc(docBtn.getAttribute('data-svnotedoc'));
+});
+
+// ---- «Документ» заметки: описание, ссылки, фото — отдельный полноэкранный экран,
+// открывается по иконке 📄 на карточке. Сама тема (n.text) там не редактируется,
+// только показывается для контекста — короткую тему правят прямо в карточке.
+let svDocEditingId = null;
+function svCurrentDocNote(){
+  return svNotes.find(n => n.id == svDocEditingId);
+}
+function svOpenDoc(id){
+  const note = svNotes.find(n => n.id == id);
+  if(!note) return;
+  svDocEditingId = id;
+  if(!note.docLinks) note.docLinks = [];
+  if(!note.docPhotos) note.docPhotos = [];
+  document.getElementById('svDocTheme').textContent = note.text.trim() || 'Без темы';
+  document.getElementById('svDocDesc').value = note.docDesc || '';
+  renderSvDocLinks();
+  renderSvDocPhotos();
+  document.getElementById('svDocOverlay').classList.add('show');
+}
+function svCloseDoc(){
+  document.getElementById('svDocOverlay').classList.remove('show');
+  svDocEditingId = null;
+  saveState();
+  renderSvNotes(); // чтобы значок 📄 сразу показал точку, если что-то добавили
+}
+document.getElementById('svDocCloseBtn').addEventListener('click', svCloseDoc);
+document.getElementById('svDocDesc').addEventListener('input', (e) => {
+  const note = svCurrentDocNote();
+  if(note) note.docDesc = e.target.value;
+  scheduleSvNotesSave();
+});
+function renderSvDocLinks(){
+  const note = svCurrentDocNote();
+  if(!note) return;
+  document.getElementById('svDocLinks').innerHTML = (note.docLinks || []).map((l, i) => `
+    <div class="sv-doc-link-row">
+      <a href="${escapeHtml(/^https?:\/\//i.test(l) ? l : 'https://' + l)}" target="_blank" rel="noopener">${escapeHtml(l)}</a>
+      <button type="button" data-svdoclinkrm="${i}">×</button>
+    </div>`).join('');
+}
+document.getElementById('svDocLinkAddBtn').addEventListener('click', () => {
+  const input = document.getElementById('svDocLinkInput');
+  const val = input.value.trim();
+  if(!val) return;
+  const note = svCurrentDocNote();
+  if(!note) return;
+  if(!note.docLinks) note.docLinks = [];
+  note.docLinks.push(val);
+  input.value = '';
+  saveState();
+  renderSvDocLinks();
+});
+document.getElementById('svDocLinks').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-svdoclinkrm]');
+  if(!rm) return;
+  const note = svCurrentDocNote();
+  if(!note) return;
+  note.docLinks.splice(parseInt(rm.getAttribute('data-svdoclinkrm')), 1);
+  saveState();
+  renderSvDocLinks();
+});
+function renderSvDocPhotos(){
+  const note = svCurrentDocNote();
+  if(!note) return;
+  const wrap = document.getElementById('svDocPhotos');
+  wrap.innerHTML = (note.docPhotos || []).map((p, i) => `
+    <div class="sv-doc-photo"><img src="${p}"><button type="button" data-svdocphotorm="${i}">×</button></div>`).join('')
+    + `<button type="button" class="sv-doc-photo-add" id="svDocPhotoBtn">+ Фото</button>`;
+  document.getElementById('svDocPhotoBtn').addEventListener('click', () => {
+    document.getElementById('svDocPhotoInput').click();
+  });
+}
+document.getElementById('svDocPhotoInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  const note = svCurrentDocNote();
+  if(!note){ e.target.value = ''; return; }
+  if(!note.docPhotos) note.docPhotos = [];
+  for(const file of files){
+    try {
+      const dataUrl = await compressImage(file);
+      note.docPhotos.push(dataUrl);
+    } catch(err){ /* повреждённый файл — просто пропускаем */ }
+  }
+  e.target.value = '';
+  saveState();
+  renderSvDocPhotos();
+});
+document.getElementById('svDocPhotos').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-svdocphotorm]');
+  if(!rm) return;
+  const note = svCurrentDocNote();
+  if(!note) return;
+  note.docPhotos.splice(parseInt(rm.getAttribute('data-svdocphotorm')), 1);
+  saveState();
+  renderSvDocPhotos();
+});
+
 // Пустые заметки (передумали, ничего не написали) сами убираются, когда уходишь с поля.
 document.getElementById('svNotesList').addEventListener('focusout', (e) => {
   const ta = e.target.closest('[data-svnotetext]');
@@ -3814,11 +3984,12 @@ document.getElementById('svNotesList').addEventListener('pointercancel', svFinis
 // на телефоне иногда перехватываются самим textarea (выделение текста) раньше, чем наш
 // код успевает распознать свайп, и жест из-за этого «не появляется».
 let svSwipe = null;
-const SV_SWIPE_THRESHOLD = 90; // px, после которого отпускание пальца срабатывает
+const SV_SWIPE_THRESHOLD = 56; // px (~1.5 см) — и порог срабатывания, и предел, дальше которого карточка не едет
 const svNotesListEl = document.getElementById('svNotesList');
 svNotesListEl.addEventListener('touchstart', (e) => {
   const t = e.target;
-  if(t.closest('.sv-drum') || t.closest('[data-svnotehandle]') || t.closest('.sv-note-check')) return;
+  if(t.closest('.sv-drum') || t.closest('[data-svnotehandle]') || t.closest('.sv-note-check')
+    || t.closest('[data-svnotedoc]')) return;
   const card = t.closest('.sv-note-card');
   if(!card) return;
   const touch = e.touches[0];
@@ -3838,10 +4009,13 @@ svNotesListEl.addEventListener('touchmove', (e) => {
     svSwipe.active = true;
     svSwipe.card.classList.add('swiping');
   }
-  svSwipe.dx = dx;
-  svSwipe.card.style.transform = `translateX(${dx}px)`;
+  svSwipe.dx = dx; // «сырое» значение — по нему решаем, сработало ли, при отпускании
+  // Сама карточка сдвигается только на небольшое расстояние (не тянется за пальцем через
+  // весь экран) — дальше SV_SWIPE_THRESHOLD она «упирается», даже если палец продолжает тянуть.
+  const visualDx = Math.max(-SV_SWIPE_THRESHOLD, Math.min(SV_SWIPE_THRESHOLD, dx));
+  svSwipe.card.style.transform = `translateX(${visualDx}px)`;
   // Подсветка направления: вправо — на удаление (красноватый), влево — в избранное (жёлтый).
-  const past = Math.abs(dx) > SV_SWIPE_THRESHOLD;
+  const past = Math.abs(dx) >= SV_SWIPE_THRESHOLD;
   svSwipe.card.style.background = !past ? '' : (dx > 0 ? '#fdecea' : '#fef6d8');
   e.preventDefault(); // блокируем прокрутку/выделение текста — теперь точно свайп
 }, { passive: false });
