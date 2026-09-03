@@ -922,7 +922,7 @@
       <div class="sv-doc-add-link">
         <input id="svDocLinkInput" placeholder="Вставить ссылку" inputmode="url">
         <div class="sv-doc-add-link-row">
-          <input id="svDocLinkLabelInput" placeholder="Название (необязательно)">
+          <input id="svDocLinkLabelInput" placeholder="Название">
           <button type="button" id="svDocLinkAddBtn">Добавить</button>
         </div>
       </div>
@@ -3854,11 +3854,13 @@ document.getElementById('svDocLinkAddBtn').addEventListener('click', () => {
   const input = document.getElementById('svDocLinkInput');
   const labelInput = document.getElementById('svDocLinkLabelInput');
   const val = input.value.trim();
+  const label = labelInput.value.trim();
   if(!val) return;
+  if(!label){ showToast('Укажите название для ссылки'); labelInput.focus(); return; }
   const note = svCurrentDocNote();
   if(!note) return;
   if(!note.docLinks) note.docLinks = [];
-  note.docLinks.push({ url: val, label: labelInput.value.trim() });
+  note.docLinks.push({ url: val, label });
   input.value = '';
   labelInput.value = '';
   saveState();
