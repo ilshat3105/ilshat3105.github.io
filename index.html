@@ -432,11 +432,12 @@
   .sv-folder-rm:active{color:#3c4043;}
   /* Барабан папки прямо в строке заметки — как выбор времени на iPhone, только горизонтально:
      листаете пальцем, нужный пункт сам «примагничивается» по центру и сразу применяется,
-     без отдельного окна и кнопки подтверждения. */
-  .sv-hwheel-wrap{position:relative;height:32px;margin-top:8px;width:190px;max-width:100%;
-    overflow:hidden;}
-  .sv-hwheel{height:32px;display:flex;overflow-x:scroll;scroll-snap-type:x mandatory;
-    -webkit-overflow-scrolling:touch;scrollbar-width:none;padding:0 calc(50% - 40px);}
+     без отдельного окна и кнопки подтверждения. Стрелочки по бокам — просто подсказка,
+     что это листается, сами по себе не нажимаются (палец проходит сквозь них).*/
+  .sv-hwheel-wrap{position:relative;height:32px;margin-top:8px;width:222px;max-width:100%;}
+  .sv-hwheel{height:32px;width:190px;margin:0 auto;display:flex;overflow-x:scroll;
+    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding:0 calc(50% - 40px);}
   .sv-hwheel::-webkit-scrollbar{display:none;}
   .sv-hwheel-item{flex:0 0 80px;width:80px;height:32px;line-height:32px;text-align:center;
     font-size:12.5px;color:var(--faint);scroll-snap-align:center;white-space:nowrap;
@@ -449,6 +450,10 @@
     width:80px;height:32px;border-left:1.5px solid var(--card-line);
     border-right:1.5px solid var(--card-line);border-radius:8px;
     pointer-events:none;background:rgba(0,0,0,.025);}
+  .sv-hwheel-arrow{position:absolute;top:0;width:16px;height:32px;line-height:32px;
+    text-align:center;font-size:15px;color:var(--faint);pointer-events:none;}
+  .sv-hwheel-arrow.left{left:0;}
+  .sv-hwheel-arrow.right{right:0;}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
      убирает transition, чтобы движение было 1-в-1 с пальцем), а без класса .dragging плавно
      пружинит к текущей высоте — этим и создаётся ощущение отпускания/защёлкивания. */
@@ -3663,8 +3668,10 @@ function renderSvNotes(){
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
         <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
         <div class="sv-hwheel-wrap">
+          <span class="sv-hwheel-arrow left">‹</span>
           <div class="sv-hwheel-selection"></div>
           <div class="sv-hwheel" data-svhwheel="${n.id}">${svHWheelItemsFor(n).map(t => `<div class="sv-hwheel-item${t==='+ Новая'?' add':''}">${escapeHtml(t)}</div>`).join('')}</div>
+          <span class="sv-hwheel-arrow right">›</span>
         </div>
       </div>
       <div class="sv-note-right">
