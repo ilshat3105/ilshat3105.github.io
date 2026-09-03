@@ -419,6 +419,19 @@
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
+  /* Барабан выбора папки — как выбор времени на iPhone: список прокручивается,
+     останавливается («примагничивается» через scroll-snap) на нужном пункте по центру. */
+  .sv-wheel-wrap{position:relative;height:180px;}
+  .sv-wheel{height:180px;overflow-y:scroll;scroll-snap-type:y mandatory;
+    -webkit-overflow-scrolling:touch;padding:72px 0;scrollbar-width:none;}
+  .sv-wheel::-webkit-scrollbar{display:none;}
+  .sv-wheel-item{height:36px;line-height:36px;text-align:center;font-size:16px;
+    color:var(--faint);scroll-snap-align:center;font-family:'Inter',sans-serif;
+    transition:color .1s ease, font-size .1s ease, font-weight .1s ease;}
+  .sv-wheel-item.center{color:#202124;font-weight:700;font-size:18.5px;}
+  .sv-wheel-selection{position:absolute;left:0;right:0;top:72px;height:36px;
+    border-top:1.5px solid var(--card-line);border-bottom:1.5px solid var(--card-line);
+    pointer-events:none;background:rgba(0,0,0,.025);}
   /* Карточка-«резинка»: растёт вместе с пальцем без анимации во время тяги (класс .dragging
      убирает transition, чтобы движение было 1-в-1 с пальцем), а без класса .dragging плавно
      пружинит к текущей высоте — этим и создаётся ощущение отпускания/защёлкивания. */
@@ -950,6 +963,20 @@
         <button class="route-save-btn" id="paymentTypeCash" type="button" style="flex:1;">Нал</button>
       </div>
       <button class="route-import-close" id="paymentTypeSkip" type="button">Пропустить (с НДС, безнал)</button>
+    </div>
+  </div>
+
+  <div class="route-import-overlay" id="svCatPickerOverlay">
+    <div class="route-import-sheet" style="max-height:none;">
+      <div class="route-import-title">Выберите папку</div>
+      <div class="sv-wheel-wrap">
+        <div class="sv-wheel-selection"></div>
+        <div class="sv-wheel" id="svCatWheel"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="route-save-btn" id="svCatPickerAddBtn" type="button" style="flex:1;background:#fff;color:var(--ink);border:1.5px solid var(--card-line);">+ Новая</button>
+        <button class="route-save-btn" id="svCatPickerDoneBtn" type="button" style="flex:1;background:#202124;">Готово</button>
+      </div>
     </div>
   </div>
 
@@ -3501,6 +3528,63 @@ document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   renderSvNotes();
 });
 
+// ---- Барабан выбора папки для заметки (как выбор времени на iPhone) ----
+const SV_WHEEL_ITEM_H = 36;
+let svCatPickerNoteId = null;
+let svWheelSelectedIndex = 0;
+let svWheelScrollTimer = null;
+function svWheelUpdateCenter(){
+  const wheel = document.getElementById('svCatWheel');
+  const items = wheel.querySelectorAll('.sv-wheel-item');
+  const idx = Math.max(0, Math.min(items.length - 1, Math.round(wheel.scrollTop / SV_WHEEL_ITEM_H)));
+  items.forEach((it, i) => it.classList.toggle('center', i === idx));
+  svWheelSelectedIndex = idx;
+}
+function svOpenCatPicker(noteId){
+  svCatPickerNoteId = noteId;
+  const note = svNotes.find(n => n.id == noteId);
+  const cats = Object.keys(svCategoryCounts()).sort();
+  const items = ['Без папки', ...cats];
+  const wheel = document.getElementById('svCatWheel');
+  wheel.innerHTML = items.map(t => `<div class="sv-wheel-item">${escapeHtml(t)}</div>`).join('');
+  const curIdx = note && note.category ? items.indexOf(note.category) : 0;
+  svWheelSelectedIndex = curIdx >= 0 ? curIdx : 0;
+  document.getElementById('svCatPickerOverlay').classList.add('show');
+  requestAnimationFrame(() => {
+    wheel.scrollTop = svWheelSelectedIndex * SV_WHEEL_ITEM_H;
+    svWheelUpdateCenter();
+  });
+}
+document.getElementById('svCatWheel').addEventListener('scroll', () => {
+  svWheelUpdateCenter(); // подсвечиваем центральный пункт прямо во время прокрутки
+  clearTimeout(svWheelScrollTimer);
+  svWheelScrollTimer = setTimeout(svWheelUpdateCenter, 100);
+});
+document.getElementById('svCatPickerAddBtn').addEventListener('click', () => {
+  const val = prompt('Название новой папки');
+  if(!val || !val.trim()) return;
+  const wheel = document.getElementById('svCatWheel');
+  const div = document.createElement('div');
+  div.className = 'sv-wheel-item';
+  div.textContent = val.trim();
+  wheel.appendChild(div);
+  const idx = wheel.querySelectorAll('.sv-wheel-item').length - 1;
+  requestAnimationFrame(() => {
+    wheel.scrollTo({ top: idx * SV_WHEEL_ITEM_H, behavior: 'smooth' });
+  });
+});
+document.getElementById('svCatPickerDoneBtn').addEventListener('click', () => {
+  const items = Array.from(document.getElementById('svCatWheel').querySelectorAll('.sv-wheel-item'));
+  const label = items[svWheelSelectedIndex] ? items[svWheelSelectedIndex].textContent : 'Без папки';
+  const note = svNotes.find(n => n.id == svCatPickerNoteId);
+  if(note){
+    note.category = (label === 'Без папки') ? null : label;
+    saveState();
+    renderSvNotes();
+  }
+  document.getElementById('svCatPickerOverlay').classList.remove('show');
+});
+
 function renderSvNotes(){
   renderSvCatRow();
   const el = document.getElementById('svNotesList');
@@ -3568,14 +3652,7 @@ document.getElementById('svNotesList').addEventListener('change', (e) => {
 document.getElementById('svNotesList').addEventListener('click', (e) => {
   const tag = e.target.closest('[data-svnotetag]');
   if(tag){
-    const id = tag.getAttribute('data-svnotetag');
-    const note = svNotes.find(n => n.id == id);
-    if(!note) return;
-    const val = prompt('Папка (категория) для этой заметки — например «Дом» или «Работа»', note.category || '');
-    if(val == null) return;
-    note.category = val.trim() || null;
-    saveState();
-    renderSvNotes();
+    svOpenCatPicker(tag.getAttribute('data-svnotetag'));
     return;
   }
   const rm = e.target.closest('[data-svnoterm]');
