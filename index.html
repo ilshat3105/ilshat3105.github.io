@@ -917,7 +917,7 @@
     </div>
     <div class="sv-doc-body">
       <div class="sv-doc-label">Описание</div>
-      <textarea class="sv-doc-desc" id="svDocDesc" placeholder="Подробности, детали заказа, что нужно уточнить..."></textarea>
+      <textarea class="sv-doc-desc" id="svDocDesc" placeholder="Описание, подробности, что нужно уточнить..."></textarea>
 
       <div class="sv-doc-label">Ссылки</div>
       <div id="svDocLinks"></div>
@@ -3592,7 +3592,7 @@ function renderSvCatRow(){
   const counts = svCategoryCounts();
   const doneCount = svNotes.filter(n => n.done).length;
   const chip = (val, label, cls) => `<button type="button" class="sv-cat-chip ${cls||''} ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
-  row.innerHTML = chip(null, 'Все')
+  row.innerHTML = chip(null, 'Без папки')
     + svFolders.map(c => `<button type="button" class="sv-cat-chip ${svCatFilter===c?'active':''}" data-svcatfilter="${escapeHtml(c)}" data-svcatfolder="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c] || 0})</button>`).join('')
     + `<button type="button" class="sv-cat-chip sv-cat-add" data-svcataddbtn="1">+ Добавить</button>`
     + `<button type="button" class="sv-cat-chip sv-archive-chip ${svArchiveView?'active':''}" data-svarchivetoggle="1">🗄 Архив${doneCount ? ' ('+doneCount+')' : ''}</button>`;
@@ -3721,7 +3721,9 @@ function renderSvNotes(){
   const el = document.getElementById('svNotesList');
   const pullCard = document.getElementById('svPullCard');
   if(pullCard) pullCard.style.display = svArchiveView ? 'none' : '';
-  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.slice();
+  // «Без папки» показывает только заметки, не привязанные ни к одной папке (обычные
+  // повседневные заметки); заметки конкретной папки видны только внутри своей папки.
+  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.filter(n => !n.category);
   // В обычном списке — только невыполненные, выполненные автоматически уходят в архив.
   list = list.filter(n => svArchiveView ? n.done : !n.done);
   if(!list.length){
