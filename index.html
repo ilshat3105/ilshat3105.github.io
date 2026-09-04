@@ -467,6 +467,8 @@
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
+  .sv-cat-chip.sv-cat-dragging{position:relative;z-index:5;box-shadow:0 8px 20px rgba(0,0,0,.22);
+    opacity:.95;transition:none;}
   .sv-cat-chip.sv-cat-add{background:none;border:1.5px dashed #c9c5b8;color:var(--muted);}
   .sv-cat-chip.sv-archive-chip{margin-left:4px;}
   .sv-cat-chip.sv-archive-chip.active{background:#3c4043;border-color:#3c4043;color:#fff;}
@@ -3577,6 +3579,7 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
 let svFolders = []; // ['Работа', 'Дом', ...] — список папок, листается и пополняется прямо в строке фильтра
+let svDefaultCatLabel = 'Без папки'; // название вкладки для заметок без папки — можно переименовать
 let svCatFilter = null; // null = все категории
 let svArchiveView = false; // false = обычный список (только невыполненные), true = архив (только выполненные)
 
@@ -3591,8 +3594,8 @@ function renderSvCatRow(){
   const row = document.getElementById('svCatFilterRow');
   const counts = svCategoryCounts();
   const doneCount = svNotes.filter(n => n.done).length;
-  const chip = (val, label, cls) => `<button type="button" class="sv-cat-chip ${cls||''} ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}">${escapeHtml(label)}</button>`;
-  row.innerHTML = chip(null, 'Без папки')
+  const chip = (val, label, cls, extraAttr) => `<button type="button" class="sv-cat-chip ${cls||''} ${svCatFilter===val?'active':''}" data-svcatfilter="${val?escapeHtml(val):''}" ${extraAttr||''}>${escapeHtml(label)}</button>`;
+  row.innerHTML = chip(null, svDefaultCatLabel, '', 'data-svcatdefault="1"')
     + svFolders.map(c => `<button type="button" class="sv-cat-chip ${svCatFilter===c?'active':''}" data-svcatfilter="${escapeHtml(c)}" data-svcatfolder="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c] || 0})</button>`).join('')
     + `<button type="button" class="sv-cat-chip sv-cat-add" data-svcataddbtn="1">+ Добавить</button>`
     + `<button type="button" class="sv-cat-chip sv-archive-chip ${svArchiveView?'active':''}" data-svarchivetoggle="1">🗄 Архив${doneCount ? ' ('+doneCount+')' : ''}</button>`;
@@ -3615,20 +3618,52 @@ document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   }
   const chip = e.target.closest('[data-svcatfilter]');
   if(!chip) return;
+  const folderName = chip.getAttribute('data-svcatfolder'); // null для «Без папки»
+  const isDefaultChip = chip.hasAttribute('data-svcatdefault');
+  if((folderName && svCatFilter === folderName) || (isDefaultChip && svCatFilter === null)){
+    // Повторный тап по уже открытой вкладке — переименовать её.
+    const oldLabel = folderName || svDefaultCatLabel;
+    const newLabel = (prompt('Новое название', oldLabel) || '').trim();
+    if(newLabel && newLabel !== oldLabel){
+      if(folderName){
+        if(!svFolders.includes(newLabel)){
+          svFolders = svFolders.map(f => f === folderName ? newLabel : f);
+          svNotes.forEach(n => { if(n.category === folderName) n.category = newLabel; });
+          svCatFilter = newLabel;
+        }
+      } else {
+        svDefaultCatLabel = newLabel;
+      }
+      saveState();
+    }
+    renderSvNotes();
+    return;
+  }
   // Папка фильтрует список и в обычном режиме, и в архиве — режим (архив/не архив)
   // при выборе папки не меняется.
   svCatFilter = chip.getAttribute('data-svcatfilter') || null;
   renderSvNotes();
 });
-// Долгое нажатие на папку в строке фильтра — удалить её (у заметок внутри просто
-// снимется метка, никуда не денутся).
+// Папка в строке фильтра: долгое нажатие без движения — удалить (как раньше); если же
+// палец до этого сдвинулся в сторону — включается горизонтальное перетаскивание, чтобы
+// менять папки местами. Оба жеста начинаются одинаково, поэтому разводим их по движению.
 let svCatLongPressTimer = null;
+let svCatDrag = null;
 document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => {
   const chip = e.target.closest('[data-svcatfolder]');
   if(!chip) return;
   const name = chip.getAttribute('data-svcatfolder');
+  const touch = e.touches[0];
+  const row = document.getElementById('svCatFilterRow');
+  const siblings = Array.from(row.querySelectorAll('[data-svcatfolder]')).map(el => {
+    const r = el.getBoundingClientRect();
+    return { name: el.getAttribute('data-svcatfolder'), mid: r.left + r.width / 2 };
+  });
+  svCatDrag = { chip, name, startX: touch.clientX, active: false, siblings, hoverIndex: null };
   clearTimeout(svCatLongPressTimer);
   svCatLongPressTimer = setTimeout(() => {
+    svCatLongPressTimer = null;
+    svCatDrag = null; // долгое нажатие сработало раньше движения — это точно удаление, не перетаскивание
     if(navigator.vibrate) navigator.vibrate(12);
     showConfirm(`Удалить папку «${name}»? У заметок внутри неё просто снимется эта метка.`, () => {
       svFolders = svFolders.filter(f => f !== name);
@@ -3639,8 +3674,48 @@ document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => 
     });
   }, 500);
 }, { passive: true });
-document.getElementById('svCatFilterRow').addEventListener('touchend', () => clearTimeout(svCatLongPressTimer));
-document.getElementById('svCatFilterRow').addEventListener('touchmove', () => clearTimeout(svCatLongPressTimer));
+document.getElementById('svCatFilterRow').addEventListener('touchmove', (e) => {
+  if(!svCatDrag) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - svCatDrag.startX;
+  if(!svCatDrag.active){
+    if(Math.abs(dx) < 12) return;
+    clearTimeout(svCatLongPressTimer); // сдвинулись в сторону — это перетаскивание, не удаление
+    svCatLongPressTimer = null;
+    svCatDrag.active = true;
+    svCatDrag.chip.classList.add('sv-cat-dragging');
+  }
+  svCatDrag.chip.style.transform = `translateX(${dx}px)`;
+  let idx = svCatDrag.siblings.length - 1;
+  for(let i = 0; i < svCatDrag.siblings.length; i++){
+    if(touch.clientX < svCatDrag.siblings[i].mid){ idx = i; break; }
+  }
+  svCatDrag.hoverIndex = idx;
+  e.preventDefault(); // не даём строке параллельно ещё и прокручиваться под пальцем
+}, { passive: false });
+function svFinishCatDrag(){
+  clearTimeout(svCatLongPressTimer);
+  svCatLongPressTimer = null;
+  if(!svCatDrag) return;
+  const { chip, name, active, siblings, hoverIndex } = svCatDrag;
+  svCatDrag = null;
+  if(!active) return;
+  chip.classList.remove('sv-cat-dragging');
+  chip.style.transform = '';
+  if(hoverIndex == null) return;
+  const order = siblings.map(s => s.name);
+  const fromIdx = order.indexOf(name);
+  if(fromIdx === -1) return;
+  order.splice(fromIdx, 1);
+  let toIdx = hoverIndex > fromIdx ? hoverIndex - 1 : hoverIndex;
+  toIdx = Math.max(0, Math.min(order.length, toIdx));
+  order.splice(toIdx, 0, name);
+  svFolders = order;
+  saveState();
+  renderSvNotes();
+}
+document.getElementById('svCatFilterRow').addEventListener('touchend', svFinishCatDrag);
+document.getElementById('svCatFilterRow').addEventListener('touchcancel', svFinishCatDrag);
 
 // ---- Настоящий вращающийся 3D-барабан папки прямо в строке заметки ----
 // Список пунктов барабана = «Без папки» + всё, что заведено на вкладке «Папки».
@@ -4150,7 +4225,7 @@ const STORAGE_KEY = 'moyreys_notes_v1';
 let localUpdatedAt = 0; // метка времени последней правки на этом телефоне — чтобы облако
                          // не затирало более свежие локальные изменения, сделанные без интернета
 function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq, svFolders, updatedAt: localUpdatedAt };
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq, svFolders, svDefaultCatLabel, updatedAt: localUpdatedAt };
 }
 function applyState(s){
   notes = s.notes || [];
@@ -4163,6 +4238,7 @@ function applyState(s){
   svNotes = s.svNotes || [];
   svNoteIdSeq = s.svNoteIdSeq || 1;
   svFolders = s.svFolders || [];
+  svDefaultCatLabel = s.svDefaultCatLabel || 'Без папки';
   localUpdatedAt = s.updatedAt || 0;
   // На случай старых заметок, сохранённых до появления чекбоксов/перетаскивания —
   // достраиваем недостающие поля, чтобы сортировка и отметки не ломались.
@@ -4414,6 +4490,7 @@ function importDataFromFile(file){
       svNotes = s.svNotes || [];
       svNoteIdSeq = s.svNoteIdSeq || 1;
       svFolders = s.svFolders || [];
+      svDefaultCatLabel = s.svDefaultCatLabel || 'Без папки';
       svNotes.forEach(n => {
         if(n.order == null) n.order = n.createdAt || Date.now();
         if(n.done == null) n.done = false;
