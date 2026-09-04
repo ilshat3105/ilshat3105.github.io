@@ -476,6 +476,8 @@
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
+  .sv-cat-chip.sv-cat-armed{transform:scale(1.06);box-shadow:0 4px 12px rgba(0,0,0,.18);
+    transition:transform .12s ease, box-shadow .12s ease;}
   .sv-cat-chip.sv-cat-dragging{position:relative;z-index:5;box-shadow:0 8px 20px rgba(0,0,0,.22);
     opacity:.95;transition:none;}
   .sv-cat-chip.sv-cat-add{background:none;border:1.5px dashed #c9c5b8;color:var(--muted);}
@@ -933,7 +935,7 @@
     </div>
     <div class="sv-doc-body">
       <div class="sv-doc-label">Описание</div>
-      <textarea class="sv-doc-desc" id="svDocDesc" placeholder="Описание, подробности, что нужно уточнить..."></textarea>
+      <textarea class="sv-doc-desc" id="svDocDesc"></textarea>
 
       <div class="sv-doc-label">Ссылки</div>
       <div id="svDocLinks"></div>
@@ -3658,9 +3660,11 @@ document.getElementById('svCatFilterRow').addEventListener('click', (e) => {
   svCatFilter = chip.getAttribute('data-svcatfilter') || null;
   renderSvNotes();
 });
-// Папка в строке фильтра: долгое нажатие без движения — удалить (как раньше); если же
-// палец до этого сдвинулся в сторону — включается горизонтальное перетаскивание, чтобы
-// менять папки местами. Оба жеста начинаются одинаково, поэтому разводим их по движению.
+// Папка в строке фильтра: сначала нужно на полсекунды задержать палец на месте —
+// папка «приподнимается» (лёгкая вибрация и подсветка), и только ПОСЛЕ этого движение
+// пальца начинает её тащить и переставлять местами с другими. Быстрый смах пальцем без
+// задержки — это всегда обычная прокрутка строки, её не перехватываем и не мешаем ей.
+// Если после «приподнятия» просто отпустить палец, не двигая — предложит удалить папку.
 let svCatLongPressTimer = null;
 let svCatDrag = null;
 document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => {
@@ -3673,30 +3677,28 @@ document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => 
     const r = el.getBoundingClientRect();
     return { name: el.getAttribute('data-svcatfolder'), mid: r.left + r.width / 2 };
   });
-  svCatDrag = { chip, name, startX: touch.clientX, active: false, siblings, hoverIndex: null };
+  svCatDrag = { chip, name, startX: touch.clientX, armed: false, active: false, siblings, hoverIndex: null };
   clearTimeout(svCatLongPressTimer);
   svCatLongPressTimer = setTimeout(() => {
     svCatLongPressTimer = null;
-    svCatDrag = null; // долгое нажатие сработало раньше движения — это точно удаление, не перетаскивание
+    if(!svCatDrag) return; // палец уже отпустили или увели раньше — таймер уже не актуален
+    svCatDrag.armed = true;
+    svCatDrag.chip.classList.add('sv-cat-armed');
     if(navigator.vibrate) navigator.vibrate(12);
-    showConfirm(`Удалить папку «${name}»? У заметок внутри неё просто снимется эта метка.`, () => {
-      svFolders = svFolders.filter(f => f !== name);
-      if(svCatFilter === name) svCatFilter = null;
-      svNotes.forEach(n => { if(n.category === name) n.category = null; });
-      saveState();
-      renderSvNotes();
-    });
-  }, 500);
+  }, 3000); // 3 секунды удержания — чтобы обычная прокрутка строки точно не задевала папки
 }, { passive: true });
 document.getElementById('svCatFilterRow').addEventListener('touchmove', (e) => {
   if(!svCatDrag) return;
+  if(!svCatDrag.armed){
+    // Ещё не «приподняли» задержкой — это обычная прокрутка строки, не вмешиваемся,
+    // даём браузеру скроллить как обычно, жест перетаскивания даже не начинаем.
+    return;
+  }
   const touch = e.touches[0];
   const dx = touch.clientX - svCatDrag.startX;
   if(!svCatDrag.active){
-    if(Math.abs(dx) < 12) return;
-    clearTimeout(svCatLongPressTimer); // сдвинулись в сторону — это перетаскивание, не удаление
-    svCatLongPressTimer = null;
     svCatDrag.active = true;
+    svCatDrag.chip.classList.remove('sv-cat-armed');
     svCatDrag.chip.classList.add('sv-cat-dragging');
   }
   svCatDrag.chip.style.transform = `translateX(${dx}px)`;
@@ -3705,28 +3707,43 @@ document.getElementById('svCatFilterRow').addEventListener('touchmove', (e) => {
     if(touch.clientX < svCatDrag.siblings[i].mid){ idx = i; break; }
   }
   svCatDrag.hoverIndex = idx;
-  e.preventDefault(); // не даём строке параллельно ещё и прокручиваться под пальцем
+  e.preventDefault(); // теперь точно перетаскивание — не даём строке параллельно прокручиваться
 }, { passive: false });
 function svFinishCatDrag(){
   clearTimeout(svCatLongPressTimer);
   svCatLongPressTimer = null;
   if(!svCatDrag) return;
-  const { chip, name, active, siblings, hoverIndex } = svCatDrag;
+  const { chip, name, armed, active, siblings, hoverIndex } = svCatDrag;
   svCatDrag = null;
-  if(!active) return;
-  chip.classList.remove('sv-cat-dragging');
-  chip.style.transform = '';
-  if(hoverIndex == null) return;
-  const order = siblings.map(s => s.name);
-  const fromIdx = order.indexOf(name);
-  if(fromIdx === -1) return;
-  order.splice(fromIdx, 1);
-  let toIdx = hoverIndex > fromIdx ? hoverIndex - 1 : hoverIndex;
-  toIdx = Math.max(0, Math.min(order.length, toIdx));
-  order.splice(toIdx, 0, name);
-  svFolders = order;
-  saveState();
-  renderSvNotes();
+  if(active){
+    // Тащили — переставляем местами.
+    chip.classList.remove('sv-cat-dragging');
+    chip.style.transform = '';
+    if(hoverIndex == null) return;
+    const order = siblings.map(s => s.name);
+    const fromIdx = order.indexOf(name);
+    if(fromIdx === -1) return;
+    order.splice(fromIdx, 1);
+    let toIdx = hoverIndex > fromIdx ? hoverIndex - 1 : hoverIndex;
+    toIdx = Math.max(0, Math.min(order.length, toIdx));
+    order.splice(toIdx, 0, name);
+    svFolders = order;
+    saveState();
+    renderSvNotes();
+    return;
+  }
+  if(armed){
+    // Приподняли задержкой, но никуда не потащили — значит хотели удалить.
+    chip.classList.remove('sv-cat-armed');
+    showConfirm(`Удалить папку «${name}»? У заметок внутри неё просто снимется эта метка.`, () => {
+      svFolders = svFolders.filter(f => f !== name);
+      if(svCatFilter === name) svCatFilter = null;
+      svNotes.forEach(n => { if(n.category === name) n.category = null; });
+      saveState();
+      renderSvNotes();
+    });
+  }
+  // иначе — обычный быстрый тап или прокрутка строки, тап уже сам обработается кликом
 }
 document.getElementById('svCatFilterRow').addEventListener('touchend', svFinishCatDrag);
 document.getElementById('svCatFilterRow').addEventListener('touchcancel', svFinishCatDrag);
