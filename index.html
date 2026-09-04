@@ -3738,7 +3738,7 @@ const SV_DRUM_ANGLE = 24;    // угол на один пункт, град — 
 const SV_DRUM_RADIUS = SV_DRUM_ITEM_H / (2 * Math.tan((SV_DRUM_ANGLE * Math.PI / 180) / 2));
 
 function svDrumItemsFor(note){
-  return ['Без папки', ...svFolders];
+  return [svDefaultCatLabel, ...svFolders];
 }
 // Расставляет пункты по поверхности цилиндра для текущего (возможно, дробного —
 // во время вращения пальцем) положения cur. animate=true — плавно доворачивается
@@ -3766,7 +3766,7 @@ function svSetupDrums(){
     const track = drum.querySelector('[data-svdrumtrack]');
     const items = Array.from(track.querySelectorAll('.sv-drum-item'));
     const labels = items.map(it => it.textContent);
-    let curIdx = labels.indexOf(note.category || 'Без папки');
+    let curIdx = labels.indexOf(note.category || svDefaultCatLabel);
     if(curIdx < 0) curIdx = 0;
     let cur = curIdx;
     svLayoutDrum(items, cur, false);
@@ -3793,7 +3793,7 @@ function svSetupDrums(){
       const snapped = Math.max(0, Math.min(items.length - 1, Math.round(cur)));
       cur = snapped;
       svLayoutDrum(items, cur, true); // «довращивается» и мягко защёлкивается
-      const newCat = labels[snapped] === 'Без папки' ? null : labels[snapped];
+      const newCat = labels[snapped] === svDefaultCatLabel ? null : labels[snapped];
       if(note.category !== newCat){
         note.category = newCat;
         saveState();
