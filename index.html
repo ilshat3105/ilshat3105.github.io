@@ -3828,9 +3828,10 @@ function renderSvNotes(){
   const el = document.getElementById('svNotesList');
   const pullCard = document.getElementById('svPullCard');
   if(pullCard) pullCard.style.display = svArchiveView ? 'none' : '';
-  // «Без папки» показывает только заметки, не привязанные ни к одной папке (обычные
-  // повседневные заметки); заметки конкретной папки видны только внутри своей папки.
-  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.filter(n => !n.category);
+  // «Главная» показывает вообще все незавершённые заметки, независимо от папки; папки —
+  // тот же список, но отфильтрованный по конкретной теме. Это не копии: заметка одна и
+  // та же, отметить выполненной можно и там, и там — везде отметится одинаково.
+  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.slice();
   // В обычном списке — только невыполненные, выполненные автоматически уходят в архив.
   list = list.filter(n => svArchiveView ? n.done : !n.done);
   if(!list.length){
