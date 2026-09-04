@@ -1,7 +1,5 @@
-// Service Worker для приложения "В рейсе"
-// Кэширует основные файлы, чтобы приложение открывалось без интернета.
+const CACHE_NAME = 'vreyse-v1';
 
-const CACHE_NAME = 'v-reyse-cache-v2';
 const FILES_TO_CACHE = [
   './',
   './index.html',
@@ -37,16 +35,34 @@ self.addEventListener('activate', (event) => {
 // Запросы: сначала пробуем сеть (чтобы видеть свежую версию),
 // если сети нет — отдаём сохранённую копию из кэша.
 //
-// Важно: cache: 'no-store' заставляет сам fetch() игнорировать обычный
-// HTTP-кэш браузера (тот, что настраивается заголовками сервера и не связан
-// с "Очистить данные сайта") — без этого браузер мог молча подсовывать
-// версию из своего кэша даже при рабочей сети, и обновление не было видно,
+// Важно: cache: 'no-store' заставляет сам fetch() игнорировать
+// HTTP-кэш браузера (тот, что настраивается заголовками, а не тот,
+// что чистится через "Очистить данные сайта") — без этого браузер мог
+// молча отдавать старую версию из своего кэша даже при рабочей сети,
 // пока пользователь не чистил кэш вручную.
+//
+// Важно: у fetch() нет своего таймаута — на слабом сигнале (не полный
+// офлайн, а просто "почти нет связи") запрос может просто зависать и
+// ждать ответа десятки секунд, прежде чем сорвётся сам. FETCH_TIMEOUT_MS
+// ниже обрывает ожидание раньше и сразу переключает на кэш, чтобы
+// приложение не "зависало", а быстро открывалось из сохранённой копии.
+const FETCH_TIMEOUT_MS = 3500;
+
+function fetchWithTimeout(request, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    fetch(request, { cache: 'no-store' }).then(
+      (response) => { clearTimeout(timer); resolve(response); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
-    fetch(event.request, { cache: 'no-store' })
+    fetchWithTimeout(event.request, FETCH_TIMEOUT_MS)
       .then((response) => {
         const responseClone = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
