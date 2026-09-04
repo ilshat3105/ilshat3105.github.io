@@ -3685,7 +3685,7 @@ document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => 
     svCatDrag.armed = true;
     svCatDrag.chip.classList.add('sv-cat-armed');
     if(navigator.vibrate) navigator.vibrate(12);
-  }, 450);
+  }, 1350); // в 3 раза дольше обычного долгого нажатия — чтобы случайно не всплывало удаление
 }, { passive: true });
 document.getElementById('svCatFilterRow').addEventListener('touchmove', (e) => {
   if(!svCatDrag) return;
