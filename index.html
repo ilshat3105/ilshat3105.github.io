@@ -474,7 +474,8 @@
     -webkit-overflow-scrolling:touch;}
   .sv-cat-chip{flex-shrink:0;background:#fff;border:1px solid var(--card-line);color:var(--muted);
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
-    font-family:'Inter',sans-serif;white-space:nowrap;}
+    font-family:'Inter',sans-serif;white-space:nowrap;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
   .sv-cat-chip.sv-cat-armed{transform:scale(1.06);box-shadow:0 4px 12px rgba(0,0,0,.18);
     transition:transform .12s ease, box-shadow .12s ease;}
@@ -3685,7 +3686,7 @@ document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => 
     svCatDrag.armed = true;
     svCatDrag.chip.classList.add('sv-cat-armed');
     if(navigator.vibrate) navigator.vibrate(12);
-  }, 3000); // 3 секунды удержания — чтобы обычная прокрутка строки точно не задевала папки
+  }, 1000); // теперь конфликта с выделением текста нет (запретили выше через user-select), достаточно 1 секунды
 }, { passive: true });
 document.getElementById('svCatFilterRow').addEventListener('touchmove', (e) => {
   if(!svCatDrag) return;
