@@ -474,7 +474,8 @@
     -webkit-overflow-scrolling:touch;}
   .sv-cat-chip{flex-shrink:0;background:#fff;border:1px solid var(--card-line);color:var(--muted);
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
-    font-family:'Inter',sans-serif;white-space:nowrap;}
+    font-family:'Inter',sans-serif;white-space:nowrap;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;}
   .sv-cat-chip.active{background:#202124;border-color:#202124;color:#fff;}
   .sv-cat-chip.sv-cat-armed{transform:scale(1.06);box-shadow:0 4px 12px rgba(0,0,0,.18);
     transition:transform .12s ease, box-shadow .12s ease;}
@@ -935,7 +936,7 @@
     </div>
     <div class="sv-doc-body">
       <div class="sv-doc-label">Описание</div>
-      <textarea class="sv-doc-desc" id="svDocDesc" placeholder="Описание, подробности, что нужно уточнить..."></textarea>
+      <textarea class="sv-doc-desc" id="svDocDesc"></textarea>
 
       <div class="sv-doc-label">Ссылки</div>
       <div id="svDocLinks"></div>
@@ -3685,7 +3686,7 @@ document.getElementById('svCatFilterRow').addEventListener('touchstart', (e) => 
     svCatDrag.armed = true;
     svCatDrag.chip.classList.add('sv-cat-armed');
     if(navigator.vibrate) navigator.vibrate(12);
-  }, 1350); // в 3 раза дольше обычного долгого нажатия — чтобы случайно не всплывало удаление
+  }, 1000); // теперь конфликта с выделением текста нет (запретили выше через user-select), достаточно 1 секунды
 }, { passive: true });
 document.getElementById('svCatFilterRow').addEventListener('touchmove', (e) => {
   if(!svCatDrag) return;
@@ -3827,9 +3828,10 @@ function renderSvNotes(){
   const el = document.getElementById('svNotesList');
   const pullCard = document.getElementById('svPullCard');
   if(pullCard) pullCard.style.display = svArchiveView ? 'none' : '';
-  // «Без папки» показывает только заметки, не привязанные ни к одной папке (обычные
-  // повседневные заметки); заметки конкретной папки видны только внутри своей папки.
-  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.filter(n => !n.category);
+  // «Главная» показывает вообще все незавершённые заметки, независимо от папки; папки —
+  // тот же список, но отфильтрованный по конкретной теме. Это не копии: заметка одна и
+  // та же, отметить выполненной можно и там, и там — везде отметится одинаково.
+  let list = svCatFilter ? svNotes.filter(n => n.category === svCatFilter) : svNotes.slice();
   // В обычном списке — только невыполненные, выполненные автоматически уходят в архив.
   list = list.filter(n => svArchiveView ? n.done : !n.done);
   if(!list.length){
