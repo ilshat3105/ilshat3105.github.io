@@ -18,7 +18,9 @@
     --tint-red-border:#f3b4ae; --tint-blue-bg:#eff6ff; --tint-blue-border:#bfdbfe;
     --tint-green-bg:#e6f4ea;
   }
+  .phone{color-scheme:light;}
   .phone[data-theme="dark"]{
+    color-scheme:dark;
     --ink:#e8eaed; --muted:#9aa0a6; --faint:#6b7076; --line:#3a3d42; --bg:#17191c;
     --accent:#8ab4f8; --steel:#7fa8d9;
     --surface:#212327; --surface-alt:#26292d; --page-bg:#0e0f11;
@@ -30,6 +32,7 @@
     --tint-green-bg:#1c3324;
   }
   *{box-sizing:border-box;}
+  input,textarea{color:inherit;font-family:inherit;}
   button{-webkit-tap-highlight-color:transparent;outline:none;}
   body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--page-bg);min-height:100vh;
     display:flex;justify-content:center;padding:40px 16px;color:var(--ink);}
@@ -760,7 +763,7 @@
   .flag-chip{background:var(--concrete);border-color:var(--card-line);padding:5px 8px;}
   .flag-chip:has(input:checked){background:var(--tint-blue-bg);border-color:var(--tint-blue-border);color:#1d4ed8;}
   .ed-paid-badge{border-color:var(--card-line);box-shadow:0 2px 8px rgba(15,23,42,.04);}
-  .editor-body textarea.body{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px;min-height:170px;}
+  .editor-body textarea.body{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px;min-height:170px;color:var(--ink);}
   .editor-body textarea.body:placeholder-shown:not(:focus){background:var(--concrete);color:var(--faint);}
   .ed-add-photo,.ed-photo-thumb{width:68px;height:68px;border-radius:12px;}
   .ed-add-photo{border-color:#cbd5e1;background:var(--surface);color:var(--accent);}
