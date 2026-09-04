@@ -188,6 +188,15 @@
   .drawer button:active{background:#f1f3f4;}
 
   /* editor */
+  .update-banner{position:fixed;left:0;top:0;width:100%;z-index:200;display:none;
+    align-items:center;justify-content:space-between;gap:12px;
+    background:#202124;color:#fff;padding:10px 14px;
+    padding-top:calc(10px + env(safe-area-inset-top, 0px));
+    font-family:'Inter',sans-serif;font-size:13.5px;box-sizing:border-box;}
+  .update-banner.show{display:flex;}
+  .update-banner span{flex:1;}
+  .update-banner button{flex-shrink:0;background:#fff;color:#202124;border:none;border-radius:10px;
+    padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
   .editor-overlay{position:fixed;left:0;top:0;width:100%;height:100vh;height:100dvh;background:#fff;z-index:40;display:none;flex-direction:column;}
   .editor-overlay.show{display:flex;}
 
@@ -836,6 +845,11 @@
 <body>
 
 <div class="phone">
+
+  <div class="update-banner" id="updateBanner">
+    <span>Доступно обновление приложения</span>
+    <button type="button" id="updateBannerBtn">Обновить</button>
+  </div>
 
   <div id="authOverlay" style="position:absolute;inset:0;background:#fff;z-index:100;display:none;flex-direction:column;justify-content:center;padding:32px 28px;box-sizing:border-box;">
     <div style="text-align:center;margin-bottom:28px;">
@@ -4551,7 +4565,44 @@ renderContent();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then((registration) => {
+      const banner = document.getElementById('updateBanner');
+
+      // Новый sw.js уже скачался и ждёт — показываем плашку.
+      function showUpdateBanner(){
+        banner.classList.add('show');
+      }
+      // Если воркер уже ждёт активации на момент регистрации (например, обновление
+      // подтянулось, пока приложение было свёрнуто) — сразу показываем плашку.
+      if(registration.waiting && navigator.serviceWorker.controller){
+        showUpdateBanner();
+      }
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if(!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          // installed + уже есть активный контроллер = это не первая установка,
+          // а именно ОБНОВЛЕНИЕ поверх уже работающей версии.
+          if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
+            showUpdateBanner();
+          }
+        });
+      });
+
+      document.getElementById('updateBannerBtn').addEventListener('click', () => {
+        location.reload();
+      });
+
+      // Приложение на телефоне часто не перезапускается по-настоящему при сворачивании —
+      // Android просто держит его в памяти. Поэтому при каждом возврате на экран сами
+      // спрашиваем сервер, нет ли новой версии, вместо того чтобы ждать следующего
+      // «настоящего» открытия.
+      document.addEventListener('visibilitychange', () => {
+        if(document.visibilityState === 'visible'){
+          registration.update().catch(() => {});
+        }
+      });
+    }).catch(() => {});
   });
 }
 </script>
