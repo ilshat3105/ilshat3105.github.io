@@ -4659,6 +4659,22 @@ if(window.visualViewport){
   window.visualViewport.addEventListener('scroll', adjustEditorForViewport);
 }
 
+// Скрытие клавиатуры само по себе не убирает фокус с поля (курсор технически остаётся
+// в тексте) — например, барабан папки в «Автосервисе» так и оставался бы разблокированным.
+// Ловим момент, когда видимая область экрана заметно выросла (клавиатуру убрали) во время
+// редактирования текстового поля, и снимаем фокус сами.
+if(window.visualViewport){
+  let lastVVHeight = window.visualViewport.height;
+  window.visualViewport.addEventListener('resize', () => {
+    const vv = window.visualViewport;
+    const active = document.activeElement;
+    if(vv.height > lastVVHeight + 100 && active && active.matches('textarea, input')){
+      active.blur();
+    }
+    lastVVHeight = vv.height;
+  });
+}
+
 renderContent();
 
 if ('serviceWorker' in navigator) {
