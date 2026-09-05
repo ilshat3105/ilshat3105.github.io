@@ -521,7 +521,9 @@
      реально вращается в перспективе, отпустили — довращивается и защёлкивается на пункте.
      Стоит справа, компактно — чтобы главным в карточке оставался текст заметки. */
   .sv-drum{position:relative;width:84px;height:74px;flex-shrink:0;align-self:center;
-    perspective:260px;touch-action:none;cursor:grab;overflow:hidden;border-radius:8px;}
+    perspective:260px;touch-action:none;cursor:grab;overflow:hidden;border-radius:8px;
+    transition:opacity .15s ease;}
+  .sv-drum.sv-drum-locked{opacity:.35;cursor:default;pointer-events:none;}
   .sv-drum-track{position:absolute;inset:0;transform-style:preserve-3d;}
   .sv-drum-item{position:absolute;left:0;right:0;top:50%;height:24px;margin-top:-12px;
     line-height:24px;text-align:center;font-size:11px;color:var(--faint);
@@ -3837,6 +3839,8 @@ function svSetupDrums(){
 
     let drag = null;
     drum.addEventListener('pointerdown', (e) => {
+      // Блокировка/разблокировка целиком на CSS (pointer-events у .sv-drum-locked),
+      // так что сюда событие вообще не долетит, пока не редактируешь эту заметку.
       drum.setPointerCapture(e.pointerId);
       drag = { startY: e.clientY, startCur: cur, pointerId: e.pointerId };
       drum.style.cursor = 'grabbing';
@@ -3898,7 +3902,7 @@ function renderSvNotes(){
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
         <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
       </div>
-      <div class="sv-drum" data-svdrum="${n.id}">
+      <div class="sv-drum sv-drum-locked" data-svdrum="${n.id}">
         <div class="sv-drum-fade top"></div>
         <div class="sv-drum-selection"></div>
         <div class="sv-drum-track" data-svdrumtrack="${n.id}">${svDrumItemsFor(n).map(t => `<div class="sv-drum-item">${escapeHtml(t)}</div>`).join('')}</div>
@@ -3949,6 +3953,21 @@ document.getElementById('svNotesList').addEventListener('input', (e) => {
   ta.style.height = 'auto';
   ta.style.height = ta.scrollHeight + 'px';
   scheduleSvNotesSave();
+});
+// Барабаны папок по умолчанию всегда заблокированы (не среагируют на прикосновение).
+// Разблокируется только барабан той заметки, текст которой сейчас в фокусе — как только
+// ушли из поля, блокировка возвращается.
+document.getElementById('svNotesList').addEventListener('focusin', (e) => {
+  const ta = e.target.closest('[data-svnotetext]');
+  if(!ta) return;
+  const drum = document.querySelector(`[data-svdrum="${ta.getAttribute('data-svnotetext')}"]`);
+  if(drum) drum.classList.remove('sv-drum-locked');
+});
+document.getElementById('svNotesList').addEventListener('focusout', (e) => {
+  const ta = e.target.closest('[data-svnotetext]');
+  if(!ta) return;
+  const drum = document.querySelector(`[data-svdrum="${ta.getAttribute('data-svnotetext')}"]`);
+  if(drum) drum.classList.add('sv-drum-locked');
 });
 document.getElementById('svNotesList').addEventListener('change', (e) => {
   const chk = e.target.closest('[data-svnotedone]');
