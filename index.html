@@ -4257,6 +4257,7 @@ svNotesListEl.addEventListener('touchmove', (e) => {
   // ниже успеет это перебить (особенно если палец идёт не строго горизонтально).
   if(svMainEl.scrollTop !== svSwipe.startScrollTop) svMainEl.scrollTop = svSwipe.startScrollTop;
   e.preventDefault(); // блокируем прокрутку/выделение текста — теперь точно свайп
+  e.stopPropagation(); // и не даём событию долететь до других жестов (например, «потянуть вниз»)
 }, { passive: false });
 // Сохраняет положение экрана при перерисовке списка после удаления/избранного — но
 // НЕ за счёт самой заметки, с которой было действие (она как раз может уехать далеко —
@@ -4338,8 +4339,11 @@ function svSetPullHeight(px, ready){
   svPullCard.classList.toggle('ready', !!ready);
 }
 svMainEl.addEventListener('touchstart', (e) => {
-  if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 0 || e.target.closest('.sv-drum')){
-    svPullStartY = null; return; // палец на барабане папок — это не жест «потянуть вниз»
+  if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 0
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-swipe-row')){
+    // Барабан папки — не этот жест; и любая УЖЕ существующая заметка тоже не должна его
+    // запускать (иначе свайп по заметке одновременно ещё и «тянет» карточку создания вниз).
+    svPullStartY = null; return;
   }
   svPullStartY = e.touches[0].clientY;
   svPulling = false;
