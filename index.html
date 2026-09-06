@@ -512,7 +512,8 @@
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
   .sv-cat-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:10px;
     -webkit-overflow-scrolling:touch;position:sticky;top:0;z-index:6;background:var(--bg);
-    box-shadow:0 -12px 0 var(--bg);}
+    box-shadow:0 -12px 0 var(--bg);transform:translateZ(0);-webkit-transform:translateZ(0);
+    backface-visibility:hidden;-webkit-backface-visibility:hidden;}
   .sv-cat-chip{flex-shrink:0;background:var(--surface);border:1px solid var(--card-line);color:var(--muted);
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;-webkit-user-select:none;user-select:none;
