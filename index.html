@@ -4386,7 +4386,10 @@ function svSetPullHeight(px, ready){
   svPullCard.classList.toggle('ready', !!ready);
 }
 svMainEl.addEventListener('touchstart', (e) => {
-  if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 0
+  // Небольшой допуск по прокрутке (не строго 0): после создания заметки поле сразу
+  // получает фокус и клавиатура сама чуть подскролливает список, чтобы показать его —
+  // из-за этого «до самого верха» иногда означает 1-3px, а не ровно 0.
+  if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 4
     || e.target.closest('.sv-drum') || e.target.closest('.sv-swipe-row') || e.target.closest('.sv-cat-row')){
     // Барабан папки и уже существующие заметки — не этот жест; строку папок исключаем
     // отдельно на случай, если она (по ошибке) окажется закреплена поверх карточки создания.
@@ -4419,7 +4422,11 @@ function svEndPull(e){
   if(svPulling && dy > SV_PULL_THRESHOLD){
     svPullCard.classList.remove('dragging');
     svSetPullHeight(SV_PULL_MAX, true); // короткая пауза «защёлкивания» перед созданием
-    setTimeout(() => { svResetPullCard(); svCreateNote(); }, 110);
+    setTimeout(() => {
+      svResetPullCard();
+      svCreateNote();
+      svMainEl.scrollTop = 0; // на случай, если фокус на новом поле сам чуть сдвинул прокрутку
+    }, 110);
   } else {
     svResetPullCard(); // отпустили раньше времени — плавно схлопывается назад, ничего не создаётся
   }
