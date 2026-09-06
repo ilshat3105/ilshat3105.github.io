@@ -4237,6 +4237,10 @@ svNotesListEl.addEventListener('touchmove', (e) => {
     if(Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy)) return;
     svSwipe.active = true;
     svSwipe.card.classList.add('swiping');
+    // Как только точно поняли, что это горизонтальный свайп — полностью запрещаем
+    // браузеру любые собственные жесты на строке (включая эффект «резинки»/overscroll,
+    // который не всегда останавливается одним preventDefault).
+    svSwipe.row.style.touchAction = 'none';
   }
   svSwipe.dx = dx; // «сырое» значение — по нему решаем, сработало ли, при отпускании
   // Сама карточка сдвигается только на небольшое расстояние (не тянется за пальцем через
@@ -4285,6 +4289,7 @@ function svFinishSwipe(){
   if(!active) return;
   card.classList.remove('swiping');
   row.classList.remove('sv-swipe-show-del', 'sv-swipe-show-fav');
+  row.style.touchAction = '';
   card.style.transition = 'transform .2s ease';
   card.style.transform = '';
   setTimeout(() => { card.style.transition = ''; }, 210);
