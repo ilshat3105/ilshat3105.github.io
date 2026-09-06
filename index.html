@@ -553,10 +553,11 @@
      пружинит к текущей высоте — этим и создаётся ощущение отпускания/защёлкивания. */
   .sv-pull-card{height:0;padding-top:0;padding-bottom:0;margin-bottom:0;overflow:hidden;
     opacity:.55;transition:height .2s cubic-bezier(.34,1.56,.64,1), padding .2s ease,
-    margin-bottom .2s ease, opacity .2s ease;}
+    margin-bottom .2s ease, margin-top .2s ease, opacity .2s ease;}
   .sv-pull-card.dragging{transition:none;}
   .sv-pull-card.ready{opacity:1;box-shadow:0 6px 18px rgba(0,0,0,.12);
     border-color:#3c4043;}
+  .sv-pull-card-bottom{margin-bottom:0;margin-top:0;}
   .sv-pull-card .sv-pull-card-text{color:var(--faint);pointer-events:none;}
   .sv-pull-card.ready .sv-pull-card-text{color:var(--ink);font-weight:700;}
 
@@ -967,6 +968,9 @@
         <div class="sv-note-text sv-pull-card-text">Заметка...</div>
       </div>
       <div id="svNotesList"></div>
+      <div class="sv-note-card sv-pull-card sv-pull-card-bottom" id="svPullCardBottom">
+        <div class="sv-note-text sv-pull-card-text">Заметка...</div>
+      </div>
     </div>    <div id="fuelSection" style="display:none;">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
       <div class="exp-view-toggle" id="expViewToggle">
@@ -3902,6 +3906,8 @@ function renderSvNotes(){
   const el = document.getElementById('svNotesList');
   const pullCard = document.getElementById('svPullCard');
   if(pullCard) pullCard.style.display = svArchiveView ? 'none' : '';
+  const pullCardBottom = document.getElementById('svPullCardBottom');
+  if(pullCardBottom) pullCardBottom.style.display = svArchiveView ? 'none' : '';
   // «Главная» показывает вообще все незавершённые заметки, независимо от папки; папки —
   // тот же список, но отфильтрованный по конкретной теме. Это не копии: заметка одна и
   // та же, отметить выполненной можно и там, и там — везде отметится одинаково.
@@ -3947,7 +3953,7 @@ function renderSvNotes(){
   el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
   svSetupDrums();
 }
-function svCreateNote(){
+function svCreateNote(atBottom){
   // Смысла плодить пустые заметки нет — если уже есть незаполненная, открываем её же,
   // а не создаём ещё одну.
   const existingEmpty = svNotes.find(n => !n.text || !n.text.trim());
@@ -3961,13 +3967,21 @@ function svCreateNote(){
     }, 60);
     return;
   }
-  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order: Date.now(), done: false, favorite: false, category: svCatFilter || null };
-  svNotes.unshift(note);
+  // Обычно новая заметка встаёт наверх (order побольше всех остальных); если создаём
+  // снизу — наоборот, ставим order меньше самого маленького, чтобы она легла в конец.
+  const order = atBottom
+    ? (svNotes.length ? Math.min(...svNotes.map(n => n.order || 0)) - 1 : Date.now())
+    : Date.now();
+  const note = { id: svNoteIdSeq++, text: '', createdAt: Date.now(), order, done: false, favorite: false, category: svCatFilter || null };
+  if(atBottom) svNotes.push(note); else svNotes.unshift(note);
   saveState();
   renderSvNotes();
   setTimeout(() => {
     const ta = document.querySelector(`[data-svnotetext="${note.id}"]`);
-    if(ta) ta.focus();
+    if(ta){
+      ta.focus();
+      if(atBottom) ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }, 60);
 }
 let svNotesSaveTimer = null;
@@ -4446,6 +4460,70 @@ function svEndPull(e){
 }
 svMainEl.addEventListener('touchend', svEndPull);
 svMainEl.addEventListener('touchcancel', svEndPull);
+
+// Зеркальный жест снизу: список прокручен до самого низа, тянем ВВЕРХ — раскрывается
+// такая же карточка, но под последней заметкой, и новая заметка создаётся в конце списка.
+const svPullCardBottom = document.getElementById('svPullCardBottom');
+function svSetPullHeightBottom(px, ready){
+  svPullCardBottom.style.height = px + 'px';
+  const t = Math.min(1, px / SV_PULL_MAX);
+  svPullCardBottom.style.paddingTop = (14 * t) + 'px';
+  svPullCardBottom.style.paddingBottom = (14 * t) + 'px';
+  svPullCardBottom.style.marginTop = (10 * t) + 'px';
+  svPullCardBottom.classList.toggle('ready', !!ready);
+}
+let svPullBottomStartY = null;
+let svPullBottomStartX = null;
+let svPullingBottom = false;
+svMainEl.addEventListener('touchstart', (e) => {
+  const atBottom = svMainEl.scrollTop + svMainEl.clientHeight >= svMainEl.scrollHeight - 4;
+  if(currentSection !== 'service' || svArchiveView || !atBottom
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row')){
+    svPullBottomStartY = null; return;
+  }
+  svPullBottomStartY = e.touches[0].clientY;
+  svPullBottomStartX = e.touches[0].clientX;
+  svPullingBottom = false;
+}, { passive: true });
+svMainEl.addEventListener('touchmove', (e) => {
+  if(currentSection !== 'service' || svPullBottomStartY == null) return;
+  const dy = e.touches[0].clientY - svPullBottomStartY; // отрицательное — палец идёт вверх
+  const dx = e.touches[0].clientX - svPullBottomStartX;
+  if(!svPullingBottom){
+    if(Math.abs(dx) > Math.abs(dy)){ svPullBottomStartY = null; return; }
+    if(dy >= -4) return;
+  }
+  if(dy < -4){
+    svPullingBottom = true;
+    e.preventDefault();
+    svPullCardBottom.classList.add('dragging');
+    const mag = Math.min(-dy, SV_PULL_MAX);
+    svSetPullHeightBottom(mag, mag > SV_PULL_THRESHOLD);
+  }
+}, { passive: false });
+function svResetPullCardBottom(){
+  svPullCardBottom.classList.remove('dragging');
+  svSetPullHeightBottom(0, false);
+}
+function svEndPullBottom(e){
+  if(currentSection !== 'service' || svPullBottomStartY == null) return;
+  const touch = e.changedTouches ? e.changedTouches[0] : null;
+  const dy = touch ? touch.clientY - svPullBottomStartY : 0;
+  svPullBottomStartY = null;
+  if(svPullingBottom && -dy > SV_PULL_THRESHOLD){
+    svPullCardBottom.classList.remove('dragging');
+    svSetPullHeightBottom(SV_PULL_MAX, true);
+    setTimeout(() => {
+      svResetPullCardBottom();
+      svCreateNote(true);
+    }, 110);
+  } else {
+    svResetPullCardBottom();
+  }
+  svPullingBottom = false;
+}
+svMainEl.addEventListener('touchend', svEndPullBottom);
+svMainEl.addEventListener('touchcancel', svEndPullBottom);
 
 // ---- persistence (localStorage — быстрый локальный кэш) ----
 const STORAGE_KEY = 'moyreys_notes_v1';
