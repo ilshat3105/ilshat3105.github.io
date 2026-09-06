@@ -4254,15 +4254,24 @@ svNotesListEl.addEventListener('touchmove', (e) => {
   if(svMainEl.scrollTop !== svSwipe.startScrollTop) svMainEl.scrollTop = svSwipe.startScrollTop;
   e.preventDefault(); // блокируем прокрутку/выделение текста — теперь точно свайп
 }, { passive: false });
-// Сохраняет положение конкретной заметки на экране при перерисовке списка — чтобы после
-// удаления или отметки «избранное» лента не дёргалась вверх-вниз у вас перед глазами:
-// соседние заметки могут сдвинуться (например, из-за пересортировки), но взгляд остаётся
-// там же, где было действие, а не прыгает к началу или в произвольное место списка.
-function svRerenderKeepingScroll(anchorId, fn){
-  const beforeEl = document.querySelector(`.sv-swipe-row[data-svnoteid="${anchorId}"]`);
-  const beforeTop = beforeEl ? beforeEl.getBoundingClientRect().top : null;
+// Сохраняет положение экрана при перерисовке списка после удаления/избранного — но
+// НЕ за счёт самой заметки, с которой было действие (она как раз может уехать далеко —
+// например, из избранного вниз, в самый конец списка), а за счёт её ближайшего соседа,
+// который никуда не денется. Так экран остаётся смотреть в то же место списка, и видно,
+// как заметка у вас на глазах пропадает оттуда (или появляется), а не телепортирует вас
+// туда, где она оказалась.
+function svRerenderKeepingScroll(excludeId, fn){
+  const rows = Array.from(document.querySelectorAll('.sv-swipe-row'));
+  const viewportTop = svMainEl.getBoundingClientRect().top;
+  let anchorRow = null;
+  for(const r of rows){
+    if(r.getAttribute('data-svnoteid') === String(excludeId)) continue;
+    if(r.getBoundingClientRect().bottom > viewportTop){ anchorRow = r; break; }
+  }
+  const anchorId = anchorRow ? anchorRow.getAttribute('data-svnoteid') : null;
+  const beforeTop = anchorRow ? anchorRow.getBoundingClientRect().top : null;
   fn();
-  if(beforeTop == null) return;
+  if(beforeTop == null || anchorId == null) return;
   const afterEl = document.querySelector(`.sv-swipe-row[data-svnoteid="${anchorId}"]`);
   if(afterEl){
     const afterTop = afterEl.getBoundingClientRect().top;
