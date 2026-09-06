@@ -472,9 +472,20 @@
   .exp-cat-new-input:focus{border-color:var(--accent);}
 
   /* ---- Автосервис: заметки с жестом «потянуть вниз, чтобы создать» ---- */
+  .sv-swipe-row{position:relative;margin-bottom:10px;}
+  .sv-swipe-bg{position:absolute;inset:0;border-radius:14px;overflow:hidden;pointer-events:none;
+    background:transparent;transition:background .08s ease;}
+  .sv-swipe-bg .sv-swipe-icon{position:absolute;top:0;bottom:0;display:flex;align-items:center;
+    gap:6px;font-size:13.5px;font-weight:700;white-space:nowrap;opacity:0;transition:opacity .08s ease;}
+  .sv-swipe-bg .sv-swipe-icon-del{left:18px;color:#c5221f;}
+  .sv-swipe-bg .sv-swipe-icon-fav{right:18px;color:#b8860b;}
+  .sv-swipe-row.sv-swipe-show-del .sv-swipe-bg{background:var(--tint-red-bg);}
+  .sv-swipe-row.sv-swipe-show-del .sv-swipe-icon-del{opacity:1;}
+  .sv-swipe-row.sv-swipe-show-fav .sv-swipe-bg{background:var(--tint-fav-bg);}
+  .sv-swipe-row.sv-swipe-show-fav .sv-swipe-icon-fav{opacity:1;}
   .sv-note-card{display:flex;align-items:flex-start;gap:10px;background:var(--surface);
     border:1px solid var(--card-line);border-radius:14px;padding:14px 14px 14px 16px;
-    margin-bottom:10px;box-shadow:0 6px 18px rgba(15,23,42,.045);touch-action:pan-y;
+    box-shadow:0 6px 18px rgba(15,23,42,.045);touch-action:pan-y;
     position:relative;}
   .sv-note-card.dragging{opacity:.92;box-shadow:0 14px 30px rgba(0,0,0,.22);z-index:5;}
   .sv-note-card.swiping{transition:none;}
@@ -3897,7 +3908,12 @@ function renderSvNotes(){
     return (b.order || 0) - (a.order || 0);
   });
   el.innerHTML = sorted.map(n => `
-    <div class="sv-note-card${n.done ? ' done' : ''}${n.favorite ? ' favorite' : ''}" data-svnoteid="${n.id}">
+    <div class="sv-swipe-row" data-svnoteid="${n.id}">
+      <div class="sv-swipe-bg">
+        <span class="sv-swipe-icon sv-swipe-icon-del">🗑 Удалить</span>
+        <span class="sv-swipe-icon sv-swipe-icon-fav">★ Избранное</span>
+      </div>
+      <div class="sv-note-card${n.done ? ' done' : ''}${n.favorite ? ' favorite' : ''}" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
         <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
@@ -3912,6 +3928,7 @@ function renderSvNotes(){
         <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
         ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
+      </div>
       </div>
     </div>`).join('');
   el.querySelectorAll('.sv-note-text').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
@@ -4122,14 +4139,15 @@ document.getElementById('svNotesList').addEventListener('pointerdown', (e) => {
   const handle = e.target.closest('[data-svnotehandle]');
   if(!handle) return;
   const card = handle.closest('.sv-note-card');
+  const row = handle.closest('.sv-swipe-row');
   const list = document.getElementById('svNotesList');
-  const siblings = Array.from(list.children).filter(el => el !== card && el.classList.contains('sv-note-card'));
+  const siblings = Array.from(list.children).filter(el => el !== row && el.classList.contains('sv-swipe-row'));
   if(!siblings.length) return;
   handle.setPointerCapture(e.pointerId);
   svDragState = {
     pointerId: e.pointerId,
     id: handle.getAttribute('data-svnotehandle'),
-    card,
+    row,
     startY: e.clientY,
     siblings: siblings.map(el => ({
       id: el.getAttribute('data-svnoteid'),
@@ -4138,12 +4156,14 @@ document.getElementById('svNotesList').addEventListener('pointerdown', (e) => {
     hoverIndex: null
   };
   card.classList.add('dragging');
+  row.style.position = 'relative';
+  row.style.zIndex = '5';
   e.preventDefault();
 });
 document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
   if(!svDragState || e.pointerId !== svDragState.pointerId) return;
   const y = e.clientY;
-  svDragState.card.style.transform = `translateY(${y - svDragState.startY}px) scale(1.01)`;
+  svDragState.row.style.transform = `translateY(${y - svDragState.startY}px) scale(1.01)`;
   let idx = svDragState.siblings.length;
   for(let i = 0; i < svDragState.siblings.length; i++){
     if(y < svDragState.siblings[i].mid){ idx = i; break; }
@@ -4153,14 +4173,17 @@ document.getElementById('svNotesList').addEventListener('pointermove', (e) => {
 });
 function svFinishDrag(e){
   if(!svDragState || (e && e.pointerId !== svDragState.pointerId)) return;
-  svDragState.card.classList.remove('dragging');
-  svDragState.card.style.transform = '';
+  const rowEl = svDragState.row;
+  const cardEl = rowEl.querySelector('.sv-note-card');
+  if(cardEl) cardEl.classList.remove('dragging');
+  rowEl.style.transform = '';
+  rowEl.style.zIndex = '';
   const { id, siblings, hoverIndex } = svDragState;
   svDragState = null;
   if(hoverIndex == null) return;
   const list = document.getElementById('svNotesList');
   const visibleIds = Array.from(list.children)
-    .filter(el => el.classList.contains('sv-note-card'))
+    .filter(el => el.classList.contains('sv-swipe-row'))
     .map(el => el.getAttribute('data-svnoteid'));
   const fromIdx = visibleIds.indexOf(id);
   if(fromIdx === -1) return;
@@ -4197,8 +4220,9 @@ svNotesListEl.addEventListener('touchstart', (e) => {
     || t.closest('[data-svnotedoc]')) return;
   const card = t.closest('.sv-note-card');
   if(!card) return;
+  const row = card.closest('.sv-swipe-row');
   const touch = e.touches[0];
-  svSwipe = { id: card.getAttribute('data-svnoteid'), card, startX: touch.clientX, startY: touch.clientY,
+  svSwipe = { id: card.getAttribute('data-svnoteid'), card, row, startX: touch.clientX, startY: touch.clientY,
     dx: 0, active: false, touchId: touch.identifier };
 }, { passive: true });
 svNotesListEl.addEventListener('touchmove', (e) => {
@@ -4219,18 +4243,35 @@ svNotesListEl.addEventListener('touchmove', (e) => {
   // весь экран) — дальше SV_SWIPE_THRESHOLD она «упирается», даже если палец продолжает тянуть.
   const visualDx = Math.max(-SV_SWIPE_THRESHOLD, Math.min(SV_SWIPE_THRESHOLD, dx));
   svSwipe.card.style.transform = `translateX(${visualDx}px)`;
-  // Подсветка направления: вправо — на удаление (красноватый), влево — в избранное (жёлтый).
+  // Подложка под карточкой показывает, что сработает: справа — «Удалить», слева — «Избранное»
+  // (иконка + подпись), чтобы новому человеку не пришлось разбираться, что означает жест.
   const past = Math.abs(dx) >= SV_SWIPE_THRESHOLD;
-  svSwipe.card.style.background = !past ? '' : (dx > 0 ? 'var(--tint-red-bg)' : 'var(--tint-fav-bg)');
+  svSwipe.row.classList.toggle('sv-swipe-show-del', past && dx > 0);
+  svSwipe.row.classList.toggle('sv-swipe-show-fav', past && dx < 0);
   e.preventDefault(); // блокируем прокрутку/выделение текста — теперь точно свайп
 }, { passive: false });
+// Сохраняет положение конкретной заметки на экране при перерисовке списка — чтобы после
+// удаления или отметки «избранное» лента не дёргалась вверх-вниз у вас перед глазами:
+// соседние заметки могут сдвинуться (например, из-за пересортировки), но взгляд остаётся
+// там же, где было действие, а не прыгает к началу или в произвольное место списка.
+function svRerenderKeepingScroll(anchorId, fn){
+  const beforeEl = document.querySelector(`.sv-swipe-row[data-svnoteid="${anchorId}"]`);
+  const beforeTop = beforeEl ? beforeEl.getBoundingClientRect().top : null;
+  fn();
+  if(beforeTop == null) return;
+  const afterEl = document.querySelector(`.sv-swipe-row[data-svnoteid="${anchorId}"]`);
+  if(afterEl){
+    const afterTop = afterEl.getBoundingClientRect().top;
+    svMainEl.scrollTop += (afterTop - beforeTop);
+  }
+}
 function svFinishSwipe(){
   if(!svSwipe) return;
-  const { card, dx, active, id } = svSwipe;
+  const { card, row, dx, active, id } = svSwipe;
   svSwipe = null;
   if(!active) return;
   card.classList.remove('swiping');
-  card.style.background = '';
+  row.classList.remove('sv-swipe-show-del', 'sv-swipe-show-fav');
   card.style.transition = 'transform .2s ease';
   card.style.transform = '';
   setTimeout(() => { card.style.transition = ''; }, 210);
@@ -4246,14 +4287,14 @@ function svFinishSwipe(){
       setTimeout(() => {
         svNotes = svNotes.filter(n => n.id != id);
         saveState();
-        renderSvNotes();
+        svRerenderKeepingScroll(id, renderSvNotes);
       }, cardEl ? 160 : 0);
     });
   } else if(dx < -SV_SWIPE_THRESHOLD){
     // Свайп влево — сразу в избранное/из избранного, подтверждение не нужно.
     const note = svNotes.find(n => n.id == id);
     if(note){ note.favorite = !note.favorite; saveState(); }
-    setTimeout(renderSvNotes, 180);
+    setTimeout(() => svRerenderKeepingScroll(id, renderSvNotes), 180);
   }
 }
 svNotesListEl.addEventListener('touchend', svFinishSwipe);
