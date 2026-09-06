@@ -511,9 +511,8 @@
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
   .sv-cat-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:10px;
-    -webkit-overflow-scrolling:touch;position:sticky;top:0;z-index:6;background:var(--bg);
-    box-shadow:0 -12px 0 var(--bg);transform:translateZ(0);-webkit-transform:translateZ(0);
-    backface-visibility:hidden;-webkit-backface-visibility:hidden;}
+    -webkit-overflow-scrolling:touch;background:var(--bg);}
+  .sv-cat-row.sv-cat-row-fixed{position:fixed;z-index:6;margin-bottom:0;box-sizing:border-box;}
   .sv-cat-chip{flex-shrink:0;background:var(--surface);border:1px solid var(--card-line);color:var(--muted);
     border-radius:14px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;-webkit-user-select:none;user-select:none;
@@ -963,6 +962,7 @@
     </div>
     <div id="serviceSection" style="display:none;">
       <div class="sv-cat-row" id="svCatFilterRow"></div>
+      <div id="svCatRowSpacer" style="display:none;"></div>
       <div class="sv-note-card sv-pull-card" id="svPullCard">
         <div class="sv-note-text sv-pull-card-text">Заметка...</div>
       </div>
@@ -3309,7 +3309,19 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
     isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : 'Поиск';
   if(isFuel) renderExpenses();
   else if(isIncome) renderIncome();
-  else if(isService) renderSvNotes();
+  else if(isService){
+    // Сбрасываем закрепление строки папок на всякий случай (например, если раньше
+    // плашка обновления сверху меняла высоту main) и пересчитываем заново с нуля.
+    const catRow = document.getElementById('svCatFilterRow');
+    const catSpacer = document.getElementById('svCatRowSpacer');
+    if(catRow && catSpacer){
+      catRow.classList.remove('sv-cat-row-fixed');
+      catRow.style.top = ''; catRow.style.left = ''; catRow.style.width = '';
+      catSpacer.style.display = 'none';
+    }
+    renderSvNotes();
+    requestAnimationFrame(svUpdateCatRowFixed);
+  }
   else renderContent();
 });
 
@@ -4331,6 +4343,40 @@ let svPulling = false;
 const SV_PULL_THRESHOLD = 70;
 const SV_PULL_MAX = 96;
 const svMainEl = document.getElementById('main');
+// «Закрепление» строки папок сделано вручную через JS, а не через CSS position:sticky —
+// на некоторых телефонах sticky оставляет тонкую щель на стыке, через которую
+// проглядывает прокручиваемый контент. Здесь поведение полностью под контролем: спейсер
+// держит место, а сама строка переключается в position:fixed ровно по границе main.
+function svUpdateCatRowFixed(){
+  if(currentSection !== 'service') return;
+  const row = document.getElementById('svCatFilterRow');
+  const spacer = document.getElementById('svCatRowSpacer');
+  if(!row || !spacer) return;
+  const mainRect = svMainEl.getBoundingClientRect();
+  if(row.classList.contains('sv-cat-row-fixed')){
+    // Уже закреплена — судим по спейсеру (он остаётся в обычном потоке на её месте),
+    // не по самой строке (у неё top всегда равен верху main, пока она fixed).
+    if(spacer.getBoundingClientRect().top >= mainRect.top){
+      row.classList.remove('sv-cat-row-fixed');
+      row.style.top = '';
+      row.style.left = '';
+      row.style.width = '';
+      spacer.style.display = 'none';
+    }
+  } else {
+    const rowRect = row.getBoundingClientRect();
+    if(rowRect.top <= mainRect.top){
+      spacer.style.height = rowRect.height + 'px';
+      spacer.style.display = 'block';
+      row.classList.add('sv-cat-row-fixed');
+      row.style.top = mainRect.top + 'px';
+      row.style.left = mainRect.left + 'px';
+      row.style.width = mainRect.width + 'px';
+    }
+  }
+}
+svMainEl.addEventListener('scroll', svUpdateCatRowFixed, { passive: true });
+window.addEventListener('resize', svUpdateCatRowFixed);
 const svPullCard = document.getElementById('svPullCard');
 function svSetPullHeight(px, ready){
   svPullCard.style.height = px + 'px';
