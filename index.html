@@ -4385,22 +4385,34 @@ function svSetPullHeight(px, ready){
   svPullCard.style.marginBottom = (10 * t) + 'px';
   svPullCard.classList.toggle('ready', !!ready);
 }
+let svPullStartX = null;
 svMainEl.addEventListener('touchstart', (e) => {
   // Небольшой допуск по прокрутке (не строго 0): после создания заметки поле сразу
   // получает фокус и клавиатура сама чуть подскролливает список, чтобы показать его —
   // из-за этого «до самого верха» иногда означает 1-3px, а не ровно 0.
   if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 4
-    || e.target.closest('.sv-drum') || e.target.closest('.sv-swipe-row') || e.target.closest('.sv-cat-row')){
-    // Барабан папки и уже существующие заметки — не этот жест; строку папок исключаем
-    // отдельно на случай, если она (по ошибке) окажется закреплена поверх карточки создания.
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row')){
+    // Барабан папки и сама строка папок — не этот жест. А вот существующие заметки
+    // ИСКЛЮЧАТЬ не нужно: тянуть вниз для создания можно начать с любой точки списка,
+    // направление (вниз vs в сторону) разберём ниже в touchmove, а не блокировкой здесь —
+    // иначе жест не запускался бы, если список уже не пуст (ровно ваш случай).
     svPullStartY = null; return;
   }
   svPullStartY = e.touches[0].clientY;
+  svPullStartX = e.touches[0].clientX;
   svPulling = false;
 }, { passive: true });
 svMainEl.addEventListener('touchmove', (e) => {
   if(currentSection !== 'service' || svPullStartY == null) return;
   const dy = e.touches[0].clientY - svPullStartY;
+  const dx = e.touches[0].clientX - svPullStartX;
+  if(!svPulling){
+    // Пока не решили, что это точно «потянуть вниз» — если движение уже явно больше
+    // горизонтальное, это чужой жест (например, свайп заметки влево/вправо), отдаём его
+    // и сами больше не вмешиваемся до конца этого касания.
+    if(Math.abs(dx) > Math.abs(dy)){ svPullStartY = null; return; }
+    if(dy <= 4) return;
+  }
   if(dy > 4){
     svPulling = true;
     // Гасим системный жест Chrome «потянуть, чтобы обновить страницу» — иначе он
