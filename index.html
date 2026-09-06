@@ -4223,7 +4223,7 @@ svNotesListEl.addEventListener('touchstart', (e) => {
   const row = card.closest('.sv-swipe-row');
   const touch = e.touches[0];
   svSwipe = { id: card.getAttribute('data-svnoteid'), card, row, startX: touch.clientX, startY: touch.clientY,
-    dx: 0, active: false, touchId: touch.identifier };
+    startScrollTop: svMainEl.scrollTop, dx: 0, active: false, touchId: touch.identifier };
 }, { passive: true });
 svNotesListEl.addEventListener('touchmove', (e) => {
   if(!svSwipe) return;
@@ -4248,6 +4248,10 @@ svNotesListEl.addEventListener('touchmove', (e) => {
   const past = Math.abs(dx) >= SV_SWIPE_THRESHOLD;
   svSwipe.row.classList.toggle('sv-swipe-show-del', past && dx > 0);
   svSwipe.row.classList.toggle('sv-swipe-show-fav', past && dx < 0);
+  // Жёстко фиксируем вертикальную прокрутку списка на время свайпа — на некоторых телефонах
+  // браузер успевает чуть прокрутить список вертикально ещё до того, как наш preventDefault
+  // ниже успеет это перебить (особенно если палец идёт не строго горизонтально).
+  if(svMainEl.scrollTop !== svSwipe.startScrollTop) svMainEl.scrollTop = svSwipe.startScrollTop;
   e.preventDefault(); // блокируем прокрутку/выделение текста — теперь точно свайп
 }, { passive: false });
 // Сохраняет положение конкретной заметки на экране при перерисовке списка — чтобы после
