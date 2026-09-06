@@ -3310,8 +3310,8 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
   if(isFuel) renderExpenses();
   else if(isIncome) renderIncome();
   else if(isService){
-    // Сбрасываем закрепление строки папок на всякий случай (например, если раньше
-    // плашка обновления сверху меняла высоту main) и пересчитываем заново с нуля.
+    // Сбрасываем закрепление строки папок при каждом заходе на вкладку — начинаем всегда
+    // с обычного (не закреплённого) состояния, дальше включится само при прокрутке.
     const catRow = document.getElementById('svCatFilterRow');
     const catSpacer = document.getElementById('svCatRowSpacer');
     if(catRow && catSpacer){
@@ -3320,7 +3320,6 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
       catSpacer.style.display = 'none';
     }
     renderSvNotes();
-    requestAnimationFrame(svUpdateCatRowFixed);
   }
   else renderContent();
 });
@@ -4388,9 +4387,9 @@ function svSetPullHeight(px, ready){
 }
 svMainEl.addEventListener('touchstart', (e) => {
   if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 0
-    || e.target.closest('.sv-drum') || e.target.closest('.sv-swipe-row')){
-    // Барабан папки — не этот жест; и любая УЖЕ существующая заметка тоже не должна его
-    // запускать (иначе свайп по заметке одновременно ещё и «тянет» карточку создания вниз).
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-swipe-row') || e.target.closest('.sv-cat-row')){
+    // Барабан папки и уже существующие заметки — не этот жест; строку папок исключаем
+    // отдельно на случай, если она (по ошибке) окажется закреплена поверх карточки создания.
     svPullStartY = null; return;
   }
   svPullStartY = e.touches[0].clientY;
