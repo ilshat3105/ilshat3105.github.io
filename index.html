@@ -243,6 +243,54 @@
   .sv-doc-done-btn{width:100%;background:var(--steel, #2563eb);color:#fff;border:none;
     border-radius:14px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;
     font-family:'Inter',sans-serif;}
+
+  /* Напоминание в Автосервисе: время → дата (барабан) → полный календарь */
+  .sv-rem-overlay{position:fixed;left:0;top:0;width:100%;height:100vh;height:100dvh;background:var(--surface);
+    z-index:42;display:none;flex-direction:column;}
+  .sv-rem-overlay.show{display:flex;}
+  .sv-rem-top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+    flex-shrink:0;border-bottom:1px solid var(--card-line, var(--line));}
+  .sv-rem-top button{background:none;border:none;color:var(--steel, #2563eb);font-size:15px;
+    font-weight:600;cursor:pointer;padding:6px 4px;font-family:'Inter',sans-serif;}
+  #svRemClearBtn{color:#d93025;}
+  .sv-rem-title{font-size:15px;font-weight:700;color:var(--ink);}
+  .sv-rem-body{flex:1;overflow-y:auto;padding:20px;}
+  .sv-rem-step{display:flex;flex-direction:column;align-items:center;gap:22px;}
+  .sv-rem-step-label{font-size:14px;font-weight:600;color:var(--muted);margin-top:8px;}
+  .sv-rem-time-drums{display:flex;align-items:center;gap:10px;}
+  .sv-drum.sv-rem-drum{width:84px;height:168px;perspective:520px;}
+  .sv-rem-drum .sv-drum-track{transform-style:preserve-3d;}
+  .sv-rem-drum .sv-drum-item{position:absolute;left:0;right:0;top:50%;height:24px;margin-top:-12px;
+    line-height:24px;text-align:center;font-size:22px;font-weight:600;color:var(--faint);
+    -webkit-user-select:none;user-select:none;}
+  .sv-rem-drum .sv-drum-item.center{color:var(--ink);font-weight:800;}
+  .sv-rem-drum .sv-drum-selection{position:absolute;left:0;right:0;top:50%;height:34px;margin-top:-17px;
+    border-top:1.5px solid var(--card-line, var(--line));border-bottom:1.5px solid var(--card-line, var(--line));
+    pointer-events:none;}
+  .sv-rem-drum .sv-drum-fade{position:absolute;left:0;right:0;height:60px;pointer-events:none;z-index:2;}
+  .sv-rem-drum .sv-drum-fade.top{top:0;background:linear-gradient(to bottom, var(--surface), transparent);}
+  .sv-rem-drum .sv-drum-fade.bottom{bottom:0;background:linear-gradient(to top, var(--surface), transparent);}
+  .sv-rem-colon{font-size:24px;font-weight:800;color:var(--ink);}
+  .sv-drum.sv-rem-drum-date{width:260px;}
+  .sv-rem-drum-date .sv-drum-item{font-size:17px;}
+  .sv-rem-next-btn,.sv-rem-save-btn{width:100%;background:var(--steel, #2563eb);color:#fff;border:none;
+    border-radius:14px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;
+    font-family:'Inter',sans-serif;margin-top:6px;}
+  .sv-rem-cal-link{background:none;border:none;color:var(--steel, #2563eb);font-size:13.5px;
+    font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;padding:6px;}
+  .sv-rem-cal-head{display:flex;align-items:center;justify-content:space-between;width:100%;
+    margin-bottom:12px;}
+  .sv-rem-cal-head button{background:var(--concrete);border:none;color:var(--ink);width:36px;height:36px;
+    border-radius:50%;font-size:18px;cursor:pointer;}
+  .sv-rem-cal-label{font-size:15.5px;font-weight:700;color:var(--ink);}
+  .sv-rem-cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);width:100%;text-align:center;
+    font-size:11.5px;font-weight:700;color:var(--faint);margin-bottom:4px;}
+  .sv-rem-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);width:100%;gap:2px;}
+  .sv-rem-cal-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+    font-size:14px;color:var(--ink);border-radius:10px;cursor:pointer;}
+  .sv-rem-cal-cell.empty{cursor:default;}
+  .sv-rem-cal-cell.today{color:var(--steel, #2563eb);font-weight:800;}
+  .sv-rem-cal-cell.selected{background:var(--steel, #2563eb);color:#fff;font-weight:800;}
   .sv-doc-label{font-size:12px;font-weight:700;color:var(--faint);text-transform:uppercase;
     letter-spacing:.3px;margin:18px 0 8px;}
   .sv-doc-label:first-child{margin-top:0;}
@@ -512,6 +560,11 @@
   .sv-note-doc.has-doc{color:var(--steel);}
   .sv-note-doc.has-doc::after{content:'';position:absolute;top:-1px;right:-1px;width:6px;height:6px;
     border-radius:50%;background:#3d5a80;}
+  .sv-note-remind{background:none;border:none;color:var(--faint);font-size:16px;
+    line-height:1;cursor:pointer;padding:2px;opacity:.55;}
+  .sv-note-remind.has-remind{opacity:1;}
+  .sv-note-reminder{color:var(--steel);font-weight:700;}
+  .sv-note-reminder.overdue{color:#d93025;}
   .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
@@ -1023,6 +1076,59 @@
     </div>
   </div>
   <input type="file" accept="image/*" id="svDocPhotoInput" style="display:none;" multiple>
+
+  <div class="sv-rem-overlay" id="svReminderOverlay">
+    <div class="sv-rem-top">
+      <button type="button" id="svRemCancelBtn">‹ Отмена</button>
+      <div class="sv-rem-title">Напоминание</div>
+      <button type="button" id="svRemClearBtn" style="visibility:hidden;">Убрать</button>
+    </div>
+    <div class="sv-rem-body">
+      <div class="sv-rem-step" id="svRemStepTime">
+        <div class="sv-rem-step-label">Во сколько напомнить?</div>
+        <div class="sv-rem-time-drums">
+          <div class="sv-drum sv-rem-drum" id="svRemHourDrum">
+            <div class="sv-drum-fade top"></div>
+            <div class="sv-drum-selection"></div>
+            <div class="sv-drum-track" id="svRemHourTrack"></div>
+            <div class="sv-drum-fade bottom"></div>
+          </div>
+          <div class="sv-rem-colon">:</div>
+          <div class="sv-drum sv-rem-drum" id="svRemMinDrum">
+            <div class="sv-drum-fade top"></div>
+            <div class="sv-drum-selection"></div>
+            <div class="sv-drum-track" id="svRemMinTrack"></div>
+            <div class="sv-drum-fade bottom"></div>
+          </div>
+        </div>
+        <button type="button" class="sv-rem-next-btn" id="svRemTimeNextBtn">Дальше ›</button>
+      </div>
+
+      <div class="sv-rem-step" id="svRemStepDate" style="display:none;">
+        <div class="sv-rem-step-label">Какого числа?</div>
+        <div class="sv-drum sv-rem-drum sv-rem-drum-date" id="svRemDateDrum">
+          <div class="sv-drum-fade top"></div>
+          <div class="sv-drum-selection"></div>
+          <div class="sv-drum-track" id="svRemDateTrack"></div>
+          <div class="sv-drum-fade bottom"></div>
+        </div>
+        <button type="button" class="sv-rem-cal-link" id="svRemOpenCalBtn">📅 Указать в календаре — дальше ›</button>
+        <button type="button" class="sv-rem-save-btn" id="svRemSaveBtn">✓ Поставить напоминание</button>
+      </div>
+
+      <div class="sv-rem-step" id="svRemStepCal" style="display:none;">
+        <div class="sv-rem-cal-head">
+          <button type="button" id="svRemCalPrev">‹</button>
+          <div class="sv-rem-cal-label" id="svRemCalLabel"></div>
+          <button type="button" id="svRemCalNext">›</button>
+        </div>
+        <div class="sv-rem-cal-weekdays">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+        </div>
+        <div class="sv-rem-cal-grid" id="svRemCalGrid"></div>
+      </div>
+    </div>
+  </div>
 
   <div class="overlay" id="overlay"></div>
   <nav class="drawer" id="drawer">
@@ -3981,6 +4087,175 @@ function svSetupDrums(){
   });
 }
 
+// ==================== Напоминание в «Автосервисе»: время → дата (барабан) → календарь ====================
+// Универсальный барабан (та же механика, что и у выбора папки, только не завязан на
+// конкретную заметку/папку) — используется и для часов, и для минут, и для списка дат.
+function svMakeDrum(drumEl, trackEl, labels, initialIndex, onSettle){
+  trackEl.innerHTML = '';
+  const itemEls = labels.map(label => {
+    const d = document.createElement('div');
+    d.className = 'sv-drum-item';
+    d.textContent = label;
+    trackEl.appendChild(d);
+    return d;
+  });
+  let cur = Math.max(0, Math.min(itemEls.length - 1, initialIndex));
+  svLayoutDrum(itemEls, cur, false);
+  let drag = null;
+  drumEl.onpointerdown = (e) => {
+    drumEl.setPointerCapture(e.pointerId);
+    drag = { startY: e.clientY, startCur: cur, pointerId: e.pointerId };
+    drumEl.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+  drumEl.onpointermove = (e) => {
+    if(!drag || e.pointerId !== drag.pointerId) return;
+    const dy = e.clientY - drag.startY;
+    cur = drag.startCur - dy / SV_DRUM_ITEM_H;
+    cur = Math.max(0, Math.min(itemEls.length - 1, cur));
+    svLayoutDrum(itemEls, cur, false);
+    e.preventDefault();
+  };
+  function finishDrag(e){
+    if(!drag || (e && e.pointerId !== drag.pointerId)) return;
+    drag = null;
+    drumEl.style.cursor = 'grab';
+    cur = Math.max(0, Math.min(itemEls.length - 1, Math.round(cur)));
+    svLayoutDrum(itemEls, cur, true);
+    if(onSettle) onSettle(cur);
+  }
+  drumEl.onpointerup = finishDrag;
+  drumEl.onpointercancel = finishDrag;
+  return { getIndex: () => Math.round(cur) };
+}
+
+const SV_REM_MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа',
+  'сентября','октября','ноября','декабря'];
+function svRemDateLabel(d, today){
+  const isToday = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  return d.getDate() + ' ' + SV_REM_MONTHS_GEN[d.getMonth()] + (isToday ? ' (сегодня)' : '');
+}
+
+let svReminderNoteId = null;
+let svReminderHourDrum = null, svReminderMinDrum = null, svReminderDateDrum = null;
+let svReminderSelected = null; // {y, m, d, h, mi}
+let svReminderCalMonth = null;
+
+function svOpenReminderPicker(id){
+  const note = svNotes.find(n => n.id == id);
+  if(!note) return;
+  svReminderNoteId = id;
+  const base = note.reminderAt ? new Date(note.reminderAt) : new Date();
+  svReminderSelected = { y: base.getFullYear(), m: base.getMonth(), d: base.getDate(), h: base.getHours(), mi: base.getMinutes() };
+  svReminderCalMonth = new Date(svReminderSelected.y, svReminderSelected.m, 1);
+
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const mins = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+  svReminderHourDrum = svMakeDrum(document.getElementById('svRemHourDrum'), document.getElementById('svRemHourTrack'),
+    hours, svReminderSelected.h, (i) => { svReminderSelected.h = i; });
+  svReminderMinDrum = svMakeDrum(document.getElementById('svRemMinDrum'), document.getElementById('svRemMinTrack'),
+    mins, svReminderSelected.mi, (i) => { svReminderSelected.mi = i; });
+
+  document.getElementById('svRemClearBtn').style.visibility = note.reminderAt ? 'visible' : 'hidden';
+  svShowReminderStep('time');
+  document.getElementById('svReminderOverlay').classList.add('show');
+}
+function svCloseReminderPicker(){
+  document.getElementById('svReminderOverlay').classList.remove('show');
+  svReminderNoteId = null;
+}
+function svShowReminderStep(step){
+  document.getElementById('svRemStepTime').style.display = step === 'time' ? 'flex' : 'none';
+  document.getElementById('svRemStepDate').style.display = step === 'date' ? 'flex' : 'none';
+  document.getElementById('svRemStepCal').style.display = step === 'cal' ? 'flex' : 'none';
+  if(step === 'date') svBuildReminderDateDrum();
+  if(step === 'cal') svRenderReminderCalendar();
+}
+function svBuildReminderDateDrum(){
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const selected = new Date(svReminderSelected.y, svReminderSelected.m, svReminderSelected.d);
+  // диапазон барабана всегда захватывает выбранную дату, даже если её выбрали далеко
+  // вперёд через календарь — иначе барабан не смог бы на ней остановиться.
+  const daysAhead = Math.max(60, Math.round((selected - today) / 86400000) + 10);
+  const list = [];
+  for(let i = -3; i <= daysAhead; i++){
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    list.push(d);
+  }
+  let curIdx = list.findIndex(d => d.getFullYear() === svReminderSelected.y && d.getMonth() === svReminderSelected.m && d.getDate() === svReminderSelected.d);
+  if(curIdx < 0) curIdx = 3;
+  const labels = list.map(d => svRemDateLabel(d, today));
+  svReminderDateDrum = svMakeDrum(document.getElementById('svRemDateDrum'), document.getElementById('svRemDateTrack'),
+    labels, curIdx, (i) => {
+      const picked = list[i];
+      svReminderSelected.y = picked.getFullYear();
+      svReminderSelected.m = picked.getMonth();
+      svReminderSelected.d = picked.getDate();
+    });
+}
+function svRenderReminderCalendar(){
+  const y = svReminderCalMonth.getFullYear(), m = svReminderCalMonth.getMonth();
+  document.getElementById('svRemCalLabel').textContent = MONTHS_FULL[m] + ' ' + y;
+  const firstDay = new Date(y, m, 1);
+  const startWeekday = (firstDay.getDay() + 6) % 7; // понедельник первым
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let html = '';
+  for(let i = 0; i < startWeekday; i++) html += `<div class="sv-rem-cal-cell empty"></div>`;
+  for(let d = 1; d <= daysInMonth; d++){
+    const isToday = today.getFullYear() === y && today.getMonth() === m && today.getDate() === d;
+    const isSelected = svReminderSelected.y === y && svReminderSelected.m === m && svReminderSelected.d === d;
+    html += `<div class="sv-rem-cal-cell${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}" data-day="${d}">${d}</div>`;
+  }
+  document.getElementById('svRemCalGrid').innerHTML = html;
+}
+document.getElementById('svRemCalGrid').addEventListener('click', (e) => {
+  const cell = e.target.closest('[data-day]');
+  if(!cell) return;
+  svReminderSelected.y = svReminderCalMonth.getFullYear();
+  svReminderSelected.m = svReminderCalMonth.getMonth();
+  svReminderSelected.d = parseInt(cell.getAttribute('data-day'));
+  svShowReminderStep('date'); // возвращаемся к барабану — он перестроится на выбранной дате
+});
+document.getElementById('svRemCalPrev').addEventListener('click', () => {
+  svReminderCalMonth = new Date(svReminderCalMonth.getFullYear(), svReminderCalMonth.getMonth() - 1, 1);
+  svRenderReminderCalendar();
+});
+document.getElementById('svRemCalNext').addEventListener('click', () => {
+  svReminderCalMonth = new Date(svReminderCalMonth.getFullYear(), svReminderCalMonth.getMonth() + 1, 1);
+  svRenderReminderCalendar();
+});
+document.getElementById('svRemCancelBtn').addEventListener('click', svCloseReminderPicker);
+document.getElementById('svRemClearBtn').addEventListener('click', () => {
+  const note = svNotes.find(n => n.id == svReminderNoteId);
+  if(note){ note.reminderAt = null; saveState(); renderSvNotes(); }
+  svCloseReminderPicker();
+});
+document.getElementById('svRemTimeNextBtn').addEventListener('click', () => svShowReminderStep('date'));
+document.getElementById('svRemOpenCalBtn').addEventListener('click', () => svShowReminderStep('cal'));
+document.getElementById('svRemSaveBtn').addEventListener('click', () => {
+  const note = svNotes.find(n => n.id == svReminderNoteId);
+  if(note){
+    const s = svReminderSelected;
+    note.reminderAt = new Date(s.y, s.m, s.d, s.h, s.mi).getTime();
+    saveState();
+    renderSvNotes();
+  }
+  svCloseReminderPicker();
+});
+// Короткая подпись для метки на карточке — "7 сен, 09:30".
+function svFormatReminder(ts){
+  const d = new Date(ts);
+  const months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  const pad = (n) => String(n).padStart(2, '0');
+  return d.getDate() + ' ' + months[d.getMonth()] + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+document.getElementById('svNotesList').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-svnoteremind]');
+  if(!btn) return;
+  svOpenReminderPicker(btn.getAttribute('data-svnoteremind'));
+});
+
 function renderSvNotes(){
   renderSvCatRow();
   const el = document.getElementById('svNotesList');
@@ -4015,7 +4290,7 @@ function renderSvNotes(){
       <div class="sv-note-card${n.done ? ' done' : ''}${n.favorite ? ' favorite' : ''}" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
-        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}</div>
+        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.reminderAt ? ` · <span class="sv-note-reminder${n.reminderAt < Date.now() ? ' overdue' : ''}">🔔 ${svFormatReminder(n.reminderAt)}</span>` : ''}</div>
       </div>
       <div class="sv-drum sv-drum-locked" data-svdrum="${n.id}">
         <div class="sv-drum-fade top"></div>
@@ -4025,6 +4300,7 @@ function renderSvNotes(){
       </div>
       <div class="sv-note-right">
         <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
+        <button type="button" class="sv-note-remind${n.reminderAt ? ' has-remind' : ''}" data-svnoteremind="${n.id}" aria-label="Напоминание">🔔</button>
         ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
         <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
@@ -4355,7 +4631,7 @@ const svNotesListEl = document.getElementById('svNotesList');
 svNotesListEl.addEventListener('touchstart', (e) => {
   const t = e.target;
   if(t.closest('.sv-drum') || t.closest('[data-svnotehandle]') || t.closest('.sv-note-check')
-    || t.closest('[data-svnotedoc]')) return;
+    || t.closest('[data-svnotedoc]') || t.closest('[data-svnoteremind]')) return;
   const card = t.closest('.sv-note-card');
   if(!card) return;
   const row = card.closest('.sv-swipe-row');
