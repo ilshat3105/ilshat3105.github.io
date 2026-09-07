@@ -324,6 +324,9 @@
     resize:none;font-family:'Inter',sans-serif;background:transparent;min-height:80px;overflow:hidden;
     flex-shrink:0;box-sizing:border-box;}
   .editor-body textarea.body.body-dim{cursor:pointer;background:#dde1e6;color:var(--muted);}
+  .body-preview{width:100%;font-size:14.5px;line-height:1.6;font-family:'Inter',sans-serif;
+    white-space:pre-wrap;word-break:break-word;box-sizing:border-box;cursor:text;}
+  .body-preview a{color:#2563eb;text-decoration:underline;}
   .cl-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .cl-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
   .cl-row input[type=text]{flex:1;border:none;outline:none;font-size:14.5px;background:transparent;font-family:'Inter',sans-serif;}
@@ -780,6 +783,7 @@
   .ed-paid-badge{border-color:var(--card-line);box-shadow:0 2px 8px rgba(15,23,42,.04);}
   .editor-body textarea.body{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px;min-height:170px;color:var(--ink);}
   .editor-body textarea.body:placeholder-shown:not(:focus){background:var(--concrete);color:var(--faint);}
+  .body-preview{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px;min-height:170px;color:var(--ink);}
   .ed-add-photo,.ed-photo-thumb{width:68px;height:68px;border-radius:12px;}
   .ed-add-photo{border-color:#cbd5e1;background:var(--surface);color:var(--accent);}
   .palette{border-radius:18px;}
@@ -1067,6 +1071,7 @@
     </div>
     <div class="editor-body">
       <textarea class="body" id="bodyInput" placeholder="Заметка..."></textarea>
+      <div class="body-preview" id="bodyPreview" style="display:none;"></div>
       <div id="checklistWrap" style="display:none;">
         <div id="clItems"></div>
         <div class="cl-add">
@@ -1876,6 +1881,7 @@ function openEditor(note, isNew){
   adjustEditorForViewport();
   autoResizeBody();
   updatePasteOrderBtn();
+  updateBodyPreview();
   renderPalette();
   history = [snapshotNote()];
   historyIndex = 0;
@@ -1904,6 +1910,7 @@ function restoreSnapshot(){
   lastBodyValue = bodyInput.value;
   autoResizeBody();
   updatePasteOrderBtn();
+  updateBodyPreview();
   document.getElementById('amountInput').value = editingNote.amountRaw || '';
   document.getElementById('noNdsCheck').checked = !!editingNote.noNds;
   document.getElementById('cashCheck').checked = !!editingNote.cash;
@@ -1930,6 +1937,75 @@ function scheduleTextHistoryPush(){
   clearTimeout(textPushTimer);
   textPushTimer = setTimeout(pushHistory, 700);
 }
+// Ищет в тексте http/https-ссылки (например "Ссылка на груз: https://...").
+function findUrlMatches(text){
+  const regex = /https?:\/\/[^\s<>"]+/g;
+  const matches = [];
+  let m;
+  while((m = regex.exec(text))){
+    let raw = m[0];
+    // отрезаем пунктуацию, случайно захваченную с конца ссылки (точку, запятую, скобку)
+    while(raw.length && /[.,;:!?)\]]$/.test(raw)) raw = raw.slice(0, -1);
+    if(raw.length < 8) continue;
+    matches.push({ start: m.index, end: m.index + raw.length, url: raw });
+  }
+  return matches;
+}
+// Читаемый вид текста заявки: номера телефонов и ссылки становятся кликабельными —
+// тап по номеру звонит, тап по ссылке открывает груз. Показывается вместо textarea,
+// пока поле не в фокусе; тап в любом другом месте текста возвращает к редактированию.
+function renderBodyLinkified(text){
+  const n = text.length;
+  const combined = [
+    ...findPhoneMatches(text).map(m => ({ start: m.start, end: m.end, kind: 'tel', href: 'tel:' + m.tel })),
+    ...findUrlMatches(text).map(m => ({ start: m.start, end: m.end, kind: 'url', href: m.url })),
+  ].sort((a, b) => a.start - b.start);
+  const ranges = [];
+  let lastEnd = -1;
+  for(const r of combined){ if(r.start < lastEnd) continue; ranges.push(r); lastEnd = r.end; }
+  const flag = new Array(n).fill(-1);
+  ranges.forEach((r, idx) => { for(let i = r.start; i < r.end && i < n; i++) flag[i] = idx; });
+  let html = '';
+  let i = 0;
+  while(i < n){
+    if(flag[i] !== -1){
+      const idx = flag[i];
+      const r = ranges[idx];
+      let seg = '', j = i;
+      while(j < n && flag[j] === idx){ seg += text[j]; j++; }
+      const target = r.kind === 'url' ? ' target="_blank" rel="noopener"' : '';
+      html += `<a href="${escapeHtml(r.href)}"${target}>${escapeHtml(seg)}</a>`;
+      i = j;
+    } else {
+      let seg = '', j = i;
+      while(j < n && flag[j] === -1){ seg += text[j]; j++; }
+      html += escapeHtml(seg);
+      i = j;
+    }
+  }
+  return html;
+}
+const bodyPreview = document.getElementById('bodyPreview');
+function updateBodyPreview(){
+  // Предпросмотр только для обычного свободного текста: не во время редактирования,
+  // не для чек-листа и не для пустого поля/плейсхолдера «Вставить заявку».
+  if(editingNote.checklist || bodyInput.readOnly || document.activeElement === bodyInput || !bodyInput.value.trim()){
+    bodyPreview.style.display = 'none';
+    return;
+  }
+  bodyPreview.innerHTML = renderBodyLinkified(bodyInput.value);
+  bodyPreview.style.display = 'block';
+  bodyInput.style.display = 'none';
+}
+bodyPreview.addEventListener('click', (e) => {
+  if(e.target.closest('a')) return; // клик по самой ссылке/номеру — обычная навигация
+  bodyPreview.style.display = 'none';
+  bodyInput.style.display = 'block';
+  bodyInput.focus();
+  bodyInput.selectionStart = bodyInput.selectionEnd = bodyInput.value.length;
+});
+bodyInput.addEventListener('blur', () => setTimeout(updateBodyPreview, 0));
+
 function autoResizeBody(){
   bodyInput.style.height = 'auto';
   if(bodyInput.value){
@@ -1982,6 +2058,7 @@ bodyInput.addEventListener('click', async () => {
   autoResizeBody();
   pushHistory();
   document.getElementById('amountInput').focus();
+  updateBodyPreview();
 });
 let lastBodyValue = '';
 bodyInput.addEventListener('input', () => {
