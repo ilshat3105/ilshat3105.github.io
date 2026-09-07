@@ -3865,7 +3865,7 @@ let svArchiveView = false; // false = обычный список (только 
 
 function svCategoryCounts(){
   const counts = {};
-  svNotes.forEach(n => { if(n.category) counts[n.category] = (counts[n.category] || 0) + 1; });
+  svNotes.forEach(n => { if(n.category && !n.done) counts[n.category] = (counts[n.category] || 0) + 1; });
   return counts;
 }
 // Строка папок для фильтра: «Все» + все папки по порядку добавления + «+ Добавить» в самом
