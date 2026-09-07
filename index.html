@@ -4226,6 +4226,35 @@ document.getElementById('svRemCalNext').addEventListener('click', () => {
   svReminderCalMonth = new Date(svReminderCalMonth.getFullYear(), svReminderCalMonth.getMonth() + 1, 1);
   svRenderReminderCalendar();
 });
+// Свайп по самому календарю влево/вправо — тоже листает месяцы, не только стрелочки.
+// Порог достаточно большой (60px), чтобы обычный тап по числу не принимался за свайп.
+(function(){
+  const grid = document.getElementById('svRemCalGrid');
+  let startX = null, startY = null, moved = false;
+  grid.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    moved = false;
+  }, { passive: true });
+  grid.addEventListener('touchmove', (e) => {
+    if(startX == null) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if(Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)){
+      moved = true;
+      e.preventDefault(); // это уже точно свайп — не даём заодно ещё и выбраться дню под пальцем
+    }
+  }, { passive: false });
+  grid.addEventListener('touchend', (e) => {
+    if(startX == null) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - startX;
+    startX = null;
+    if(!moved || Math.abs(dx) < 60) return;
+    if(dx < 0) document.getElementById('svRemCalNext').click(); // влево — вперёд, к следующему месяцу
+    else document.getElementById('svRemCalPrev').click(); // вправо — назад, к предыдущему
+  });
+})();
 document.getElementById('svRemCancelBtn').addEventListener('click', svCloseReminderPicker);
 document.getElementById('svRemClearBtn').addEventListener('click', () => {
   const note = svNotes.find(n => n.id == svReminderNoteId);
