@@ -248,7 +248,7 @@
   .sv-doc-label:first-child{margin-top:0;}
   .sv-doc-desc{width:100%;min-height:90px;border:1px solid var(--card-line, var(--line));
     border-radius:12px;padding:12px;font-size:14.5px;line-height:1.5;font-family:'Inter',sans-serif;
-    color:var(--ink);resize:vertical;box-sizing:border-box;background:transparent;}
+    color:var(--ink);box-sizing:border-box;background:transparent;overflow:hidden;resize:none;}
   .sv-doc-link-row{display:flex;align-items:center;gap:8px;padding:9px 0;
     border-bottom:1px solid var(--card-line, var(--line));}
   .sv-doc-link-row a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -4112,6 +4112,11 @@ let svDocEditingId = null;
 function svCurrentDocNote(){
   return svNotes.find(n => n.id == svDocEditingId);
 }
+function svAutoResizeDocDesc(){
+  const el = document.getElementById('svDocDesc');
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
 function svOpenDoc(id){
   const note = svNotes.find(n => n.id == id);
   if(!note) return;
@@ -4123,6 +4128,7 @@ function svOpenDoc(id){
   renderSvDocLinks();
   renderSvDocPhotos();
   document.getElementById('svDocOverlay').classList.add('show');
+  svAutoResizeDocDesc(); // после show — иначе scrollHeight ещё 0, экран скрыт
 }
 function svCloseDoc(){
   document.getElementById('svDocOverlay').classList.remove('show');
@@ -4135,6 +4141,7 @@ document.getElementById('svDocDesc').addEventListener('input', (e) => {
   const note = svCurrentDocNote();
   if(note) note.docDesc = e.target.value;
   scheduleSvNotesSave();
+  svAutoResizeDocDesc(); // поле растёт вместе с текстом — не остаётся узкой прокручиваемой коробкой
 });
 function renderSvDocLinks(){
   const note = svCurrentDocNote();
