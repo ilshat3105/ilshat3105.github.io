@@ -249,6 +249,8 @@
   .sv-doc-desc{width:100%;min-height:90px;border:1px solid var(--card-line, var(--line));
     border-radius:12px;padding:12px;font-size:14.5px;line-height:1.5;font-family:'Inter',sans-serif;
     color:var(--ink);box-sizing:border-box;background:transparent;overflow:hidden;resize:none;}
+  .sv-doc-desc-preview{min-height:90px;border:1px solid var(--card-line, var(--line));
+    border-radius:12px;padding:12px;}
   .sv-doc-link-row{display:flex;align-items:center;gap:8px;padding:9px 0;
     border-bottom:1px solid var(--card-line, var(--line));}
   .sv-doc-link-row a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -325,7 +327,7 @@
     flex-shrink:0;box-sizing:border-box;}
   .editor-body textarea.body.body-dim{cursor:pointer;background:#dde1e6;color:var(--muted);}
   .body-preview{width:100%;font-size:14.5px;line-height:1.6;font-family:'Inter',sans-serif;
-    white-space:pre-wrap;word-break:break-word;box-sizing:border-box;cursor:text;}
+    white-space:pre-wrap;word-break:break-word;box-sizing:border-box;cursor:text;flex-shrink:0;}
   .body-preview a{color:#2563eb;text-decoration:underline;}
   .cl-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
   .cl-row input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#5f6368;}
@@ -999,6 +1001,7 @@
     <div class="sv-doc-body">
       <div class="sv-doc-label">Описание</div>
       <textarea class="sv-doc-desc" id="svDocDesc"></textarea>
+      <div class="body-preview sv-doc-desc-preview" id="svDocDescPreview" style="display:none;"></div>
 
       <div class="sv-doc-label">Ссылки</div>
       <div id="svDocLinks"></div>
@@ -4129,6 +4132,7 @@ function svOpenDoc(id){
   renderSvDocPhotos();
   document.getElementById('svDocOverlay').classList.add('show');
   svAutoResizeDocDesc(); // после show — иначе scrollHeight ещё 0, экран скрыт
+  svUpdateDocDescPreview();
 }
 function svCloseDoc(){
   document.getElementById('svDocOverlay').classList.remove('show');
@@ -4143,6 +4147,29 @@ document.getElementById('svDocDesc').addEventListener('input', (e) => {
   scheduleSvNotesSave();
   svAutoResizeDocDesc(); // поле растёт вместе с текстом — не остаётся узкой прокручиваемой коробкой
 });
+// Тот же кликабельный предпросмотр (телефон/ссылка), что и в «Заявках» — показывается
+// вместо textarea, пока поле не в фокусе.
+const svDocDescPreview = document.getElementById('svDocDescPreview');
+function svUpdateDocDescPreview(){
+  const ta = document.getElementById('svDocDesc');
+  if(document.activeElement === ta || !ta.value.trim()){
+    svDocDescPreview.style.display = 'none';
+    ta.style.display = '';
+    return;
+  }
+  svDocDescPreview.innerHTML = renderBodyLinkified(ta.value);
+  svDocDescPreview.style.display = 'block';
+  ta.style.display = 'none';
+}
+svDocDescPreview.addEventListener('click', (e) => {
+  if(e.target.closest('a')) return;
+  const ta = document.getElementById('svDocDesc');
+  svDocDescPreview.style.display = 'none';
+  ta.style.display = '';
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+});
+document.getElementById('svDocDesc').addEventListener('blur', () => setTimeout(svUpdateDocDescPreview, 0));
 function renderSvDocLinks(){
   const note = svCurrentDocNote();
   if(!note) return;
