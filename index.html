@@ -5040,8 +5040,8 @@ function maybeSaveDailyBackup(snap){
   }).catch(e => console.warn('Не удалось проверить бэкап:', e));
 }
 function cleanupOldBackups(backupsRef){
-  backupsRef.orderBy('backupCreatedAt', 'desc').get().then(snapshot => {
-    const docs = snapshot.docs;
+  backupsRef.get().then(snapshot => {
+    const docs = snapshot.docs.slice().sort((a, b) => (b.data().backupCreatedAt || 0) - (a.data().backupCreatedAt || 0));
     if(docs.length <= 7) return;
     const toDelete = docs.slice(7);
     toDelete.forEach(d => d.ref.delete().catch(() => {}));
@@ -5269,13 +5269,14 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
   backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Загрузка...</div>';
   backupsOverlay.style.display = 'flex';
   db.collection('users').doc(currentUID).collection('backups')
-    .orderBy('backupCreatedAt', 'desc').get().then(snapshot => {
+    .get().then(snapshot => {
       if(snapshot.empty){
         backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Копий пока нет. Первая появится в течение суток после начала работы.</div>';
         return;
       }
       backupsList.innerHTML = '';
-      snapshot.docs.forEach(doc => {
+      const sortedDocs = snapshot.docs.slice().sort((a, b) => (b.data().backupCreatedAt || 0) - (a.data().backupCreatedAt || 0));
+      sortedDocs.forEach(doc => {
         const data = doc.data();
         const itemsCount = (data.notes||[]).length + (data.svNotes||[]).length + (data.expenses||[]).length;
         const row = document.createElement('div');
