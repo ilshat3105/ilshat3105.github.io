@@ -245,21 +245,6 @@
     font-family:'Inter',sans-serif;}
 
   /* Напоминание в Автосервисе: время → дата (барабан) → полный календарь */
-  .shared-access-banner{display:none;align-items:center;padding:8px 16px;background:#fff4e5;
-    border-bottom:1px solid var(--card-line, var(--line));font-size:12.5px;font-weight:600;
-    color:#8a5a00;}
-  .access-row{display:flex;flex-direction:column;gap:8px;padding:12px 0;
-    border-bottom:1px solid var(--card-line, var(--line));}
-  .access-row-email{font-size:14px;font-weight:700;color:var(--ink);display:flex;
-    align-items:center;justify-content:space-between;}
-  .access-row-email button{background:none;border:none;color:#d93025;font-size:13px;
-    font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
-  .access-checks{display:flex;flex-wrap:wrap;gap:6px;}
-  .access-chip{display:flex;align-items:center;gap:5px;background:var(--concrete);
-    border:1px solid var(--card-line, var(--line));border-radius:999px;padding:5px 10px;
-    font-size:12.5px;color:var(--ink);cursor:pointer;}
-  .access-chip input{margin:0;}
-  .access-chip.edit-chip{border-color:#f2b400;}
   .sv-rem-overlay{position:fixed;left:0;top:0;width:100%;height:100vh;height:100dvh;background:var(--surface);
     z-index:42;display:none;flex-direction:column;}
   .sv-rem-overlay.show{display:flex;}
@@ -1013,10 +998,6 @@
     <div class="avatar" id="avatar">Я</div>
   </header>
 
-  <div class="shared-access-banner" id="sharedAccessBanner" style="display:none;">
-    <span></span>
-  </div>
-
   <div class="top-tabs" id="topTabs">
     <button class="top-tab active" data-section="notes">Заявки</button>
     <button class="top-tab" data-section="fuel">Расходы</button>
@@ -1150,25 +1131,6 @@
     </div>
   </div>
 
-  <div class="sv-doc-overlay" id="accessOverlay">
-    <div class="sv-doc-top">
-      <div class="sv-doc-theme">Доступы</div>
-    </div>
-    <div class="sv-doc-body">
-      <div class="sv-doc-label">Кому открыт доступ</div>
-      <div id="accessList"></div>
-      <div class="sv-doc-add-link">
-        <input id="accessEmailInput" placeholder="Email бухгалтера" inputmode="email">
-        <div class="sv-doc-add-link-row">
-          <button type="button" id="accessAddBtn" style="width:100%;">Добавить</button>
-        </div>
-      </div>
-    </div>
-    <div class="sv-doc-bottom">
-      <button type="button" id="accessCloseBtn" class="sv-doc-done-btn">Готово</button>
-    </div>
-  </div>
-
   <div class="overlay" id="overlay"></div>
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
@@ -1192,10 +1154,6 @@
     <button id="changePassBtn" type="button" style="margin-top:6px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       Сменить пароль
-    </button>
-    <button id="accessBtn" type="button" style="margin-top:6px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Доступы
     </button>
     <button id="logoutBtn" type="button" style="color:#d93025;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -3540,7 +3498,9 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
   document.getElementById('globalFab').style.display = isService ? 'none' : 'flex';
   document.getElementById('searchInput').placeholder =
     isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : 'Поиск';
-  if(isService){
+  if(isFuel) renderExpenses();
+  else if(isIncome) renderIncome();
+  else if(isService){
     // Сбрасываем закрепление строки папок при каждом заходе на вкладку — начинаем всегда
     // с обычного (не закреплённого) состояния, дальше включится само при прокрутке.
     const catRow = document.getElementById('svCatFilterRow');
@@ -3550,20 +3510,10 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
       catRow.style.top = ''; catRow.style.left = ''; catRow.style.width = '';
       catSpacer.style.display = 'none';
     }
+    renderSvNotes();
   }
-  renderActiveSection();
-});
-// Перерисовывает именно ту вкладку, что сейчас открыта — а не всегда «Заявки».
-// Нужна отдельно от обработчика клика по вкладкам, потому что данные могут обновиться
-// сами по себе (пришла более новая версия из облака), пока человек сидит на «Автосервисе»
-// или «Расходах» — без этого список и счётчики папок оставались бы устаревшими, пока
-// человек не переключится на вкладку туда-обратно вручную.
-function renderActiveSection(){
-  if(currentSection === 'fuel') renderExpenses();
-  else if(currentSection === 'income') renderIncome();
-  else if(currentSection === 'service') renderSvNotes();
   else renderContent();
-}
+});
 
 // Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу.
 // На "Доходы" и "Автосервис" отдельного добавления пока нет.
@@ -3910,15 +3860,11 @@ let svNotes = []; // { id, text, createdAt, order, done, category }
 let svNoteIdSeq = 1;
 let svFolders = []; // ['Работа', 'Дом', ...] — список папок, листается и пополняется прямо в строке фильтра
 let svDefaultCatLabel = 'Без папки'; // название вкладки для заметок без папки — можно переименовать
-let sharedWith = {};      // { 'email@x.com': {notes:true, service:false, fuel:false, income:false, canEdit:false} }
-let sharedWithEmails = []; // тот же список email отдельным плоским массивом — нужен для поиска в Firestore
 let svCatFilter = null; // null = все категории
 let svArchiveView = false; // false = обычный список (только невыполненные), true = архив (только выполненные)
 
 function svCategoryCounts(){
   const counts = {};
-  // Считаем только невыполненные — то же самое, что реально видно при открытии папки.
-  // Выполненные уходят в архив и не должны влиять на число рядом с названием папки.
   svNotes.forEach(n => { if(n.category && !n.done) counts[n.category] = (counts[n.category] || 0) + 1; });
   return counts;
 }
@@ -5001,7 +4947,7 @@ const STORAGE_KEY = 'moyreys_notes_v1';
 let localUpdatedAt = 0; // метка времени последней правки на этом телефоне — чтобы облако
                          // не затирало более свежие локальные изменения, сделанные без интернета
 function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq, svFolders, svDefaultCatLabel, sharedWith, sharedWithEmails, updatedAt: localUpdatedAt };
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, svNotes, svNoteIdSeq, svFolders, svDefaultCatLabel, updatedAt: localUpdatedAt };
 }
 function applyState(s){
   notes = s.notes || [];
@@ -5015,8 +4961,6 @@ function applyState(s){
   svNoteIdSeq = s.svNoteIdSeq || 1;
   svFolders = s.svFolders || [];
   svDefaultCatLabel = s.svDefaultCatLabel || 'Без папки';
-  sharedWith = s.sharedWith || {};
-  sharedWithEmails = s.sharedWithEmails || [];
   localUpdatedAt = s.updatedAt || 0;
   // На случай старых заметок, сохранённых до появления чекбоксов/перетаскивания —
   // достраиваем недостающие поля, чтобы сортировка и отметки не ломались.
@@ -5034,9 +4978,6 @@ function saveState(){
   } catch(e){
     console.warn('Не удалось сохранить (возможно, переполнено хранилище из-за фото):', e);
   }
-  // Если это чужие данные, открытые по доступу «только просмотр» — сохраняем только
-  // локально (чтобы интерфейс не спорил сам с собой), но НЕ отправляем в облако владельца.
-  if(sharedAccessInfo && !sharedAccessInfo.canEdit) return;
   scheduleCloudSave();
 }
 function loadState(){
@@ -5051,20 +4992,47 @@ function loadState(){
 loadState();
 
 // ---- Firebase: авторизация и облачная синхронизация между устройствами ----
-let currentUID = null;      // uid того, кто реально сейчас вошёл в приложение
-let effectiveUID = null;    // чьи данные реально читаем/пишем — свои, либо владельца (если это доступ бухгалтера)
-let myEmail = null;
-let sharedAccessInfo = null; // null = это мои собственные данные; иначе {заявки:true, автосервис:false, ..., canEdit:false}
+let currentUID = null;
 let cloudSaveTimer = null;
 let suppressCloudSave = false; // true, пока применяем данные, только что пришедшие из облака
 
 function scheduleCloudSave(){
-  if(!effectiveUID || suppressCloudSave) return;
+  if(!currentUID || suppressCloudSave) return;
   if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(() => {
-    db.collection('users').doc(effectiveUID).set(stateSnapshot())
+    const snap = stateSnapshot();
+    db.collection('users').doc(currentUID).set(snap)
+      .then(() => maybeSaveDailyBackup(snap))
       .catch(e => console.warn('Не удалось сохранить в облако:', e));
   }, 800);
+}
+
+// ---- Ежедневный бэкап ----
+// Раз в сутки (при первом сохранении в этот день) кладём копию данных в
+// отдельную подколлекцию backups, чтобы при случайной перезаписи основного
+// документа было куда откатиться. Храним только последние 7 копий.
+function todayKey(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function maybeSaveDailyBackup(snap){
+  if(!currentUID) return;
+  const key = todayKey();
+  const backupsRef = db.collection('users').doc(currentUID).collection('backups');
+  backupsRef.doc(key).get().then(doc => {
+    if(doc.exists) return; // сегодня уже есть копия — не трогаем
+    backupsRef.doc(key).set(Object.assign({}, snap, { backupCreatedAt: Date.now() }))
+      .then(() => cleanupOldBackups(backupsRef))
+      .catch(e => console.warn('Не удалось сохранить бэкап:', e));
+  }).catch(e => console.warn('Не удалось проверить бэкап:', e));
+}
+function cleanupOldBackups(backupsRef){
+  backupsRef.orderBy('backupCreatedAt', 'desc').get().then(snapshot => {
+    const docs = snapshot.docs;
+    if(docs.length <= 7) return;
+    const toDelete = docs.slice(7);
+    toDelete.forEach(d => d.ref.delete().catch(() => {}));
+  }).catch(e => console.warn('Не удалось очистить старые бэкапы:', e));
 }
 
 const authOverlay = document.getElementById('authOverlay');
@@ -5144,123 +5112,64 @@ authSubmitBtn.addEventListener('click', () => {
 
 function loadFromCloud(){
   const localSnapshotAt = localUpdatedAt; // время последней локальной правки на этот момент
-  db.collection('users').doc(effectiveUID).get().then(doc => {
+  db.collection('users').doc(currentUID).get().then(doc => {
     if(doc.exists){
       const cloudData = doc.data();
       const cloudUpdatedAt = cloudData.updatedAt || 0;
       if(cloudUpdatedAt >= localSnapshotAt){
-        // В облаке версия свежее (или такая же) — берём её как обычно.
-        suppressCloudSave = true;
-        applyState(cloudData);
-        try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-        suppressCloudSave = false;
-      } else if(!sharedAccessInfo || sharedAccessInfo.canEdit){
+        // Защита от случайного затирания: если в облаке записей заметно
+        // меньше, чем сейчас на телефоне, — это подозрительно (похоже на
+        // старую/пустую копию), спрашиваем подтверждение вместо тихой замены.
+        const itemCount = s => (s.notes||[]).length + (s.svNotes||[]).length + (s.expenses||[]).length;
+        const localCount = itemCount(stateSnapshot());
+        const cloudCount = itemCount(cloudData);
+        const suspicious = localCount >= 4 && cloudCount < localCount / 2;
+        if(suspicious && !confirm(
+          `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
+          `Заменить данные на телефоне облачной версией? Если не уверены — нажмите «Отмена», ` +
+          `и текущие данные с телефона будут отправлены в облако вместо замены.`
+        )){
+          scheduleCloudSave();
+        } else {
+          suppressCloudSave = true;
+          applyState(cloudData);
+          try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+          suppressCloudSave = false;
+        }
+      } else {
         // На телефоне есть более свежие правки, которые не успели долететь до облака
         // (например, были сделаны без интернета) — не затираем их, а сами
-        // досылаем актуальную версию в облако. Для доступа «только просмотр» так не делаем —
-        // это чужие данные, досылать в них ничего не нужно.
+        // досылаем актуальную версию в облако.
         scheduleCloudSave();
       }
-    } else if(!sharedAccessInfo){
-      // новый аккаунт (и это точно не бухгалтер с доступом к чужим данным) — начинаем
-      // с чистого листа, не тащим данные, оставшиеся в памяти телефона от предыдущего входа
+    } else {
+      // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
+      // в памяти телефона от предыдущего входа под другим аккаунтом
       suppressCloudSave = true;
       applyState({});
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       suppressCloudSave = false;
       scheduleCloudSave();
     }
-    applyAccessRestrictions();
-    renderActiveSection();
+    renderContent();
   }).catch(e => {
     console.warn('Не удалось загрузить данные из облака, работаем с локальной копией:', e);
-    applyAccessRestrictions();
-    renderActiveSection();
+    renderContent();
   });
-}
-// Определяет, чьи данные показывать: свои собственные — если они есть, иначе проверяем,
-// не открыл ли кто-то (владелец) доступ именно к этой почте — тогда работаем с ЕГО данными.
-// Текущая схема «один общий логин на несколько устройств» это не трогает вообще: если
-// у вошедшего аккаунта уже есть свои данные, работаем как раньше, один в один.
-function resolveEffectiveAccount(){
-  db.collection('users').doc(currentUID).get().then(myDoc => {
-    const myData = myDoc.exists ? myDoc.data() : null;
-    const hasOwnData = myData && Object.keys(myData).some(k => k !== 'updatedAt' && k !== 'sharedWith' && k !== 'sharedWithEmails');
-    if(hasOwnData){
-      effectiveUID = currentUID;
-      sharedAccessInfo = null;
-      loadFromCloud();
-      return;
-    }
-    db.collection('users').where('sharedWithEmails', 'array-contains', myEmail).get().then(qs => {
-      if(!qs.empty){
-        const ownerDoc = qs.docs[0];
-        effectiveUID = ownerDoc.id;
-        const data = ownerDoc.data() || {};
-        sharedAccessInfo = (data.sharedWith && data.sharedWith[myEmail]) || { notes: true, canEdit: false };
-      } else {
-        effectiveUID = currentUID;
-        sharedAccessInfo = null;
-      }
-      loadFromCloud();
-    }).catch(() => {
-      effectiveUID = currentUID;
-      sharedAccessInfo = null;
-      loadFromCloud();
-    });
-  }).catch(() => {
-    effectiveUID = currentUID;
-    sharedAccessInfo = null;
-    loadFromCloud();
-  });
-}
-// Прячет вкладки, на которые нет разрешения, и, если доступ «только просмотр» — не даёт
-// редактировать (переключается в упрощённый визуальный режим без сохранения изменений).
-function applyAccessRestrictions(){
-  const accessBanner = document.getElementById('sharedAccessBanner');
-  if(!sharedAccessInfo){
-    if(accessBanner) accessBanner.style.display = 'none';
-    document.querySelectorAll('.top-tab').forEach(btn => btn.style.display = '');
-    return;
-  }
-  const tabPerm = { notes: 'Заявки', service: 'Автосервис', fuel: 'Расходы', income: 'Доходы' };
-  document.querySelectorAll('.top-tab').forEach(btn => {
-    const section = btn.getAttribute('data-section');
-    const allowed = !!sharedAccessInfo[section];
-    btn.style.display = allowed ? '' : 'none';
-  });
-  // если сейчас открыта вкладка, к которой доступа нет — переключаемся на первую разрешённую
-  if(!sharedAccessInfo[currentSection]){
-    const firstAllowed = Object.keys(tabPerm).find(k => sharedAccessInfo[k]);
-    if(firstAllowed){
-      const btn = document.querySelector(`.top-tab[data-section="${firstAllowed}"]`);
-      if(btn) btn.click();
-    }
-  }
-  if(accessBanner){
-    accessBanner.style.display = 'flex';
-    accessBanner.querySelector('span').textContent = sharedAccessInfo.canEdit
-      ? 'Общий доступ — можно редактировать'
-      : 'Общий доступ — только просмотр';
-  }
 }
 
 auth.onAuthStateChanged(user => {
   if(user){
     currentUID = user.uid;
-    myEmail = (user.email || '').toLowerCase();
     authOverlay.style.display = 'none';
     const emailStr = user.email || '';
     const avatarEl = document.getElementById('avatar');
     if(avatarEl) avatarEl.textContent = emailStr ? emailStr.charAt(0).toUpperCase() : '?';
     const drawerEmailEl = document.getElementById('drawerEmail');
     if(drawerEmailEl) drawerEmailEl.textContent = emailStr;
-    resolveEffectiveAccount();
+    loadFromCloud();
   } else {
     currentUID = null;
-    effectiveUID = null;
-    myEmail = null;
-    sharedAccessInfo = null;
     authOverlay.style.display = 'flex';
   }
 });
@@ -5281,29 +5190,13 @@ document.getElementById('themeToggleBtn')?.addEventListener('click', (e) => {
 
 document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
-  // Важно: signOut() у настоящего Firebase асинхронный — onAuthStateChanged(null) сработает
-  // не мгновенно. Если этого не учесть, renderContent() ниже (она сама вызывает saveState()
-  // как побочный эффект) может успеть поставить в очередь отправку уже ПУСТОГО состояния
-  // в облако ПОД СТАРЫМ аккаунтом, пока настоящий выход ещё не долетел. Поэтому сами сразу
-  // и жёстко обнуляем effectiveUID здесь же, не дожидаясь колбэка — и держим
-  // suppressCloudSave включённым, пока не закончится вся перерисовка.
   auth.signOut();
-  effectiveUID = null;
-  sharedAccessInfo = null;
-  if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; } // отменяем то, что могло быть запланировано раньше
   drawer.classList.remove('show'); overlay.classList.remove('show');
   suppressCloudSave = true;
   applyState({});
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
-  renderContent();
-  // renderContent() выше сама вызывает saveState(), а та безусловно поднимает
-  // localUpdatedAt до «сейчас» — даже для этого пустого состояния после выхода, хотя
-  // саму отправку в облако мы подавили. Если это не сбросить, при следующем входе метка
-  // времени у пустоты окажется «свежее» настоящих данных в облаке, и своя же защита от
-  // потери данных (та, что сравнивает время) решит, что именно пустота — самая новая
-  // версия, и рано или поздно перезапишет ею реальные данные. Сбрасываем обратно в ноль.
-  localUpdatedAt = 0;
   suppressCloudSave = false;
+  renderContent();
 });
 
 // ---- Смена пароля ----
@@ -5318,77 +5211,6 @@ document.getElementById('changePassBtn')?.addEventListener('click', (e) => {
   drawer.classList.remove('show'); overlay.classList.remove('show');
   cpCurrent.value = ''; cpNew.value = ''; cpError.textContent = '';
   changePassOverlay.style.display = 'flex';
-});
-
-// ---- Доступы: кому из «В рейсе» открыт доступ к моим данным и что именно им видно ----
-const ACCESS_TABS = [
-  { key: 'notes', label: 'Заявки' },
-  { key: 'service', label: 'Автосервис' },
-  { key: 'fuel', label: 'Расходы' },
-  { key: 'income', label: 'Доходы' },
-];
-document.getElementById('accessBtn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  if(sharedAccessInfo){
-    // Это сами открыли чужие данные по доступу — нечего тут раздавать доступ дальше.
-    showToast('Это чужие данные, управлять доступом может только владелец');
-    return;
-  }
-  drawer.classList.remove('show'); overlay.classList.remove('show');
-  renderAccessList();
-  document.getElementById('accessOverlay').classList.add('show');
-});
-document.getElementById('accessCloseBtn').addEventListener('click', () => {
-  document.getElementById('accessOverlay').classList.remove('show');
-});
-function renderAccessList(){
-  const wrap = document.getElementById('accessList');
-  const emails = Object.keys(sharedWith);
-  if(!emails.length){
-    wrap.innerHTML = `<div class="empty" style="padding:8px 0;">Пока никому не открыт доступ.</div>`;
-    return;
-  }
-  wrap.innerHTML = emails.map(email => {
-    const perm = sharedWith[email] || {};
-    return `<div class="access-row" data-access-email="${escapeHtml(email)}">
-      <div class="access-row-email">${escapeHtml(email)}<button type="button" data-access-remove="${escapeHtml(email)}">Убрать</button></div>
-      <div class="access-checks">
-        ${ACCESS_TABS.map(t => `<label class="access-chip"><input type="checkbox" data-access-perm="${t.key}" ${perm[t.key] ? 'checked' : ''}> ${t.label}</label>`).join('')}
-        <label class="access-chip edit-chip"><input type="checkbox" data-access-perm="canEdit" ${perm.canEdit ? 'checked' : ''}> Можно редактировать</label>
-      </div>
-    </div>`;
-  }).join('');
-}
-document.getElementById('accessAddBtn').addEventListener('click', () => {
-  const input = document.getElementById('accessEmailInput');
-  const email = (input.value || '').trim().toLowerCase();
-  if(!email || !email.includes('@')){ showToast('Введите корректный email'); return; }
-  if(sharedWith[email]){ showToast('Этот email уже добавлен'); input.value = ''; return; }
-  sharedWith[email] = { notes: true, service: false, fuel: false, income: false, canEdit: false };
-  sharedWithEmails = Object.keys(sharedWith);
-  input.value = '';
-  saveState();
-  renderAccessList();
-});
-document.getElementById('accessList').addEventListener('change', (e) => {
-  const row = e.target.closest('[data-access-email]');
-  const permKey = e.target.getAttribute('data-access-perm');
-  if(!row || !permKey) return;
-  const email = row.getAttribute('data-access-email');
-  if(!sharedWith[email]) return;
-  sharedWith[email][permKey] = e.target.checked;
-  saveState();
-});
-document.getElementById('accessList').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-access-remove]');
-  if(!btn) return;
-  const email = btn.getAttribute('data-access-remove');
-  showConfirm(`Убрать доступ у ${email}?`, () => {
-    delete sharedWith[email];
-    sharedWithEmails = Object.keys(sharedWith);
-    saveState();
-    renderAccessList();
-  });
 });
 document.getElementById('cpCancelBtn').addEventListener('click', () => {
   changePassOverlay.style.display = 'none';
