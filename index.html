@@ -5255,11 +5255,11 @@ function formatBackupLabel(key){
   if(key.startsWith('preRestore-')){
     const ts = parseInt(key.slice('preRestore-'.length), 10);
     const d = new Date(ts);
-    return `Перед восстановлением · ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return { title: `Резервная копия за ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` };
   }
-  const [y, m, d] = key.split('-');
+  const [y, m, dNum] = key.split('-');
   const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-  return `${parseInt(d,10)} ${months[parseInt(m,10)-1]} ${y}`;
+  return { title: `Резервная копия за ${parseInt(dNum,10)} ${months[parseInt(m,10)-1]} ${y}` };
 }
 
 document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
@@ -5279,17 +5279,18 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
       sortedDocs.forEach(doc => {
         const data = doc.data();
         const itemsCount = (data.notes||[]).length + (data.svNotes||[]).length + (data.expenses||[]).length;
+        const label = formatBackupLabel(doc.id);
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--card-line, #e0e0e0);';
         row.innerHTML = `
           <div>
-            <div style="font-size:14px;font-weight:600;color:var(--ink);">${formatBackupLabel(doc.id)}</div>
+            <div style="font-size:14px;font-weight:600;color:var(--ink);">${label.title}</div>
             <div style="font-size:12px;color:var(--muted);">записей: ${itemsCount}</div>
           </div>
           <button type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;">Восстановить</button>
         `;
         row.querySelector('button').addEventListener('click', () => {
-          if(!confirm(`Заменить текущие данные копией «${formatBackupLabel(doc.id)}»? Перед заменой текущее состояние тоже будет сохранено как копия — при необходимости сможете вернуть его обратно.`)) return;
+          if(!confirm(`Заменить текущие данные копией «${label.title}»? Перед заменой текущее состояние тоже будет сохранено как копия — при необходимости сможете вернуть его обратно.`)) return;
           const restoreBtn = row.querySelector('button');
           restoreBtn.disabled = true;
           restoreBtn.textContent = 'Восстановление...';
