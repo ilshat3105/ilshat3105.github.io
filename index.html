@@ -1295,14 +1295,12 @@
   <div class="pay-choice-overlay" id="payChoiceOverlay">
     <div class="pay-choice-card">
       <h4>Платёжное поручение распознано</h4>
-      <p>Как оплачена эта заявка?</p>
-      <button class="pay-choice-btn" id="payChoiceFull"><span class="dot"></span>Полная оплата</button>
-      <button class="pay-choice-btn" id="payChoicePartial"><span class="dot partial"></span>Частичная оплата</button>
-      <div id="payChoiceAmountBox" style="display:none;margin-top:2px;">
-        <div id="payChoiceAmountHint" style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">Сумма из платёжки не распозналась — впишите вручную:</div>
-        <input type="number" inputmode="decimal" id="payChoiceAmountInput" placeholder="Сколько оплачено, ₽" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--card-line, #d8dce1);font-size:15px;margin-bottom:8px;">
-        <button class="pay-choice-btn" id="payChoiceAmountConfirm" style="justify-content:center;background:#2563eb;color:#fff;">Подтвердить сумму</button>
+      <p>Сколько оплачено по этой заявке?</p>
+      <div id="payChoiceAmountBox" style="margin-top:2px;">
+        <input type="number" inputmode="decimal" id="payChoiceAmountInput" placeholder="Сумма, ₽" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--card-line, #d8dce1);font-size:15px;margin-bottom:8px;">
+        <button class="pay-choice-btn" id="payChoiceAmountConfirm" style="justify-content:center;background:#2563eb;color:#fff;">Подтвердить</button>
       </div>
+      <button class="pay-choice-cancel" id="payChoiceReset" style="color:#9aa0a6;">Отметить неоплаченной</button>
       <button class="pay-choice-cancel" id="payChoiceCancel">Не отмечать</button>
     </div>
   </div>
@@ -2975,50 +2973,33 @@ function askPaymentChoice(){
   const run = () => new Promise((resolve) => {
     const overlay = document.getElementById('payChoiceOverlay');
     overlay.classList.add('show');
-    const amountBox = document.getElementById('payChoiceAmountBox');
     const amountInput = document.getElementById('payChoiceAmountInput');
-    const amountHint = document.getElementById('payChoiceAmountHint');
-    amountBox.style.display = 'none';
-    amountInput.value = '';
-    let pendingChoice = null;
+    amountInput.value = editingNote.amount ? editingNote.amount : '';
     const cleanup = (result) => {
       overlay.classList.remove('show');
-      amountBox.style.display = 'none';
-      fullBtn.removeEventListener('click', onFull);
-      partialBtn.removeEventListener('click', onPartial);
       amountConfirmBtn.removeEventListener('click', onAmountConfirm);
+      resetBtn.removeEventListener('click', onReset);
       cancelBtn.removeEventListener('click', onCancel);
       resolve(result);
     };
-    const fullBtn = document.getElementById('payChoiceFull');
-    const partialBtn = document.getElementById('payChoicePartial');
     const amountConfirmBtn = document.getElementById('payChoiceAmountConfirm');
+    const resetBtn = document.getElementById('payChoiceReset');
     const cancelBtn = document.getElementById('payChoiceCancel');
-    const openAmountBox = (choice) => {
-      pendingChoice = choice;
-      amountHint.textContent = choice === 'full'
-        ? 'Сумма из платёжки не распозналась — впишите вручную (по умолчанию — сумма заявки):'
-        : 'Сумма из платёжки не распозналась — впишите вручную:';
-      amountInput.value = choice === 'full' && editingNote.amount ? editingNote.amount : '';
-      amountBox.style.display = 'block';
-      amountInput.focus();
-      amountInput.select();
-    };
-    // Сумму с платёжки мы больше не распознаём автоматически — слишком легко
-    // ошибиться. Для любого варианта (полная/частичная) сумму подтверждает
-    // сам человек — так надёжнее, чем доверять OCR.
-    const onFull = () => openAmountBox('full');
-    const onPartial = () => openAmountBox('partial');
     const onAmountConfirm = () => {
       const val = parseFloat((amountInput.value || '').replace(',', '.'));
       if(!val || val <= 0){ amountInput.focus(); return; }
-      cleanup({ choice: pendingChoice, amount: val });
+      // Статус (полная/частичная) программа определяет сама, сравнивая
+      // введённую сумму с суммой заявки — отдельно выбирать его не нужно.
+      const choice = editingNote.amount && val < editingNote.amount ? 'partial' : 'full';
+      cleanup({ choice, amount: val });
     };
     const onCancel = () => cleanup(null);
-    fullBtn.addEventListener('click', onFull);
-    partialBtn.addEventListener('click', onPartial);
+    const onReset = () => cleanup({ choice: 'none', amount: 0 });
     amountConfirmBtn.addEventListener('click', onAmountConfirm);
+    resetBtn.addEventListener('click', onReset);
     cancelBtn.addEventListener('click', onCancel);
+    amountInput.focus();
+    amountInput.select();
   });
   const result = payChoiceChain.then(run);
   payChoiceChain = result.catch(() => {});
@@ -3105,6 +3086,8 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
 
 function updatePaidBadge(){
   const badge = document.getElementById('edPaidBadge');
+  badge.style.cursor = 'pointer';
+  badge.title = 'Изменить статус оплаты';
   const status = getPaymentStatus(editingNote);
   if(status === 'none'){
     badge.innerHTML = '<span class="dot gray"></span>Не оплачено';
@@ -3338,6 +3321,24 @@ document.getElementById('paidBtn').addEventListener('click', () => {
   updateDueBadge();
   pushHistory();
   showToast(next === 'full' ? 'Отмечено как оплачено' : 'Отметка об оплате снята');
+});
+
+document.getElementById('edPaidBadge').addEventListener('click', async () => {
+  const choice = await askPaymentChoice();
+  if(!choice || editingNote == null) return;
+  editingNote.paymentAuto = false;
+  setPaymentStatus(editingNote, choice.choice, {
+    paidAt: choice.choice === 'none' ? null : Date.now(),
+    paidAmount: choice.amount || 0,
+    statusPhotoId: null
+  });
+  updatePaidBadge();
+  updateDueBadge();
+  pushHistory();
+  showToast(
+    choice.choice === 'none' ? 'Отметка об оплате снята' :
+    (choice.choice === 'full' ? 'Отмечено: полная оплата — ' : 'Отмечено: частичная оплата — ') + formatAmount(choice.amount)
+  );
 });
 
 function renderChecklistEditor(){
