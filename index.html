@@ -1137,7 +1137,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-08 21:35</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-08 22:50</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1205,6 +1205,7 @@
           <input id="clNewInput" placeholder="Добавить пункт">
         </div>
       </div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:6px 2px 4px;">Заявка (фото):</div>
       <div class="ed-photos-wrap">
         <div class="ed-photos" id="edPhotos"></div>
       </div>
@@ -1217,10 +1218,17 @@
       </div>
       <button type="button" id="paySectionToggle" style="display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;padding:6px 2px;margin:2px 0 0;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted);text-align:left;">
         <svg id="paySectionChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .15s;"><polyline points="9 18 15 12 9 6"/></svg>
-        Оплачено (для бухгалтера)
+        Оплата (для бухгалтера)
       </button>
       <div id="paySectionBody" style="display:none;">
-        <div class="ed-paid-badge" id="edPaidBadge" style="display:none;margin:6px 2px 8px;"></div>
+        <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:8px 2px 4px;">Расчёт:</div>
+        <div style="display:flex;gap:6px;margin:0 2px 4px;">
+          <input id="paymentEntryInput" type="number" inputmode="decimal" placeholder="Сумма, ₽" style="flex:1;box-sizing:border-box;padding:9px 10px;border-radius:9px;border:1px solid var(--card-line, #d8dce1);font-size:14px;">
+          <button type="button" id="paymentEntryAdd" style="background:#2563eb;color:#fff;border:none;border-radius:9px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;">ОК</button>
+        </div>
+        <div id="paymentEntryList" style="margin:0 2px 8px;"></div>
+        <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:8px 2px 4px;">Статус:</div>
+        <div class="ed-paid-badge" id="edPaidBadge" style="display:none;margin:0 2px 8px;"></div>
         <div class="due-row" id="dueRow">
           <label class="due-chip" style="display:flex;align-items:center;gap:6px;cursor:text;">
             📅 Срок оплаты, дней:
@@ -1308,7 +1316,7 @@
         <input type="number" inputmode="decimal" id="payChoiceAmountInput" placeholder="Сумма, ₽" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--card-line, #d8dce1);font-size:15px;margin-bottom:8px;">
         <button class="pay-choice-btn" id="payChoiceAmountConfirm" style="justify-content:center;background:#2563eb;color:#fff;">Подтвердить</button>
       </div>
-      <button class="pay-choice-cancel" id="payChoiceReset" style="color:#9aa0a6;">Отметить неоплаченной</button>
+      <button class="pay-choice-cancel" id="payChoiceReset" style="color:#9aa0a6;">Очистить весь расчёт</button>
       <button class="pay-choice-cancel" id="payChoiceCancel">Не отмечать</button>
     </div>
   </div>
@@ -1481,25 +1489,44 @@ function setPaymentStatus(note, status, extra){
   note.paid = (status === 'full'); // для обратной совместимости со старым кодом/данными
   if(extra) Object.assign(note, extra);
 }
-// Пересчитывает статус оплаты заново по тем фото, что реально остались у заметки —
-// удалили платёжку из списка, и её сумма сразу выпадает из общего подсчёта.
+// Сколько всего реально оплачено — сумма всех строк из "Расчёта" (введённых
+// вручную и/или подтверждённых по распознанной платёжке).
+function sumPayments(note){
+  return (note.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+}
+// Пересчитывает статус оплаты по сумме всех строк расчёта — статус (не
+// оплачено/частично/оплачено) определяется полностью автоматически, вручную
+// его не выбирают.
 function recomputePaymentStatus(note){
-  const amounts = (note.photoAmounts || []).filter(a => typeof a === 'number' && a > 0);
-  const total = amounts.reduce((s, a) => s + a, 0);
-  const dates = (note.photoDates || []).filter(Boolean);
-  const latestDate = dates.length ? Math.max(...dates) : null;
-  const hasUnknownAmountPayment = (note.photoAmounts || []).some(a => a === 0);
-
-  if(total > 0 && note.amount){
-    if(total >= note.amount) setPaymentStatus(note, 'full', { paidAt: latestDate, paidAmount: total });
-    else setPaymentStatus(note, 'partial', { paidAt: latestDate, paidAmount: total });
-  } else if(total > 0){
-    setPaymentStatus(note, 'full', { paidAt: latestDate, paidAmount: total });
-  } else if(hasUnknownAmountPayment){
-    setPaymentStatus(note, 'full', { paidAt: latestDate || Date.now(), paidAmount: 0 });
-  } else {
+  const total = sumPayments(note);
+  if(total <= 0){
     setPaymentStatus(note, 'none', { paidAt: null, paidAmount: 0 });
+    return;
   }
+  const latestAt = Date.now();
+  if(note.amount && total < note.amount) setPaymentStatus(note, 'partial', { paidAt: latestAt, paidAmount: total });
+  else setPaymentStatus(note, 'full', { paidAt: latestAt, paidAmount: total });
+}
+function addPayment(note, amount, photoId){
+  if(!note.payments) note.payments = [];
+  note.payments.push({ amount, photoId: photoId || null });
+  recomputePaymentStatus(note);
+}
+function removePayment(note, idx){
+  if(!note.payments) return;
+  note.payments.splice(idx, 1);
+  recomputePaymentStatus(note);
+}
+function renderPaymentEntryList(){
+  const list = document.getElementById('paymentEntryList');
+  const payments = editingNote.payments || [];
+  if(!payments.length){ list.innerHTML = '<div style="font-size:12.5px;color:var(--muted);">Пока пусто — впишите сумму выше.</div>'; return; }
+  list.innerHTML = payments.map((p, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--card-line, #eceff2);">
+      <span style="font-size:14px;color:var(--ink);">${formatAmount(p.amount)}</span>
+      <button type="button" data-payrm="${i}" style="background:none;border:none;color:#9aa0a6;font-size:16px;cursor:pointer;padding:0 4px;">×</button>
+    </div>
+  `).join('') + (payments.length > 1 ? `<div style="text-align:right;font-size:12.5px;font-weight:700;color:var(--ink);padding:6px 2px 0;">Итого: ${formatAmount(sumPayments(editingNote))}</div>` : '');
 }
 // 'gray' — ещё не оплачена, 'partial' — недоплата (жёлтый), 'full' — оплачена точно (зелёный),
 // 'over' — оплачена с переплатой (тёмно-зелёный)
@@ -1511,6 +1538,7 @@ function getPaymentColorClass(n){
   return over ? 'over' : '';
 }
 // Просрочена ли оплата: срок (указанный или по умолчанию 15 раб.дней от создания)
+
 // прошёл, а заявка ещё не оплачена полностью.
 function isOverdue(n){
   const dueAt = getEffectiveDueAt(n);
@@ -2011,6 +2039,7 @@ function openEditor(note, isNew){
   // он в основном нужен бухгалтеру, а не для показа по умолчанию.
   document.getElementById('paySectionBody').style.display = 'none';
   document.getElementById('paySectionChevron').style.transform = 'rotate(0deg)';
+  renderPaymentEntryList();
   bodyInput.style.display = editingNote.checklist ? 'none' : 'block';
   checklistWrap.style.display = editingNote.checklist ? 'block' : 'none';
   renderChecklistEditor();
@@ -2058,6 +2087,7 @@ function restoreSnapshot(){
   updatePaidBadge();
   updateReminderBadge();
   updateDueBadge();
+  renderPaymentEntryList();
   bodyInput.style.display = editingNote.checklist ? 'none' : 'block';
   checklistWrap.style.display = editingNote.checklist ? 'block' : 'none';
   renderChecklistEditor();
@@ -2279,17 +2309,16 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
     editingNote.photoIds.splice(idx, 1);
     editingNote.photoNumbers.splice(idx, 1);
     renderEditorPhotos();
-    // Статус снимаем только если удалили именно то фото, из-за которого он был поставлен
-    // (платёжку) — а не любое другое, например скан самой заявки на перевозку.
-    if(editingNote.statusPhotoId && editingNote.statusPhotoId === removedId){
-      setPaymentStatus(editingNote, 'none', { paidAt: null, paidAmount: 0, statusPhotoId: null });
+    // Если к этому фото была привязана строка в "Расчёте" (сумма подтверждена
+    // после распознавания платёжки) — убираем и её, статус пересчитается сам.
+    if(!editingNote.payments) editingNote.payments = [];
+    const beforeCount = editingNote.payments.length;
+    editingNote.payments = editingNote.payments.filter(p => p.photoId !== removedId);
+    if(editingNote.payments.length !== beforeCount){
+      recomputePaymentStatus(editingNote);
       updatePaidBadge();
-      showToast('Платёжка удалена — отметка об оплате снята');
-    } else if(!editingNote.statusPhotoId && editingNote.photos.length === 0 && getPaymentStatus(editingNote) !== 'none'){
-      // статус ставили вручную, без привязки к конкретному фото — без документов вообще держать его нет смысла
-      setPaymentStatus(editingNote, 'none', { paidAt: null, paidAmount: 0 });
-      updatePaidBadge();
-      showToast('Фото удалено — отметка об оплате снята');
+      renderPaymentEntryList();
+      showToast('Платёжка удалена — сумма убрана из расчёта');
     }
     pushHistory();
   }
@@ -2986,7 +3015,8 @@ function askPaymentChoice(){
     const overlay = document.getElementById('payChoiceOverlay');
     overlay.classList.add('show');
     const amountInput = document.getElementById('payChoiceAmountInput');
-    amountInput.value = editingNote.amount ? editingNote.amount : '';
+    const remaining = editingNote.amount ? Math.max(editingNote.amount - sumPayments(editingNote), 0) : null;
+    amountInput.value = remaining || '';
     const cleanup = (result) => {
       overlay.classList.remove('show');
       amountConfirmBtn.removeEventListener('click', onAmountConfirm);
@@ -3000,13 +3030,10 @@ function askPaymentChoice(){
     const onAmountConfirm = () => {
       const val = parseFloat((amountInput.value || '').replace(',', '.'));
       if(!val || val <= 0){ amountInput.focus(); return; }
-      // Статус (полная/частичная) программа определяет сама, сравнивая
-      // введённую сумму с суммой заявки — отдельно выбирать его не нужно.
-      const choice = editingNote.amount && val < editingNote.amount ? 'partial' : 'full';
-      cleanup({ choice, amount: val });
+      cleanup({ amount: val });
     };
     const onCancel = () => cleanup(null);
-    const onReset = () => cleanup({ choice: 'none', amount: 0 });
+    const onReset = () => cleanup({ reset: true });
     amountConfirmBtn.addEventListener('click', onAmountConfirm);
     resetBtn.addEventListener('click', onReset);
     cancelBtn.addEventListener('click', onCancel);
@@ -3068,22 +3095,27 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
       editingNote.photoNumbers[photoIndex] = orderNumber;
 
       // Сумму с платёжки больше не считываем автоматически — слишком легко ошибиться.
-      // Просто фиксируем, что это платёжка, а бухгалтер сам решает в окне выбора,
-      // полная это оплата или частичная.
+      // Просто фиксируем, что это платёжка, а сумму бухгалтер подтверждает сам —
+      // она добавится отдельной строкой в "Расчёт".
       if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
       if(!editingNote.photoDates) editingNote.photoDates = [];
       editingNote.photoAmounts[photoIndex] = 0;
       editingNote.photoDates[photoIndex] = paidAt;
 
-      if(getPaymentStatus(editingNote) === 'none'){
-        const choice = await askPaymentChoice();
-        if(choice && editingNote === noteRef){
-          editingNote.paymentAuto = false;
-          setPaymentStatus(editingNote, choice.choice, { paidAt, paidAmount: choice.amount, statusPhotoId: photoId });
-          updatePaidBadge();
-          pushHistory();
-          showToast((choice.choice === 'full' ? 'Отмечено: полная оплата — ' : 'Отмечено: частичная оплата — ') + formatAmount(choice.amount));
+      const choice = await askPaymentChoice();
+      if(choice && editingNote === noteRef){
+        editingNote.paymentAuto = false;
+        if(choice.reset){
+          editingNote.payments = [];
+          recomputePaymentStatus(editingNote);
+          showToast('Расчёт очищен');
+        } else {
+          addPayment(editingNote, choice.amount, photoId);
+          showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
         }
+        updatePaidBadge();
+        renderPaymentEntryList();
+        pushHistory();
       }
     }
   } catch(err){
@@ -3098,8 +3130,8 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
 
 function updatePaidBadge(){
   const badge = document.getElementById('edPaidBadge');
-  badge.style.cursor = 'pointer';
-  badge.title = 'Изменить статус оплаты';
+  badge.style.cursor = 'default';
+  badge.title = '';
   const status = getPaymentStatus(editingNote);
   if(status === 'none'){
     badge.innerHTML = '<span class="dot gray"></span>Не оплачено';
@@ -3321,18 +3353,24 @@ document.getElementById('dueDaysInput').addEventListener('input', (e) => {
   pushHistory();
 });
 
-document.getElementById('paidBtn').addEventListener('click', () => {
-  const status = getPaymentStatus(editingNote);
-  // ручное нажатие всегда переключает между "не оплачено" и "оплачено полностью";
-  // "частично" выставляется только автоматически по сумме на распознанной платёжке.
-  // Ручное решение больше не пересчитывается автоматом при удалении фото.
+document.getElementById('paidBtn').addEventListener('click', async () => {
+  // Кнопка теперь просто быстрый способ добавить сумму в "Расчёт" — статус
+  // (не оплачено/частично/оплачено) программа всегда считает сама.
+  const choice = await askPaymentChoice();
+  if(!choice || editingNote == null) return;
   editingNote.paymentAuto = false;
-  const next = status === 'full' ? 'none' : 'full';
-  setPaymentStatus(editingNote, next, { paidAt: next === 'full' ? Date.now() : null, paidAmount: next === 'full' ? (editingNote.amount || editingNote.paidAmount || 0) : 0, statusPhotoId: null });
+  if(choice.reset){
+    editingNote.payments = [];
+    recomputePaymentStatus(editingNote);
+    showToast('Расчёт очищен');
+  } else {
+    addPayment(editingNote, choice.amount);
+    showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
+  }
   updatePaidBadge();
   updateDueBadge();
+  renderPaymentEntryList();
   pushHistory();
-  showToast(next === 'full' ? 'Отмечено как оплачено' : 'Отметка об оплате снята');
 });
 
 document.getElementById('paySectionToggle').addEventListener('click', () => {
@@ -3343,22 +3381,31 @@ document.getElementById('paySectionToggle').addEventListener('click', () => {
   chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
 });
 
-document.getElementById('edPaidBadge').addEventListener('click', async () => {
-  const choice = await askPaymentChoice();
-  if(!choice || editingNote == null) return;
-  editingNote.paymentAuto = false;
-  setPaymentStatus(editingNote, choice.choice, {
-    paidAt: choice.choice === 'none' ? null : Date.now(),
-    paidAmount: choice.amount || 0,
-    statusPhotoId: null
-  });
+// Ввод суммы в "Расчёт" — по кнопке ОК или клавише Enter.
+function submitPaymentEntry(){
+  const input = document.getElementById('paymentEntryInput');
+  const val = parseAmount(input.value);
+  if(!val) { input.focus(); return; }
+  addPayment(editingNote, val);
+  input.value = '';
+  renderPaymentEntryList();
   updatePaidBadge();
   updateDueBadge();
   pushHistory();
-  showToast(
-    choice.choice === 'none' ? 'Отметка об оплате снята' :
-    (choice.choice === 'full' ? 'Отмечено: полная оплата — ' : 'Отмечено: частичная оплата — ') + formatAmount(choice.amount)
-  );
+}
+document.getElementById('paymentEntryAdd').addEventListener('click', submitPaymentEntry);
+document.getElementById('paymentEntryInput').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); submitPaymentEntry(); }
+});
+document.getElementById('paymentEntryList').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-payrm]');
+  if(!rm) return;
+  const idx = parseInt(rm.getAttribute('data-payrm'), 10);
+  removePayment(editingNote, idx);
+  renderPaymentEntryList();
+  updatePaidBadge();
+  updateDueBadge();
+  pushHistory();
 });
 
 function renderChecklistEditor(){
