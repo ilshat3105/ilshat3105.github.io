@@ -554,10 +554,12 @@
     font-family:'Inter',sans-serif;background:transparent;resize:none;color:var(--ink);
     overflow:hidden;min-height:24px;touch-action:pan-y;max-height:48px;transition:max-height .15s ease;}
   .sv-note-text:focus{max-height:400px;}
+  .sv-note-text.expanded{max-height:400px;}
   .sv-note-text.done{color:var(--faint);text-decoration:line-through;}
-  .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
-  .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
-    flex-shrink:0;padding-top:1px;}
+  .sv-note-meta{font-size:11px;color:var(--faint);}
+  .sv-note-bottom-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;}
+  .sv-note-right{display:flex;flex-direction:row;align-items:center;gap:9px;
+    flex-shrink:0;}
   .sv-note-doc{background:none;border:none;color:var(--faint);font-size:16px;
     line-height:1;cursor:pointer;padding:2px;position:relative;}
   .sv-note-doc.has-doc{color:var(--steel);}
@@ -1146,7 +1148,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-08 23:48</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 00:15</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4456,19 +4458,21 @@ function renderSvNotes(){
       <div class="sv-note-card${n.done ? ' done' : ''}${n.favorite ? ' favorite' : ''}" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
-        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.reminderAt ? ` · <span class="sv-note-reminder${n.reminderAt < Date.now() ? ' overdue' : ''}">🔔 ${svFormatReminder(n.reminderAt)}</span>` : ''}</div>
+        <div class="sv-note-bottom-row">
+          <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.reminderAt ? ` · <span class="sv-note-reminder${n.reminderAt < Date.now() ? ' overdue' : ''}">🔔 ${svFormatReminder(n.reminderAt)}</span>` : ''}</div>
+          <div class="sv-note-right">
+            <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
+            <button type="button" class="sv-note-remind${n.reminderAt ? ' has-remind' : ''}" data-svnoteremind="${n.id}" aria-label="Напоминание">🔔</button>
+            <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
+            ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
+          </div>
+        </div>
       </div>
       <div class="sv-drum sv-drum-locked" data-svdrum="${n.id}">
         <div class="sv-drum-fade top"></div>
         <div class="sv-drum-selection"></div>
         <div class="sv-drum-track" data-svdrumtrack="${n.id}">${svDrumItemsFor(n).map(t => `<div class="sv-drum-item">${escapeHtml(t)}</div>`).join('')}</div>
         <div class="sv-drum-fade bottom"></div>
-      </div>
-      <div class="sv-note-right">
-        <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
-        <button type="button" class="sv-note-remind${n.reminderAt ? ' has-remind' : ''}" data-svnoteremind="${n.id}" aria-label="Напоминание">🔔</button>
-        ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
-        <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
       </div>
     </div>`).join('');
@@ -4632,13 +4636,13 @@ function renderSvDocChecklist(){
   if(!note || !note.docChecklist){ wrap.innerHTML = ''; return; }
   wrap.innerHTML = note.docChecklist.map((it) => `
     <div class="cl-row ${it.done?'done':''}" data-svdocrow="${it.id}">
-      <button type="button" data-svdocdrag="${it.id}" style="background:none;border:none;padding:2px 6px 2px 0;color:#9aa0a6;cursor:grab;touch-action:none;flex-shrink:0;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
-      </button>
       <input type="checkbox" data-svdoccheck="${it.id}" ${it.done?'checked':''}>
       <input type="text" data-svdoctext="${it.id}" value="${(it.text||'').replace(/"/g,'&quot;')}" placeholder="Пункт списка">
       <button class="rm" data-svdocrm="${it.id}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <button type="button" data-svdocdrag="${it.id}" style="background:none;border:none;padding:2px 0 2px 6px;color:#9aa0a6;cursor:grab;touch-action:none;flex-shrink:0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
       </button>
     </div>`).join('');
 }
