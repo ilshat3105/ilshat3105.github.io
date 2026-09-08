@@ -1053,11 +1053,20 @@
   <div class="sv-doc-overlay" id="svDocOverlay">
     <div class="sv-doc-top">
       <div class="sv-doc-theme" id="svDocTheme"></div>
+      <button type="button" id="svDocChecklistToggleBtn" title="Текст / список" style="background:none;border:none;padding:6px;cursor:pointer;color:inherit;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </button>
     </div>
     <div class="sv-doc-body">
       <div class="sv-doc-label">Описание</div>
       <textarea class="sv-doc-desc" id="svDocDesc"></textarea>
       <div class="body-preview sv-doc-desc-preview" id="svDocDescPreview" style="display:none;"></div>
+      <div id="svDocChecklistWrap" style="display:none;">
+        <div id="svDocClItems"></div>
+        <div class="cl-row" style="border:none;">
+          <input type="text" id="svDocClNewInput" placeholder="Добавить пункт" style="flex:1;box-sizing:border-box;padding:9px 10px;border-radius:9px;border:1px solid var(--card-line, #d8dce1);font-size:14px;">
+        </div>
+      </div>
 
       <div class="sv-doc-label">Ссылки</div>
       <div id="svDocLinks"></div>
@@ -1137,7 +1146,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-08 22:50</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-08 23:48</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1222,6 +1231,10 @@
       </button>
       <div id="paySectionBody" style="display:none;">
         <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:8px 2px 4px;">Расчёт:</div>
+        <button type="button" id="payReceiptUploadBtn" style="display:flex;align-items:center;gap:6px;background:none;border:1px dashed var(--card-line, #d8dce1);border-radius:9px;padding:8px 10px;margin:0 2px 8px;width:calc(100% - 4px);font-size:13px;color:#2563eb;font-weight:600;cursor:pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Загрузить платёжку
+        </button>
         <div style="display:flex;gap:6px;margin:0 2px 4px;">
           <input id="paymentEntryInput" type="number" inputmode="decimal" placeholder="Сумма, ₽" style="flex:1;box-sizing:border-box;padding:9px 10px;border-radius:9px;border:1px solid var(--card-line, #d8dce1);font-size:14px;">
           <button type="button" id="paymentEntryAdd" style="background:#2563eb;color:#fff;border:none;border-radius:9px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;">ОК</button>
@@ -2580,6 +2593,13 @@ function compressImage(file, maxDim=1800, quality=0.8){
 }
 
 document.getElementById('photoBtn').addEventListener('click', () => {
+  document.getElementById('photoInput').click();
+});
+document.getElementById('payReceiptUploadBtn').addEventListener('click', () => {
+  // Тот же файловый пикер и то же распознавание, что и в "Заявка (фото)" —
+  // просто отдельная кнопка внутри "Расчёта", чтобы платёжку было проще
+  // найти именно бухгалтеру. Куда бы ни загрузили фото — программа сама
+  // определит, платёжка это или нет.
   document.getElementById('photoInput').click();
 });
 document.getElementById('photoInput').addEventListener('change', async (e) => {
@@ -4555,6 +4575,7 @@ function svOpenDoc(id){
   document.getElementById('svDocOverlay').classList.add('show');
   svAutoResizeDocDesc(); // после show — иначе scrollHeight ещё 0, экран скрыт
   svUpdateDocDescPreview();
+  svUpdateDocChecklistView();
 }
 function svCloseDoc(){
   document.getElementById('svDocOverlay').classList.remove('show');
@@ -4592,6 +4613,153 @@ svDocDescPreview.addEventListener('click', (e) => {
   ta.selectionStart = ta.selectionEnd = ta.value.length;
 });
 document.getElementById('svDocDesc').addEventListener('blur', () => setTimeout(svUpdateDocDescPreview, 0));
+
+// ---- «Описание» заметки автосервиса: текст или список (чек-лист) ----
+// Работает так же, как в «Заявках»: жмём на значок — весь текущий текст,
+// построчно, превращается в список с галочками, и наоборот.
+function svUpdateDocChecklistView(){
+  const note = svCurrentDocNote();
+  const isList = !!(note && note.docChecklist);
+  document.getElementById('svDocChecklistWrap').style.display = isList ? 'block' : 'none';
+  document.getElementById('svDocDesc').style.display = isList ? 'none' : '';
+  document.getElementById('svDocDescPreview').style.display = 'none';
+  if(isList) renderSvDocChecklist();
+  else svUpdateDocDescPreview();
+}
+function renderSvDocChecklist(){
+  const note = svCurrentDocNote();
+  const wrap = document.getElementById('svDocClItems');
+  if(!note || !note.docChecklist){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = note.docChecklist.map((it) => `
+    <div class="cl-row ${it.done?'done':''}" data-svdocrow="${it.id}">
+      <button type="button" data-svdocdrag="${it.id}" style="background:none;border:none;padding:2px 6px 2px 0;color:#9aa0a6;cursor:grab;touch-action:none;flex-shrink:0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+      </button>
+      <input type="checkbox" data-svdoccheck="${it.id}" ${it.done?'checked':''}>
+      <input type="text" data-svdoctext="${it.id}" value="${(it.text||'').replace(/"/g,'&quot;')}" placeholder="Пункт списка">
+      <button class="rm" data-svdocrm="${it.id}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('');
+}
+document.getElementById('svDocChecklistToggleBtn').addEventListener('click', () => {
+  const note = svCurrentDocNote();
+  if(!note) return;
+  if(note.docChecklist){
+    // список -> обратно в текст
+    note.docDesc = note.docChecklist.map(i => (i.done?'[x] ':'[ ] ') + i.text).join('\n');
+    note.docChecklist = null;
+    document.getElementById('svDocDesc').value = note.docDesc;
+    svAutoResizeDocDesc();
+  } else {
+    // текст -> список: каждая непустая строка становится отдельным пунктом
+    const desc = note.docDesc || '';
+    note.docChecklist = desc.trim()
+      ? desc.split('\n').filter(Boolean).map(t => ({ id: clIdSeq++, text: t.replace(/^\[[ x]\]\s*/,''), done:false }))
+      : [];
+    note.docDesc = '';
+  }
+  svUpdateDocChecklistView();
+  scheduleSvNotesSave();
+});
+document.getElementById('svDocClItems').addEventListener('input', (e) => {
+  const t = e.target.closest('[data-svdoctext]');
+  if(!t) return;
+  const note = svCurrentDocNote();
+  const it = note.docChecklist.find(i => i.id == t.getAttribute('data-svdoctext'));
+  if(it) it.text = t.value;
+  scheduleSvNotesSave();
+});
+document.getElementById('svDocClItems').addEventListener('change', (e) => {
+  const c = e.target.closest('[data-svdoccheck]');
+  if(!c) return;
+  const note = svCurrentDocNote();
+  const it = note.docChecklist.find(i => i.id == c.getAttribute('data-svdoccheck'));
+  if(it) it.done = c.checked;
+  renderSvDocChecklist();
+  scheduleSvNotesSave();
+});
+document.getElementById('svDocClItems').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-svdocrm]');
+  if(!rm) return;
+  const note = svCurrentDocNote();
+  note.docChecklist = note.docChecklist.filter(i => i.id != rm.getAttribute('data-svdocrm'));
+  renderSvDocChecklist();
+  scheduleSvNotesSave();
+});
+
+// ---- Перетаскивание пунктов списка за ручку (⋮⋮), как в обычных приложениях ----
+let svDocDragState = null;
+document.getElementById('svDocClItems').addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-svdocdrag]');
+  if(!handle) return;
+  const row = handle.closest('[data-svdocrow]');
+  const wrap = document.getElementById('svDocClItems');
+  handle.setPointerCapture(e.pointerId);
+  svDocDragState = { pointerId: e.pointerId, row, wrap, startY: e.clientY };
+  row.style.position = 'relative';
+  row.style.zIndex = '5';
+  row.style.background = 'var(--surface)';
+  row.style.boxShadow = '0 3px 10px rgba(0,0,0,.18)';
+  row.style.borderRadius = '8px';
+  e.preventDefault();
+});
+document.getElementById('svDocClItems').addEventListener('pointermove', (e) => {
+  if(!svDocDragState || e.pointerId !== svDocDragState.pointerId) return;
+  const { row, wrap, startY } = svDocDragState;
+  const delta = e.clientY - startY;
+  row.style.transform = `translateY(${delta}px)`;
+  const rowRect = row.getBoundingClientRect();
+  const rowMid = rowRect.top + rowRect.height / 2;
+  for(const sib of Array.from(wrap.children)){
+    if(sib === row) continue;
+    const rect = sib.getBoundingClientRect();
+    const sibMid = rect.top + rect.height / 2;
+    const following = !!(row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if(following && rowMid > sibMid){
+      wrap.insertBefore(row, sib.nextSibling);
+      svDocDragState.startY = e.clientY;
+      row.style.transform = 'translateY(0px)';
+      break;
+    }
+    if(!following && rowMid < sibMid){
+      wrap.insertBefore(row, sib);
+      svDocDragState.startY = e.clientY;
+      row.style.transform = 'translateY(0px)';
+      break;
+    }
+  }
+});
+function svDocEndDrag(e){
+  if(!svDocDragState || (e && e.pointerId !== svDocDragState.pointerId)) return;
+  const { row, wrap } = svDocDragState;
+  row.style.transform = '';
+  row.style.position = '';
+  row.style.zIndex = '';
+  row.style.background = '';
+  row.style.boxShadow = '';
+  row.style.borderRadius = '';
+  const note = svCurrentDocNote();
+  const idOrder = Array.from(wrap.children).map(el => el.getAttribute('data-svdocrow'));
+  note.docChecklist.sort((a, b) => idOrder.indexOf(String(a.id)) - idOrder.indexOf(String(b.id)));
+  svDocDragState = null;
+  scheduleSvNotesSave();
+}
+document.getElementById('svDocClItems').addEventListener('pointerup', svDocEndDrag);
+document.getElementById('svDocClItems').addEventListener('pointercancel', svDocEndDrag);
+document.getElementById('svDocClNewInput').addEventListener('keydown', (e) => {
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const input = document.getElementById('svDocClNewInput');
+  const val = input.value.trim();
+  if(!val) return;
+  const note = svCurrentDocNote();
+  if(!note.docChecklist) note.docChecklist = [];
+  note.docChecklist.push({ id: clIdSeq++, text: val, done:false });
+  input.value = '';
+  renderSvDocChecklist();
+  scheduleSvNotesSave();
+});
 function renderSvDocLinks(){
   const note = svCurrentDocNote();
   if(!note) return;
