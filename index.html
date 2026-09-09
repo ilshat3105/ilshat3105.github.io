@@ -558,21 +558,21 @@
   .sv-note-text.done{color:var(--faint);text-decoration:line-through;}
   .sv-note-meta{font-size:11px;color:var(--faint);}
   .sv-note-bottom-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;}
-  .sv-note-right{display:flex;flex-direction:row;align-items:center;gap:9px;
-    flex-shrink:0;}
-  .sv-note-doc{background:none;border:none;color:var(--faint);font-size:16px;
+  .sv-note-right{display:flex;flex-direction:row;align-items:center;gap:7px;
+    flex-shrink:0;opacity:.55;}
+  .sv-note-doc{background:none;border:none;color:var(--faint);font-size:13px;
     line-height:1;cursor:pointer;padding:2px;position:relative;}
   .sv-note-doc.has-doc{color:var(--steel);}
-  .sv-note-doc.has-doc::after{content:'';position:absolute;top:-1px;right:-1px;width:6px;height:6px;
+  .sv-note-doc.has-doc::after{content:'';position:absolute;top:-1px;right:-1px;width:5px;height:5px;
     border-radius:50%;background:#3d5a80;}
-  .sv-note-remind{background:none;border:none;color:var(--faint);font-size:16px;
-    line-height:1;cursor:pointer;padding:2px;opacity:.55;}
+  .sv-note-remind{background:none;border:none;color:var(--faint);font-size:13px;
+    line-height:1;cursor:pointer;padding:2px;opacity:.7;}
   .sv-note-remind.has-remind{opacity:1;}
   .sv-note-reminder{color:var(--steel);font-weight:700;}
   .sv-note-reminder.overdue{color:#d93025;}
-  .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
-    cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
-  .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
+  .sv-note-handle{color:var(--faint);font-size:15px;line-height:1;letter-spacing:-1px;
+    cursor:grab;padding:2px 3px;touch-action:none;-webkit-user-select:none;user-select:none;}
+  .sv-note-check{width:16px;height:16px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
   .sv-cat-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:10px;
     -webkit-overflow-scrolling:touch;background:var(--bg);}
   .sv-cat-row.sv-cat-row-fixed{position:fixed;z-index:6;margin-bottom:0;box-sizing:border-box;}
@@ -1148,7 +1148,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 00:15</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 02:20</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
