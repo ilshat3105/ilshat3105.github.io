@@ -22,9 +22,10 @@
   .phone[data-theme="dark"]{
     color-scheme:dark;
     --ink:#e8eaed; --muted:#9aa0a6; --faint:#6b7076; --line:#3a3d42; --bg:#17191c;
-    --accent:#8ab4f8; --steel:#7fa8d9;
+    --accent:#8ab4f8; --accent-2:#7fa8d9; --steel:#7fa8d9;
     --surface:#212327; --surface-alt:#26292d; --page-bg:#0e0f11;
     --card-line:#33373b; --concrete:#2a2d31;
+    --success:#4ade80; --warning:#e8a33d; --danger:#f87171;
     --shadow-soft:rgba(0,0,0,.28); --shadow-strong:rgba(0,0,0,.55);
     --tint-warn-bg:#3a2a17; --tint-warn-border:#7a4a1e; --tint-warn-text:#e8a33d;
     --tint-amber-bg:#3a2a17; --tint-fav-bg:#3a3320; --tint-red-bg:#3a1f1e;
@@ -97,9 +98,9 @@
   .note .pin{position:absolute;top:14px;right:14px;color:var(--muted);opacity:.85;}
   .note .amount-badge{position:absolute;top:12px;right:14px;font-size:16px;font-weight:800;
     color:var(--ink);display:flex;align-items:center;gap:6px;}
-  .paid-dot-inline{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:#188038;}
+  .paid-dot-inline{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--success);}
   .paid-dot-inline.gray{background:#9aa0a6;}
-  .paid-dot-inline.partial{background:#e8a33d;}
+  .paid-dot-inline.partial{background:var(--warning);}
   .paid-dot-inline.over{background:#8d6748;}
   .paid-check-inline{width:15px;height:15px;flex-shrink:0;color:#2f7de1;}
   .note .flag-tags{position:absolute;top:34px;right:14px;display:flex;gap:4px;}
@@ -181,7 +182,7 @@
   .lightbox .lb-select-btn{position:absolute;bottom:14px;left:14px;background:rgba(217,48,37,.85);
     border:none;color:#fff;padding:8px 14px;border-radius:20px;font-size:13.5px;font-weight:700;
     cursor:pointer;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);font-family:'Inter',sans-serif;}
-  .lightbox .lb-select-btn.active{background:#d93025;box-shadow:0 0 0 3px rgba(217,48,37,.45);}
+  .lightbox .lb-select-btn.active{background:var(--danger);box-shadow:0 0 0 3px rgba(217,48,37,.45);}
   .lb-select-overlay{position:absolute;inset:0;z-index:8;pointer-events:none;touch-action:none;}
   .lb-select-overlay.active{pointer-events:auto;}
   .lb-select-box{position:fixed;border:2.5px solid #ff3b30;background:rgba(255,59,48,.18);
@@ -254,7 +255,7 @@
     flex-shrink:0;border-bottom:1px solid var(--card-line, var(--line));}
   .sv-rem-top button{background:none;border:none;color:var(--steel, #2563eb);font-size:15px;
     font-weight:600;cursor:pointer;padding:6px 4px;font-family:'Inter',sans-serif;}
-  #svRemClearBtn{color:#d93025;}
+  #svRemClearBtn{color:var(--danger);}
   .sv-rem-title{font-size:15px;font-weight:700;color:var(--ink);}
   .sv-rem-body{flex:1;overflow-y:auto;padding:20px;}
   .sv-rem-step{display:flex;flex-direction:column;align-items:center;gap:22px;}
@@ -336,37 +337,37 @@
   .ed-paid-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);
     font-weight:600;margin-bottom:8px;flex-shrink:0;background:var(--surface);
     border:1px solid var(--card-line);border-radius:20px;padding:4px 10px 4px 8px;width:fit-content;}
-  .ed-paid-badge .dot{width:8px;height:8px;border-radius:50%;background:#188038;flex-shrink:0;}
-  .ed-paid-badge .dot.partial{background:#e8a33d;}
+  .ed-paid-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0;}
+  .ed-paid-badge .dot.partial{background:var(--warning);}
   .ed-paid-badge .dot.gray{background:#9aa0a6;}
   .ed-paid-badge .dot.over{background:#8d6748;}
   .ed-reminder-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#fff;
-    font-weight:600;margin-bottom:8px;flex-shrink:0;background:#e8a33d;
+    font-weight:600;margin-bottom:8px;flex-shrink:0;background:var(--warning);
     border-radius:20px;padding:4px 10px;width:fit-content;cursor:pointer;}
-  .ed-reminder-badge.overdue{background:#d93025;}
+  .ed-reminder-badge.overdue{background:var(--danger);}
   .ed-reminder-badge .x{opacity:.85;font-weight:800;margin-left:2px;}
   .ed-reminder-badge .alarm{opacity:.9;margin-left:2px;}
   .note .reminder-tag{position:absolute;top:10px;right:12px;font-size:10.5px;font-weight:700;
-    color:#fff;background:#e8a33d;border-radius:10px;padding:2px 7px;display:flex;align-items:center;gap:3px;}
-  .note .reminder-tag.overdue{background:#d93025;}
+    color:#fff;background:var(--warning);border-radius:10px;padding:2px 7px;display:flex;align-items:center;gap:3px;}
+  .note .reminder-tag.overdue{background:var(--danger);}
   .due-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-shrink:0;}
   .due-chip{background:none;border:1px solid var(--line);color:var(--muted);border-radius:20px;
     padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
   #dueDaysInput::-webkit-outer-spin-button,
   #dueDaysInput::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .ed-due-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#fff;
-    font-weight:600;flex-shrink:0;background:#188038;border-radius:20px;padding:4px 10px;
+    font-weight:600;flex-shrink:0;background:var(--success);border-radius:20px;padding:4px 10px;
     width:fit-content;cursor:pointer;}
-  .ed-due-badge.overdue{background:#d93025;}
+  .ed-due-badge.overdue{background:var(--danger);}
   .ed-due-badge.default{background:#9aa0a6;}
-  .ed-due-badge.default.overdue{background:#d93025;}
+  .ed-due-badge.default.overdue{background:var(--danger);}
   .ed-due-badge .x{opacity:.85;font-weight:800;margin-left:2px;}
   .note.due-overdue{background:#fdf1f0 !important;}
   .amount-row{display:flex;align-items:center;gap:5px;margin-bottom:12px;flex-shrink:0;flex-wrap:wrap;}
   .amount-row > input{width:72px;border:1px solid var(--line);border-radius:8px;padding:7px 8px;
     font-size:13.5px;font-family:'Inter',sans-serif;background:transparent;outline:none;}
   .amount-row input:focus{border-color:#5f6368;}
-  .amount-row #amountPreview{font-size:12px;color:#188038;font-weight:600;margin-right:2px;white-space:nowrap;}
+  .amount-row #amountPreview{font-size:12px;color:var(--success);font-weight:600;margin-right:2px;white-space:nowrap;}
   .amount-flags{display:flex;gap:8px;margin-bottom:12px;flex-shrink:0;}
   .flag-chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--ink);
     background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:4px 8px;cursor:pointer;
@@ -398,7 +399,7 @@
     font-size:13.5px;font-weight:500;padding:9px 16px;cursor:pointer;border-radius:6px;}
   .editor-toolbar .close-btn:active{background:var(--concrete);}
 
-  .ed-photos-wrap{padding:12px 20px 0;flex-shrink:0;}
+  .ed-photos-wrap{padding:12px 0 0;flex-shrink:0;}
 
   /* ---- Окно с распознанным текстом фото (OCR) — переиспользует те же стили листа ---- */
   .route-import-overlay{position:fixed;inset:0;background:transparent;z-index:70;
@@ -413,7 +414,7 @@
     font-family:'Inter',sans-serif;}
   .route-save-btn{flex:1;background:var(--accent);color:#fff;border:none;border-radius:12px;
     padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
-  #ocrSelectBtn{background:#d93025;}
+  #ocrSelectBtn{background:var(--danger);}
   #ocrSelectBtn.active{background:#a3201a;box-shadow:0 0 0 3px rgba(217,48,37,.35) inset;}
 
   .palette{position:absolute;top:52px;left:6px;background:var(--surface);border:1px solid var(--line);
@@ -438,8 +439,8 @@
     border-radius:12px;border:1.5px solid var(--card-line);background:var(--surface);font-size:15px;
     font-weight:600;color:var(--ink);cursor:pointer;text-align:left;}
   .pay-choice-btn:active{background:var(--concrete);}
-  .pay-choice-btn .dot{width:12px;height:12px;border-radius:50%;background:#188038;flex-shrink:0;}
-  .pay-choice-btn .dot.partial{background:#e8a33d;}
+  .pay-choice-btn .dot{width:12px;height:12px;border-radius:50%;background:var(--success);flex-shrink:0;}
+  .pay-choice-btn .dot.partial{background:var(--warning);}
   .pay-choice-cancel{background:none;border:none;color:var(--muted);font-size:13.5px;
     padding:8px;cursor:pointer;margin-top:4px;}
   .pay-choice-btn.full-width{justify-content:center;background:var(--steel);border-color:var(--steel);color:#fff;}
@@ -454,7 +455,7 @@
   .confirm-btns{display:flex;gap:10px;}
   .confirm-btn{flex:1;padding:12px 0;border-radius:12px;border:none;font-size:15px;
     font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
-  .confirm-btn.yes{background:#d93025;color:#fff;}
+  .confirm-btn.yes{background:var(--danger);color:#fff;}
   .confirm-btn.no{background:var(--concrete);color:var(--ink);}
 
   .top-tabs{display:flex;gap:4px;padding:8px 16px 0;border-bottom:1px solid var(--line);flex-shrink:0;}
@@ -493,7 +494,7 @@
   .inc-owed-banner b{font-size:16px;}
   #incFilterToggle{flex-wrap:wrap;}
   #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
-  #incOverdueBtn.has-overdue{color:#d93025;border-color:var(--tint-red-border);}
+  #incOverdueBtn.has-overdue{color:var(--danger);border-color:var(--tint-red-border);}
   .inc-card{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px 16px;
     margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
     cursor:pointer;}
@@ -569,7 +570,7 @@
     line-height:1;cursor:pointer;padding:2px;opacity:.7;}
   .sv-note-remind.has-remind{opacity:1;}
   .sv-note-reminder{color:var(--steel);font-weight:700;}
-  .sv-note-reminder.overdue{color:#d93025;}
+  .sv-note-reminder.overdue{color:var(--danger);}
   .sv-note-handle{color:var(--faint);font-size:15px;line-height:1;letter-spacing:-1px;
     cursor:grab;padding:2px 3px;touch-action:none;-webkit-user-select:none;user-select:none;}
   .sv-note-check{width:16px;height:16px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
@@ -984,7 +985,7 @@
         <svg id="authPassEyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
     </div>
-    <div id="authError" style="color:#d93025;font-size:13px;min-height:18px;margin:4px 2px;"></div>
+    <div id="authError" style="color:var(--danger);font-size:13px;min-height:18px;margin:4px 2px;"></div>
     <div id="authHint" style="display:none;color:var(--muted);font-size:12px;margin:0 2px 8px;line-height:1.4;">Это отдельный пароль только для приложения — не пароль от вашей почты.</div>
     <button id="authSubmitBtn" type="button" style="width:100%;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:600;margin-top:6px;cursor:pointer;">Войти</button>
     <button id="authToggleBtn" type="button" style="width:100%;background:none;border:none;color:#2563eb;font-size:13.5px;margin-top:16px;cursor:pointer;padding:6px;">Нет аккаунта? Зарегистрироваться</button>
@@ -1148,7 +1149,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 02:20</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 19:40</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1173,7 +1174,7 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
       Резервные копии
     </button>
-    <button id="logoutBtn" type="button" style="color:#d93025;">
+    <button id="logoutBtn" type="button" style="color:var(--danger);">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Выйти из аккаунта
     </button>
@@ -1193,7 +1194,7 @@
       <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:14px;">Сменить пароль</div>
       <input id="cpCurrent" type="password" autocomplete="current-password" placeholder="Текущий пароль" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--card-line, #e0e0e0);border-radius:10px;font-size:14px;margin-bottom:8px;font-family:'Inter',sans-serif;background:var(--surface);color:var(--ink);">
       <input id="cpNew" type="password" autocomplete="new-password" placeholder="Новый пароль (мин. 6 символов)" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--card-line, #e0e0e0);border-radius:10px;font-size:14px;margin-bottom:8px;font-family:'Inter',sans-serif;background:var(--surface);color:var(--ink);">
-      <div id="cpError" style="color:#d93025;font-size:12.5px;min-height:16px;margin-bottom:6px;"></div>
+      <div id="cpError" style="color:var(--danger);font-size:12.5px;min-height:16px;margin-bottom:6px;"></div>
       <div style="display:flex;gap:8px;margin-top:6px;">
         <button id="cpCancelBtn" type="button" style="flex:1;background:var(--concrete);color:var(--ink);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Отмена</button>
         <button id="cpSaveBtn" type="button" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Сохранить</button>
@@ -3658,6 +3659,11 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
   if(currentSection === 'income') return;
+  if(currentSection === 'service'){
+    if(svArchiveView) return;
+    svCreateNote(true);
+    return;
+  }
   document.getElementById('composeBar').click();
 });
 
@@ -5110,7 +5116,7 @@ svMainEl.addEventListener('touchstart', (e) => {
   // получает фокус и клавиатура сама чуть подскролливает список, чтобы показать его —
   // из-за этого «до самого верха» иногда означает 1-3px, а не ровно 0.
   if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 4
-    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row')){
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row') || e.target.closest('[data-svnotehandle]')){
     // Барабан папки и сама строка папок — не этот жест. А вот существующие заметки
     // ИСКЛЮЧАТЬ не нужно: тянуть вниз для создания можно начать с любой точки списка,
     // направление (вниз vs в сторону) разберём ниже в touchmove, а не блокировкой здесь —
@@ -5183,7 +5189,7 @@ let svPullingBottom = false;
 svMainEl.addEventListener('touchstart', (e) => {
   const atBottom = svMainEl.scrollTop + svMainEl.clientHeight >= svMainEl.scrollHeight - 4;
   if(currentSection !== 'service' || svArchiveView || !atBottom
-    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row')){
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row') || e.target.closest('[data-svnotehandle]')){
     svPullBottomStartY = null; return;
   }
   svPullBottomStartY = e.touches[0].clientY;
@@ -5367,7 +5373,7 @@ document.getElementById('authForgotBtn').addEventListener('click', () => {
     authError.style.color = '#1e8e3e';
     authError.textContent = 'Письмо со ссылкой для сброса пароля отправлено на ' + email;
   }).catch(err => {
-    authError.style.color = '#d93025';
+    authError.style.color = 'var(--danger)';
     authError.textContent = authErrorText(err);
   });
 });
@@ -5595,7 +5601,7 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
         backupsList.appendChild(row);
       });
     }).catch(e => {
-      backupsList.innerHTML = '<div style="text-align:center;color:#d93025;font-size:13px;padding:20px 0;">Не удалось загрузить копии.</div>';
+      backupsList.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:13px;padding:20px 0;">Не удалось загрузить копии.</div>';
       console.warn('Не удалось загрузить бэкапы:', e);
     });
 });
