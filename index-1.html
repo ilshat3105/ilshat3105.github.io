@@ -446,7 +446,7 @@
   .pay-choice-btn.full-width{justify-content:center;background:var(--steel);border-color:var(--steel);color:#fff;}
   .pay-choice-btn.full-width .dot{background:var(--surface);}
 
-  .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:80;
+  .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:120;
     display:none;align-items:center;justify-content:center;padding:24px;}
   .confirm-overlay.show{display:flex;}
   .confirm-card{background:var(--surface);border-radius:16px;padding:22px 20px;width:100%;max-width:320px;
@@ -1155,7 +1155,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 17:52</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 18:26</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1847,7 +1847,7 @@ document.getElementById('content').addEventListener('touchmove', (e) => {
     cardGesture.hoverIndex = idx;
   }
 }, { passive: false });
-function showConfirm(text, onYes){
+function showConfirm(text, onYes, onNo){
   const overlay = document.getElementById('confirmOverlay');
   document.getElementById('confirmText').textContent = text;
   overlay.classList.add('show');
@@ -1859,7 +1859,7 @@ function showConfirm(text, onYes){
     noBtn.removeEventListener('click', onNoClick);
   }
   function onYesClick(){ cleanup(); onYes(); }
-  function onNoClick(){ cleanup(); }
+  function onNoClick(){ cleanup(); if(onNo) onNo(); }
   yesBtn.addEventListener('click', onYesClick);
   noBtn.addEventListener('click', onNoClick);
 }
@@ -5463,12 +5463,20 @@ function loadFromCloud(){
         const localCount = itemCount(stateSnapshot());
         const cloudCount = itemCount(cloudData);
         const suspicious = isFirstCloudSnapshot && localCount >= 4 && cloudCount < localCount / 2;
-        if(suspicious && !confirm(
-          `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
-          `Заменить данные на телефоне облачной версией? Если не уверены — нажмите «Отмена», ` +
-          `и текущие данные с телефона будут отправлены в облако вместо замены.`
-        )){
-          scheduleCloudSave();
+        if(suspicious){
+          showConfirm(
+            `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
+            `Заменить данные на телефоне облачной версией? Если не уверены — нажмите «Отмена», ` +
+            `и текущие данные с телефона будут отправлены в облако вместо замены.`,
+            () => { // Да — заменить локальные данные облачными
+              suppressCloudSave = true;
+              applyState(cloudData);
+              try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+              suppressCloudSave = false;
+              renderContent();
+            },
+            () => { scheduleCloudSave(); } // Отмена — досылаем то, что есть на телефоне, в облако
+          );
         } else {
           suppressCloudSave = true;
           applyState(cloudData);
@@ -5593,11 +5601,15 @@ function formatBackupLabel(key){
 document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
   drawer.classList.remove('show'); overlay.classList.remove('show');
-  if(!currentUID) return;
+  // Раньше здесь было "if(!currentUID) return" — если Firebase ещё не успел
+  // подтвердить вход (например, сразу после открытия приложения на слабой связи),
+  // окно молча не открывалось и ничего не сообщало. Теперь вместо тихого выхода
+  // открываем окно с индикатором и ждём подтверждения входа до 5 секунд.
   backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Загрузка...</div>';
   backupsOverlay.style.display = 'flex';
-  db.collection('users').doc(currentUID).collection('backups')
-    .get().then(snapshot => {
+  function loadBackupsList(uid){
+    db.collection('users').doc(uid).collection('backups')
+      .get().then(snapshot => {
       if(snapshot.empty){
         backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Копий пока нет. Первая появится в течение суток после начала работы.</div>';
         return;
@@ -5618,32 +5630,43 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
           <button type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;">Восстановить</button>
         `;
         row.querySelector('button').addEventListener('click', () => {
-          if(!confirm(`Заменить текущие данные копией «${label.title}»? Перед заменой текущее состояние тоже будет сохранено как копия — при необходимости сможете вернуть его обратно.`)) return;
-          const restoreBtn = row.querySelector('button');
-          restoreBtn.disabled = true;
-          restoreBtn.textContent = 'Восстановление...';
-          // Сначала сохраняем текущее состояние отдельной "аварийной" копией —
-          // если восстановили не ту дату, можно откатиться на момент прямо
-          // перед этим действием, а не потерять недавние правки навсегда.
-          const currentSnap = stateSnapshot();
-          const preRestoreKey = 'preRestore-' + Date.now();
-          const backupsRef = db.collection('users').doc(currentUID).collection('backups');
-          backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
-            .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
-            .then(() => {
-              suppressCloudSave = true;
-              applyState(data);
-              try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-              suppressCloudSave = false;
-              localUpdatedAt = Date.now();
-              return db.collection('users').doc(currentUID).set(stateSnapshot());
-            })
-            .catch(e => console.warn('Не удалось сохранить восстановленные данные в облако:', e))
-            .then(() => cleanupOldBackups(backupsRef))
-            .finally(() => {
-              renderContent();
-              backupsOverlay.style.display = 'none';
-            });
+          // Нативный confirm() ненадёжен в обёрнутом в APK WebView-приложении
+          // (для RuStore) — может не показываться вовсе. Используем свой же
+          // диалог showConfirm(), который уже применяется в остальном приложении.
+          showConfirm(
+            `Заменить текущие данные копией «${label.title}»? Перед заменой текущее состояние тоже будет сохранено как копия — при необходимости сможете вернуть его обратно.`,
+            () => {
+              const restoreBtn = row.querySelector('button');
+              restoreBtn.disabled = true;
+              restoreBtn.textContent = 'Восстановление...';
+              // Сначала сохраняем текущее состояние отдельной "аварийной" копией —
+              // если восстановили не ту дату, можно откатиться на момент прямо
+              // перед этим действием, а не потерять недавние правки навсегда.
+              const currentSnap = stateSnapshot();
+              const preRestoreKey = 'preRestore-' + Date.now();
+              const backupsRef = db.collection('users').doc(currentUID).collection('backups');
+              backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
+                .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
+                .then(() => {
+                  suppressCloudSave = true;
+                  applyState(data);
+                  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+                  suppressCloudSave = false;
+                  localUpdatedAt = Date.now();
+                  return db.collection('users').doc(currentUID).set(stateSnapshot());
+                })
+                .then(() => showToast('Данные восстановлены из копии'))
+                .catch(e => {
+                  console.warn('Не удалось сохранить восстановленные данные в облако:', e);
+                  showToast('Восстановлено локально, но не удалось отправить в облако — проверьте связь');
+                })
+                .then(() => cleanupOldBackups(backupsRef))
+                .finally(() => {
+                  renderContent();
+                  backupsOverlay.style.display = 'none';
+                });
+            }
+          );
         });
         backupsList.appendChild(row);
       });
@@ -5651,6 +5674,27 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
       backupsList.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:13px;padding:20px 0;">Не удалось загрузить копии.</div>';
       console.warn('Не удалось загрузить бэкапы:', e);
     });
+  }
+  if(currentUID){
+    loadBackupsList(currentUID);
+  } else {
+    // Firebase иногда ещё не успел подтвердить вход в момент нажатия — например,
+    // сразу после открытия приложения на слабой связи. Ждём до 5 секунд, вместо
+    // того чтобы молча ничего не показать.
+    let waited = 0;
+    const waitIv = setInterval(() => {
+      if(currentUID){
+        clearInterval(waitIv);
+        loadBackupsList(currentUID);
+        return;
+      }
+      waited += 300;
+      if(waited >= 5000){
+        clearInterval(waitIv);
+        backupsList.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:13px;padding:20px 0;">Не удалось подтвердить вход в аккаунт. Проверьте связь и попробуйте ещё раз.</div>';
+      }
+    }, 300);
+  }
 });
 document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   backupsOverlay.style.display = 'none';
