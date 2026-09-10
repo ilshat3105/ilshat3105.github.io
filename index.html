@@ -763,6 +763,13 @@
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   auth.useDeviceLanguage();
+  // Явно фиксируем, что сессия входа должна сохраняться на устройстве между
+  // запусками (а не только на время вкладки) — по умолчанию это и так LOCAL,
+  // но явное указание защищает от случаев, когда обёртка приложения (например,
+  // WebView для RuStore-сборки) применяет другие настройки хранилища.
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
+    console.warn('Не удалось зафиксировать LOCAL-персистентность входа:', err.code);
+  });
   const db = firebase.firestore();
   // Офлайн-персистентность: Firestore сам хранит несохранённые записи локально
   // и досылает их в облако, как только появится связь — без риска "тихо" потерять
@@ -4259,8 +4266,10 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
     loadBackupsList(currentUID);
   } else {
     // Firebase иногда ещё не успел подтвердить вход в момент нажатия — например,
-    // сразу после открытия приложения на слабой связи. Ждём до 5 секунд, вместо
-    // того чтобы молча ничего не показать.
+    // сразу после открытия приложения на слабой связи или холодном запуске.
+    // Ждём дольше (15 секунд вместо прежних 5) и, если так и не дождались,
+    // даём кнопку "Повторить" вместо тупиковой ошибки — это не решает саму
+    // задержку Firebase, но не оставляет человека с закрытой дверью.
     let waited = 0;
     const waitIv = setInterval(() => {
       if(currentUID){
@@ -4269,9 +4278,21 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
         return;
       }
       waited += 300;
-      if(waited >= 5000){
+      if(waited >= 15000){
         clearInterval(waitIv);
-        backupsList.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:13px;padding:20px 0;">Не удалось подтвердить вход в аккаунт. Проверьте связь и попробуйте ещё раз.</div>';
+        backupsList.innerHTML = '';
+        const errBox = document.createElement('div');
+        errBox.style.cssText = 'text-align:center;color:var(--danger);font-size:13px;padding:20px 0;';
+        errBox.textContent = 'Не удалось подтвердить вход в аккаунт. Проверьте связь.';
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.textContent = 'Повторить';
+        retryBtn.style.cssText = 'display:block;margin:10px auto 0;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;';
+        retryBtn.addEventListener('click', () => {
+          document.getElementById('backupsBtn')?.dispatchEvent(new Event('click', { bubbles: true }));
+        });
+        backupsList.appendChild(errBox);
+        backupsList.appendChild(retryBtn);
       }
     }, 300);
   }
