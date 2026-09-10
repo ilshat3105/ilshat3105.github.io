@@ -22,9 +22,10 @@
   .phone[data-theme="dark"]{
     color-scheme:dark;
     --ink:#e8eaed; --muted:#9aa0a6; --faint:#6b7076; --line:#3a3d42; --bg:#17191c;
-    --accent:#8ab4f8; --steel:#7fa8d9;
+    --accent:#8ab4f8; --accent-2:#7fa8d9; --steel:#7fa8d9;
     --surface:#212327; --surface-alt:#26292d; --page-bg:#0e0f11;
     --card-line:#33373b; --concrete:#2a2d31;
+    --success:#4ade80; --warning:#e8a33d; --danger:#f87171;
     --shadow-soft:rgba(0,0,0,.28); --shadow-strong:rgba(0,0,0,.55);
     --tint-warn-bg:#3a2a17; --tint-warn-border:#7a4a1e; --tint-warn-text:#e8a33d;
     --tint-amber-bg:#3a2a17; --tint-fav-bg:#3a3320; --tint-red-bg:#3a1f1e;
@@ -97,8 +98,10 @@
   .note .pin{position:absolute;top:14px;right:14px;color:var(--muted);opacity:.85;}
   .note .amount-badge{position:absolute;top:12px;right:14px;font-size:16px;font-weight:800;
     color:var(--ink);display:flex;align-items:center;gap:6px;}
-  .paid-dot-inline{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:#9aa0a6;}
-  .paid-dot-inline.partial{background:#e8a33d;}
+  .paid-dot-inline{width:9px;height:9px;border-radius:50%;flex-shrink:0;background:var(--success);}
+  .paid-dot-inline.gray{background:#9aa0a6;}
+  .paid-dot-inline.partial{background:var(--warning);}
+  .paid-dot-inline.over{background:#8d6748;}
   .paid-check-inline{width:15px;height:15px;flex-shrink:0;color:#2f7de1;}
   .note .flag-tags{position:absolute;top:34px;right:14px;display:flex;gap:4px;}
   .note .flag-tag{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap;}
@@ -117,7 +120,7 @@
   .note .photo-more{width:44px;height:44px;border-radius:8px;flex-shrink:0;background:rgba(0,0,0,.06);
     display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#3c4043;}
 
-  .ed-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:flex-start;}
+  .ed-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:0;align-items:flex-start;}
   .ed-photo-item{display:flex;flex-direction:column;align-items:center;gap:3px;}
   .ed-photo-date{font-size:10px;color:var(--faint);}
   .ed-photo-thumb{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;
@@ -179,7 +182,7 @@
   .lightbox .lb-select-btn{position:absolute;bottom:14px;left:14px;background:rgba(217,48,37,.85);
     border:none;color:#fff;padding:8px 14px;border-radius:20px;font-size:13.5px;font-weight:700;
     cursor:pointer;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);font-family:'Inter',sans-serif;}
-  .lightbox .lb-select-btn.active{background:#d93025;box-shadow:0 0 0 3px rgba(217,48,37,.45);}
+  .lightbox .lb-select-btn.active{background:var(--danger);box-shadow:0 0 0 3px rgba(217,48,37,.45);}
   .lb-select-overlay{position:absolute;inset:0;z-index:8;pointer-events:none;touch-action:none;}
   .lb-select-overlay.active{pointer-events:auto;}
   .lb-select-box{position:fixed;border:2.5px solid #ff3b30;background:rgba(255,59,48,.18);
@@ -252,7 +255,7 @@
     flex-shrink:0;border-bottom:1px solid var(--card-line, var(--line));}
   .sv-rem-top button{background:none;border:none;color:var(--steel, #2563eb);font-size:15px;
     font-weight:600;cursor:pointer;padding:6px 4px;font-family:'Inter',sans-serif;}
-  #svRemClearBtn{color:#d93025;}
+  #svRemClearBtn{color:var(--danger);}
   .sv-rem-title{font-size:15px;font-weight:700;color:var(--ink);}
   .sv-rem-body{flex:1;overflow-y:auto;padding:20px;}
   .sv-rem-step{display:flex;flex-direction:column;align-items:center;gap:22px;}
@@ -334,37 +337,37 @@
   .ed-paid-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink);
     font-weight:600;margin-bottom:8px;flex-shrink:0;background:var(--surface);
     border:1px solid var(--card-line);border-radius:20px;padding:4px 10px 4px 8px;width:fit-content;}
-  .ed-paid-badge .dot{width:8px;height:8px;border-radius:50%;background:#188038;flex-shrink:0;}
-  .ed-paid-badge .dot.partial{background:#e8a33d;}
+  .ed-paid-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0;}
+  .ed-paid-badge .dot.partial{background:var(--warning);}
   .ed-paid-badge .dot.gray{background:#9aa0a6;}
   .ed-paid-badge .dot.over{background:#8d6748;}
   .ed-reminder-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#fff;
-    font-weight:600;margin-bottom:8px;flex-shrink:0;background:#e8a33d;
+    font-weight:600;margin-bottom:8px;flex-shrink:0;background:var(--warning);
     border-radius:20px;padding:4px 10px;width:fit-content;cursor:pointer;}
-  .ed-reminder-badge.overdue{background:#d93025;}
+  .ed-reminder-badge.overdue{background:var(--danger);}
   .ed-reminder-badge .x{opacity:.85;font-weight:800;margin-left:2px;}
   .ed-reminder-badge .alarm{opacity:.9;margin-left:2px;}
   .note .reminder-tag{position:absolute;top:10px;right:12px;font-size:10.5px;font-weight:700;
-    color:#fff;background:#e8a33d;border-radius:10px;padding:2px 7px;display:flex;align-items:center;gap:3px;}
-  .note .reminder-tag.overdue{background:#d93025;}
+    color:#fff;background:var(--warning);border-radius:10px;padding:2px 7px;display:flex;align-items:center;gap:3px;}
+  .note .reminder-tag.overdue{background:var(--danger);}
   .due-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-shrink:0;}
   .due-chip{background:none;border:1px solid var(--line);color:var(--muted);border-radius:20px;
     padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
   #dueDaysInput::-webkit-outer-spin-button,
   #dueDaysInput::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .ed-due-badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#fff;
-    font-weight:600;flex-shrink:0;background:#188038;border-radius:20px;padding:4px 10px;
+    font-weight:600;flex-shrink:0;background:var(--success);border-radius:20px;padding:4px 10px;
     width:fit-content;cursor:pointer;}
-  .ed-due-badge.overdue{background:#d93025;}
+  .ed-due-badge.overdue{background:var(--danger);}
   .ed-due-badge.default{background:#9aa0a6;}
-  .ed-due-badge.default.overdue{background:#d93025;}
+  .ed-due-badge.default.overdue{background:var(--danger);}
   .ed-due-badge .x{opacity:.85;font-weight:800;margin-left:2px;}
   .note.due-overdue{background:#fdf1f0 !important;}
   .amount-row{display:flex;align-items:center;gap:5px;margin-bottom:12px;flex-shrink:0;flex-wrap:wrap;}
   .amount-row > input{width:72px;border:1px solid var(--line);border-radius:8px;padding:7px 8px;
     font-size:13.5px;font-family:'Inter',sans-serif;background:transparent;outline:none;}
   .amount-row input:focus{border-color:#5f6368;}
-  .amount-row #amountPreview{font-size:12px;color:#188038;font-weight:600;margin-right:2px;white-space:nowrap;}
+  .amount-row #amountPreview{font-size:12px;color:var(--success);font-weight:600;margin-right:2px;white-space:nowrap;}
   .amount-flags{display:flex;gap:8px;margin-bottom:12px;flex-shrink:0;}
   .flag-chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--ink);
     background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:4px 8px;cursor:pointer;
@@ -396,7 +399,7 @@
     font-size:13.5px;font-weight:500;padding:9px 16px;cursor:pointer;border-radius:6px;}
   .editor-toolbar .close-btn:active{background:var(--concrete);}
 
-  .ed-photos-wrap{padding:12px 20px 0;flex-shrink:0;}
+  .ed-photos-wrap{padding:6px 0 0;flex-shrink:0;}
 
   /* ---- Окно с распознанным текстом фото (OCR) — переиспользует те же стили листа ---- */
   .route-import-overlay{position:fixed;inset:0;background:transparent;z-index:70;
@@ -411,7 +414,7 @@
     font-family:'Inter',sans-serif;}
   .route-save-btn{flex:1;background:var(--accent);color:#fff;border:none;border-radius:12px;
     padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
-  #ocrSelectBtn{background:#d93025;}
+  #ocrSelectBtn{background:var(--danger);}
   #ocrSelectBtn.active{background:#a3201a;box-shadow:0 0 0 3px rgba(217,48,37,.35) inset;}
 
   .palette{position:absolute;top:52px;left:6px;background:var(--surface);border:1px solid var(--line);
@@ -436,8 +439,8 @@
     border-radius:12px;border:1.5px solid var(--card-line);background:var(--surface);font-size:15px;
     font-weight:600;color:var(--ink);cursor:pointer;text-align:left;}
   .pay-choice-btn:active{background:var(--concrete);}
-  .pay-choice-btn .dot{width:12px;height:12px;border-radius:50%;background:#188038;flex-shrink:0;}
-  .pay-choice-btn .dot.partial{background:#e8a33d;}
+  .pay-choice-btn .dot{width:12px;height:12px;border-radius:50%;background:var(--success);flex-shrink:0;}
+  .pay-choice-btn .dot.partial{background:var(--warning);}
   .pay-choice-cancel{background:none;border:none;color:var(--muted);font-size:13.5px;
     padding:8px;cursor:pointer;margin-top:4px;}
   .pay-choice-btn.full-width{justify-content:center;background:var(--steel);border-color:var(--steel);color:#fff;}
@@ -452,7 +455,7 @@
   .confirm-btns{display:flex;gap:10px;}
   .confirm-btn{flex:1;padding:12px 0;border-radius:12px;border:none;font-size:15px;
     font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
-  .confirm-btn.yes{background:#d93025;color:#fff;}
+  .confirm-btn.yes{background:var(--danger);color:#fff;}
   .confirm-btn.no{background:var(--concrete);color:var(--ink);}
 
   .top-tabs{display:flex;gap:4px;padding:8px 16px 0;border-bottom:1px solid var(--line);flex-shrink:0;}
@@ -491,7 +494,7 @@
   .inc-owed-banner b{font-size:16px;}
   #incFilterToggle{flex-wrap:wrap;}
   #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
-  #incOverdueBtn.has-overdue{color:#d93025;border-color:var(--tint-red-border);}
+  #incOverdueBtn.has-overdue{color:var(--danger);border-color:var(--tint-red-border);}
   .inc-card{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px 16px;
     margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
     cursor:pointer;}
@@ -552,23 +555,25 @@
     font-family:'Inter',sans-serif;background:transparent;resize:none;color:var(--ink);
     overflow:hidden;min-height:24px;touch-action:pan-y;max-height:48px;transition:max-height .15s ease;}
   .sv-note-text:focus{max-height:400px;}
+  .sv-note-text.expanded{max-height:400px;}
   .sv-note-text.done{color:var(--faint);text-decoration:line-through;}
-  .sv-note-meta{font-size:11px;color:var(--faint);margin-top:6px;}
-  .sv-note-right{display:flex;flex-direction:column;align-items:center;gap:9px;
-    flex-shrink:0;padding-top:1px;}
-  .sv-note-doc{background:none;border:none;color:var(--faint);font-size:16px;
+  .sv-note-meta{font-size:11px;color:var(--faint);}
+  .sv-note-bottom-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;}
+  .sv-note-right{display:flex;flex-direction:row;align-items:center;gap:7px;
+    flex-shrink:0;opacity:.55;}
+  .sv-note-doc{background:none;border:none;color:var(--faint);font-size:13px;
     line-height:1;cursor:pointer;padding:2px;position:relative;}
   .sv-note-doc.has-doc{color:var(--steel);}
-  .sv-note-doc.has-doc::after{content:'';position:absolute;top:-1px;right:-1px;width:6px;height:6px;
+  .sv-note-doc.has-doc::after{content:'';position:absolute;top:-1px;right:-1px;width:5px;height:5px;
     border-radius:50%;background:#3d5a80;}
-  .sv-note-remind{background:none;border:none;color:var(--faint);font-size:16px;
-    line-height:1;cursor:pointer;padding:2px;opacity:.55;}
+  .sv-note-remind{background:none;border:none;color:var(--faint);font-size:13px;
+    line-height:1;cursor:pointer;padding:2px;opacity:.7;}
   .sv-note-remind.has-remind{opacity:1;}
   .sv-note-reminder{color:var(--steel);font-weight:700;}
-  .sv-note-reminder.overdue{color:#d93025;}
-  .sv-note-handle{color:var(--faint);font-size:19px;line-height:1;letter-spacing:-1px;
-    cursor:grab;padding:2px 4px;touch-action:none;-webkit-user-select:none;user-select:none;}
-  .sv-note-check{width:21px;height:21px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
+  .sv-note-reminder.overdue{color:var(--danger);}
+  .sv-note-handle{color:var(--faint);font-size:15px;line-height:1;letter-spacing:-1px;
+    cursor:grab;padding:2px 3px;touch-action:none;-webkit-user-select:none;user-select:none;}
+  .sv-note-check{width:16px;height:16px;flex-shrink:0;accent-color:#3c4043;cursor:pointer;}
   .sv-cat-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:10px;
     -webkit-overflow-scrolling:touch;background:var(--bg);}
   .sv-cat-row.sv-cat-row-fixed{position:fixed;z-index:6;margin-bottom:0;box-sizing:border-box;}
@@ -980,7 +985,7 @@
         <svg id="authPassEyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
     </div>
-    <div id="authError" style="color:#d93025;font-size:13px;min-height:18px;margin:4px 2px;"></div>
+    <div id="authError" style="color:var(--danger);font-size:13px;min-height:18px;margin:4px 2px;"></div>
     <div id="authHint" style="display:none;color:var(--muted);font-size:12px;margin:0 2px 8px;line-height:1.4;">Это отдельный пароль только для приложения — не пароль от вашей почты.</div>
     <button id="authSubmitBtn" type="button" style="width:100%;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:600;margin-top:6px;cursor:pointer;">Войти</button>
     <button id="authToggleBtn" type="button" style="width:100%;background:none;border:none;color:#2563eb;font-size:13.5px;margin-top:16px;cursor:pointer;padding:6px;">Нет аккаунта? Зарегистрироваться</button>
@@ -1051,11 +1056,20 @@
   <div class="sv-doc-overlay" id="svDocOverlay">
     <div class="sv-doc-top">
       <div class="sv-doc-theme" id="svDocTheme"></div>
+      <button type="button" id="svDocChecklistToggleBtn" title="Текст / список" style="background:none;border:none;padding:6px;cursor:pointer;color:inherit;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </button>
     </div>
     <div class="sv-doc-body">
       <div class="sv-doc-label">Описание</div>
       <textarea class="sv-doc-desc" id="svDocDesc"></textarea>
       <div class="body-preview sv-doc-desc-preview" id="svDocDescPreview" style="display:none;"></div>
+      <div id="svDocChecklistWrap" style="display:none;">
+        <div id="svDocClItems"></div>
+        <div class="cl-row" style="border:none;">
+          <input type="text" id="svDocClNewInput" placeholder="Добавить пункт" style="flex:1;box-sizing:border-box;padding:9px 10px;border-radius:9px;border:1px solid var(--card-line, #d8dce1);font-size:14px;">
+        </div>
+      </div>
 
       <div class="sv-doc-label">Ссылки</div>
       <div id="svDocLinks"></div>
@@ -1135,6 +1149,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 21:15</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1155,18 +1170,31 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       Сменить пароль
     </button>
-    <button id="logoutBtn" type="button" style="color:#d93025;">
+    <button id="backupsBtn" type="button" style="margin-top:6px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+      Резервные копии
+    </button>
+    <button id="logoutBtn" type="button" style="color:var(--danger);">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Выйти из аккаунта
     </button>
   </nav>
+
+  <div id="backupsOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:110;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;">
+    <div style="background:var(--surface);border-radius:14px;padding:24px 20px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto;box-sizing:border-box;">
+      <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Резервные копии</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Автоматический снимок ваших данных за каждый из последних 7 дней. Восстановление заменит текущие данные выбранной копией.</div>
+      <div id="backupsList"></div>
+      <button id="backupsCloseBtn" type="button" style="width:100%;margin-top:10px;background:var(--concrete);color:var(--ink);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
+    </div>
+  </div>
 
   <div id="changePassOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:110;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;">
     <div style="background:var(--surface);border-radius:14px;padding:24px 20px;width:100%;max-width:320px;box-sizing:border-box;">
       <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:14px;">Сменить пароль</div>
       <input id="cpCurrent" type="password" autocomplete="current-password" placeholder="Текущий пароль" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--card-line, #e0e0e0);border-radius:10px;font-size:14px;margin-bottom:8px;font-family:'Inter',sans-serif;background:var(--surface);color:var(--ink);">
       <input id="cpNew" type="password" autocomplete="new-password" placeholder="Новый пароль (мин. 6 символов)" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--card-line, #e0e0e0);border-radius:10px;font-size:14px;margin-bottom:8px;font-family:'Inter',sans-serif;background:var(--surface);color:var(--ink);">
-      <div id="cpError" style="color:#d93025;font-size:12.5px;min-height:16px;margin-bottom:6px;"></div>
+      <div id="cpError" style="color:var(--danger);font-size:12.5px;min-height:16px;margin-bottom:6px;"></div>
       <div style="display:flex;gap:8px;margin-top:6px;">
         <button id="cpCancelBtn" type="button" style="flex:1;background:var(--concrete);color:var(--ink);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Отмена</button>
         <button id="cpSaveBtn" type="button" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Сохранить</button>
@@ -1189,22 +1217,41 @@
           <input id="clNewInput" placeholder="Добавить пункт">
         </div>
       </div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:18px 2px 4px;">Заявка (фото):</div>
       <div class="ed-photos-wrap">
         <div class="ed-photos" id="edPhotos"></div>
       </div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:18px 2px 4px;">Стоимость перевозки:</div>
       <div class="amount-row" id="amountRowBottom">
         <input id="amountInput" placeholder="Сумма" inputmode="decimal" pattern="[0-9]*">
         <span id="amountPreview"></span>
         <label class="flag-chip"><input type="checkbox" id="noNdsCheck"> Без НДС</label>
         <label class="flag-chip"><input type="checkbox" id="cashCheck"> Нал</label>
       </div>
-      <div class="ed-paid-badge" id="edPaidBadge" style="display:none;margin:0 2px 8px;"></div>
-      <div class="due-row" id="dueRow">
-        <label class="due-chip" style="display:flex;align-items:center;gap:6px;cursor:text;">
-          📅 Срок оплаты, дней:
-          <input type="number" id="dueDaysInput" min="0" placeholder="—" style="width:32px;border:none;background:none;font-size:13px;font-weight:700;color:var(--ink);font-family:'Inter',sans-serif;text-align:center;-moz-appearance:textfield;-webkit-appearance:none;appearance:none;padding:0;margin:0;">
-        </label>
-        <div class="ed-due-badge" id="edDueBadge" style="display:none;"></div>
+      <button type="button" id="paySectionToggle" style="display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;padding:6px 2px;margin:2px 0 0;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted);text-align:left;">
+        <svg id="paySectionChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition:transform .15s;"><polyline points="9 18 15 12 9 6"/></svg>
+        Оплата (для бухгалтера)
+      </button>
+      <div id="paySectionBody" style="display:none;">
+        <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:8px 2px 4px;">Расчёт:</div>
+        <button type="button" id="payReceiptUploadBtn" style="display:flex;align-items:center;gap:6px;background:none;border:1px dashed var(--card-line, #d8dce1);border-radius:9px;padding:8px 10px;margin:0 2px 8px;width:calc(100% - 4px);font-size:13px;color:#2563eb;font-weight:600;cursor:pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Загрузить платёжку
+        </button>
+        <div style="display:flex;gap:6px;margin:0 2px 4px;">
+          <input id="paymentEntryInput" type="number" inputmode="decimal" placeholder="Сумма, ₽" style="flex:1;box-sizing:border-box;padding:9px 10px;border-radius:9px;border:1px solid var(--card-line, #d8dce1);font-size:14px;">
+          <button type="button" id="paymentEntryAdd" style="background:#2563eb;color:#fff;border:none;border-radius:9px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;">ОК</button>
+        </div>
+        <div id="paymentEntryList" style="margin:0 2px 8px;"></div>
+        <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:8px 2px 4px;">Статус:</div>
+        <div class="ed-paid-badge" id="edPaidBadge" style="display:none;margin:0 2px 8px;"></div>
+        <div class="due-row" id="dueRow">
+          <label class="due-chip" style="display:flex;align-items:center;gap:6px;cursor:text;">
+            📅 Срок оплаты, дней:
+            <input type="number" id="dueDaysInput" min="0" placeholder="—" style="width:32px;border:none;background:none;font-size:13px;font-weight:700;color:var(--ink);font-family:'Inter',sans-serif;text-align:center;-moz-appearance:textfield;-webkit-appearance:none;appearance:none;padding:0;margin:0;">
+          </label>
+          <div class="ed-due-badge" id="edDueBadge" style="display:none;"></div>
+        </div>
       </div>
     </div>
     <div class="editor-toolbar">
@@ -1280,9 +1327,12 @@
   <div class="pay-choice-overlay" id="payChoiceOverlay">
     <div class="pay-choice-card">
       <h4>Платёжное поручение распознано</h4>
-      <p>Как оплачена эта заявка?</p>
-      <button class="pay-choice-btn" id="payChoiceFull"><span class="dot"></span>Полная оплата</button>
-      <button class="pay-choice-btn" id="payChoicePartial"><span class="dot partial"></span>Частичная оплата</button>
+      <p>Сколько оплачено по этой заявке?</p>
+      <div id="payChoiceAmountBox" style="margin-top:2px;">
+        <input type="number" inputmode="decimal" id="payChoiceAmountInput" placeholder="Сумма, ₽" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--card-line, #d8dce1);font-size:15px;margin-bottom:8px;">
+        <button class="pay-choice-btn" id="payChoiceAmountConfirm" style="justify-content:center;background:#2563eb;color:#fff;">Подтвердить</button>
+      </div>
+      <button class="pay-choice-cancel" id="payChoiceReset" style="color:#9aa0a6;">Очистить весь расчёт</button>
       <button class="pay-choice-cancel" id="payChoiceCancel">Не отмечать</button>
     </div>
   </div>
@@ -1455,25 +1505,44 @@ function setPaymentStatus(note, status, extra){
   note.paid = (status === 'full'); // для обратной совместимости со старым кодом/данными
   if(extra) Object.assign(note, extra);
 }
-// Пересчитывает статус оплаты заново по тем фото, что реально остались у заметки —
-// удалили платёжку из списка, и её сумма сразу выпадает из общего подсчёта.
+// Сколько всего реально оплачено — сумма всех строк из "Расчёта" (введённых
+// вручную и/или подтверждённых по распознанной платёжке).
+function sumPayments(note){
+  return (note.payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+}
+// Пересчитывает статус оплаты по сумме всех строк расчёта — статус (не
+// оплачено/частично/оплачено) определяется полностью автоматически, вручную
+// его не выбирают.
 function recomputePaymentStatus(note){
-  const amounts = (note.photoAmounts || []).filter(a => typeof a === 'number' && a > 0);
-  const total = amounts.reduce((s, a) => s + a, 0);
-  const dates = (note.photoDates || []).filter(Boolean);
-  const latestDate = dates.length ? Math.max(...dates) : null;
-  const hasUnknownAmountPayment = (note.photoAmounts || []).some(a => a === 0);
-
-  if(total > 0 && note.amount){
-    if(total >= note.amount) setPaymentStatus(note, 'full', { paidAt: latestDate, paidAmount: total });
-    else setPaymentStatus(note, 'partial', { paidAt: latestDate, paidAmount: total });
-  } else if(total > 0){
-    setPaymentStatus(note, 'full', { paidAt: latestDate, paidAmount: total });
-  } else if(hasUnknownAmountPayment){
-    setPaymentStatus(note, 'full', { paidAt: latestDate || Date.now(), paidAmount: 0 });
-  } else {
+  const total = sumPayments(note);
+  if(total <= 0){
     setPaymentStatus(note, 'none', { paidAt: null, paidAmount: 0 });
+    return;
   }
+  const latestAt = Date.now();
+  if(note.amount && total < note.amount) setPaymentStatus(note, 'partial', { paidAt: latestAt, paidAmount: total });
+  else setPaymentStatus(note, 'full', { paidAt: latestAt, paidAmount: total });
+}
+function addPayment(note, amount, photoId){
+  if(!note.payments) note.payments = [];
+  note.payments.push({ amount, photoId: photoId || null });
+  recomputePaymentStatus(note);
+}
+function removePayment(note, idx){
+  if(!note.payments) return;
+  note.payments.splice(idx, 1);
+  recomputePaymentStatus(note);
+}
+function renderPaymentEntryList(){
+  const list = document.getElementById('paymentEntryList');
+  const payments = editingNote.payments || [];
+  if(!payments.length){ list.innerHTML = '<div style="font-size:12.5px;color:var(--muted);">Пока пусто — впишите сумму выше.</div>'; return; }
+  list.innerHTML = payments.map((p, i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--card-line, #eceff2);">
+      <span style="font-size:14px;color:var(--ink);">${formatAmount(p.amount)}</span>
+      <button type="button" data-payrm="${i}" style="background:none;border:none;color:#9aa0a6;font-size:16px;cursor:pointer;padding:0 4px;">×</button>
+    </div>
+  `).join('') + (payments.length > 1 ? `<div style="text-align:right;font-size:12.5px;font-weight:700;color:var(--ink);padding:6px 2px 0;">Итого: ${formatAmount(sumPayments(editingNote))}</div>` : '');
 }
 // 'gray' — ещё не оплачена, 'partial' — недоплата (жёлтый), 'full' — оплачена точно (зелёный),
 // 'over' — оплачена с переплатой (тёмно-зелёный)
@@ -1485,6 +1554,7 @@ function getPaymentColorClass(n){
   return over ? 'over' : '';
 }
 // Просрочена ли оплата: срок (указанный или по умолчанию 15 раб.дней от создания)
+
 // прошёл, а заявка ещё не оплачена полностью.
 function isOverdue(n){
   const dueAt = getEffectiveDueAt(n);
@@ -1531,7 +1601,7 @@ function noteCardHtml(n, favInfo){
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
     </button>` : ''}
     ${n.pinned ? `<span class="pin" style="${n.amount ? `top:${(n.noNds || n.cash) ? '54px' : '34px'};` : ''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l1.5 5.5L19 9l-5 3 1 6-3-3-3 3 1-6-5-3 5.5-1.5z"/></svg></span>` : ''}
-    ${n.amount ? `<div class="amount-badge">${(payColor === '' || payColor === 'over') ? `<svg class="paid-check-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>` : `<span class="paid-dot-inline ${payColor}"></span>`}${formatAmount(n.amount)}</div>` : ''}
+    ${n.amount ? `<div class="amount-badge"><span class="paid-dot-inline ${payColor}"></span>${formatAmount(n.amount)}</div>` : ''}
     ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
     ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? `top:${(n.noNds || n.cash) ? '60px' : '38px'};` : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
     ${numberBlockHtml}
@@ -1981,6 +2051,11 @@ function openEditor(note, isNew){
   updatePaidBadge();
   updateReminderBadge();
   updateDueBadge();
+  // блок "Оплачено" сворачиваем заново при каждом открытии заявки —
+  // он в основном нужен бухгалтеру, а не для показа по умолчанию.
+  document.getElementById('paySectionBody').style.display = 'none';
+  document.getElementById('paySectionChevron').style.transform = 'rotate(0deg)';
+  renderPaymentEntryList();
   bodyInput.style.display = editingNote.checklist ? 'none' : 'block';
   checklistWrap.style.display = editingNote.checklist ? 'block' : 'none';
   renderChecklistEditor();
@@ -2028,6 +2103,7 @@ function restoreSnapshot(){
   updatePaidBadge();
   updateReminderBadge();
   updateDueBadge();
+  renderPaymentEntryList();
   bodyInput.style.display = editingNote.checklist ? 'none' : 'block';
   checklistWrap.style.display = editingNote.checklist ? 'block' : 'none';
   renderChecklistEditor();
@@ -2249,17 +2325,16 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
     editingNote.photoIds.splice(idx, 1);
     editingNote.photoNumbers.splice(idx, 1);
     renderEditorPhotos();
-    // Статус снимаем только если удалили именно то фото, из-за которого он был поставлен
-    // (платёжку) — а не любое другое, например скан самой заявки на перевозку.
-    if(editingNote.statusPhotoId && editingNote.statusPhotoId === removedId){
-      setPaymentStatus(editingNote, 'none', { paidAt: null, paidAmount: 0, statusPhotoId: null });
+    // Если к этому фото была привязана строка в "Расчёте" (сумма подтверждена
+    // после распознавания платёжки) — убираем и её, статус пересчитается сам.
+    if(!editingNote.payments) editingNote.payments = [];
+    const beforeCount = editingNote.payments.length;
+    editingNote.payments = editingNote.payments.filter(p => p.photoId !== removedId);
+    if(editingNote.payments.length !== beforeCount){
+      recomputePaymentStatus(editingNote);
       updatePaidBadge();
-      showToast('Платёжка удалена — отметка об оплате снята');
-    } else if(!editingNote.statusPhotoId && editingNote.photos.length === 0 && getPaymentStatus(editingNote) !== 'none'){
-      // статус ставили вручную, без привязки к конкретному фото — без документов вообще держать его нет смысла
-      setPaymentStatus(editingNote, 'none', { paidAt: null, paidAmount: 0 });
-      updatePaidBadge();
-      showToast('Фото удалено — отметка об оплате снята');
+      renderPaymentEntryList();
+      showToast('Платёжка удалена — сумма убрана из расчёта');
     }
     pushHistory();
   }
@@ -2521,6 +2596,13 @@ function compressImage(file, maxDim=1800, quality=0.8){
 }
 
 document.getElementById('photoBtn').addEventListener('click', () => {
+  document.getElementById('photoInput').click();
+});
+document.getElementById('payReceiptUploadBtn').addEventListener('click', () => {
+  // Тот же файловый пикер и то же распознавание, что и в "Заявка (фото)" —
+  // просто отдельная кнопка внутри "Расчёта", чтобы платёжку было проще
+  // найти именно бухгалтеру. Куда бы ни загрузили фото — программа сама
+  // определит, платёжка это или нет.
   document.getElementById('photoInput').click();
 });
 document.getElementById('photoInput').addEventListener('change', async (e) => {
@@ -2955,22 +3037,31 @@ function askPaymentChoice(){
   const run = () => new Promise((resolve) => {
     const overlay = document.getElementById('payChoiceOverlay');
     overlay.classList.add('show');
+    const amountInput = document.getElementById('payChoiceAmountInput');
+    const remaining = editingNote.amount ? Math.max(editingNote.amount - sumPayments(editingNote), 0) : null;
+    amountInput.value = remaining || '';
     const cleanup = (result) => {
       overlay.classList.remove('show');
-      fullBtn.removeEventListener('click', onFull);
-      partialBtn.removeEventListener('click', onPartial);
+      amountConfirmBtn.removeEventListener('click', onAmountConfirm);
+      resetBtn.removeEventListener('click', onReset);
       cancelBtn.removeEventListener('click', onCancel);
       resolve(result);
     };
-    const fullBtn = document.getElementById('payChoiceFull');
-    const partialBtn = document.getElementById('payChoicePartial');
+    const amountConfirmBtn = document.getElementById('payChoiceAmountConfirm');
+    const resetBtn = document.getElementById('payChoiceReset');
     const cancelBtn = document.getElementById('payChoiceCancel');
-    const onFull = () => cleanup('full');
-    const onPartial = () => cleanup('partial');
+    const onAmountConfirm = () => {
+      const val = parseFloat((amountInput.value || '').replace(',', '.'));
+      if(!val || val <= 0){ amountInput.focus(); return; }
+      cleanup({ amount: val });
+    };
     const onCancel = () => cleanup(null);
-    fullBtn.addEventListener('click', onFull);
-    partialBtn.addEventListener('click', onPartial);
+    const onReset = () => cleanup({ reset: true });
+    amountConfirmBtn.addEventListener('click', onAmountConfirm);
+    resetBtn.addEventListener('click', onReset);
     cancelBtn.addEventListener('click', onCancel);
+    amountInput.focus();
+    amountInput.select();
   });
   const result = payChoiceChain.then(run);
   payChoiceChain = result.catch(() => {});
@@ -3027,22 +3118,27 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
       editingNote.photoNumbers[photoIndex] = orderNumber;
 
       // Сумму с платёжки больше не считываем автоматически — слишком легко ошибиться.
-      // Просто фиксируем, что это платёжка, а бухгалтер сам решает в окне выбора,
-      // полная это оплата или частичная.
+      // Просто фиксируем, что это платёжка, а сумму бухгалтер подтверждает сам —
+      // она добавится отдельной строкой в "Расчёт".
       if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
       if(!editingNote.photoDates) editingNote.photoDates = [];
       editingNote.photoAmounts[photoIndex] = 0;
       editingNote.photoDates[photoIndex] = paidAt;
 
-      if(getPaymentStatus(editingNote) === 'none'){
-        const choice = await askPaymentChoice();
-        if(choice && editingNote === noteRef){
-          editingNote.paymentAuto = false;
-          setPaymentStatus(editingNote, choice, { paidAt, paidAmount: 0, statusPhotoId: photoId });
-          updatePaidBadge();
-          pushHistory();
-          showToast(choice === 'full' ? 'Отмечено: полная оплата' : 'Отмечено: частичная оплата');
+      const choice = await askPaymentChoice();
+      if(choice && editingNote === noteRef){
+        editingNote.paymentAuto = false;
+        if(choice.reset){
+          editingNote.payments = [];
+          recomputePaymentStatus(editingNote);
+          showToast('Расчёт очищен');
+        } else {
+          addPayment(editingNote, choice.amount, photoId);
+          showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
         }
+        updatePaidBadge();
+        renderPaymentEntryList();
+        pushHistory();
       }
     }
   } catch(err){
@@ -3057,6 +3153,8 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
 
 function updatePaidBadge(){
   const badge = document.getElementById('edPaidBadge');
+  badge.style.cursor = 'default';
+  badge.title = '';
   const status = getPaymentStatus(editingNote);
   if(status === 'none'){
     badge.innerHTML = '<span class="dot gray"></span>Не оплачено';
@@ -3278,18 +3376,59 @@ document.getElementById('dueDaysInput').addEventListener('input', (e) => {
   pushHistory();
 });
 
-document.getElementById('paidBtn').addEventListener('click', () => {
-  const status = getPaymentStatus(editingNote);
-  // ручное нажатие всегда переключает между "не оплачено" и "оплачено полностью";
-  // "частично" выставляется только автоматически по сумме на распознанной платёжке.
-  // Ручное решение больше не пересчитывается автоматом при удалении фото.
+document.getElementById('paidBtn').addEventListener('click', async () => {
+  // Кнопка теперь просто быстрый способ добавить сумму в "Расчёт" — статус
+  // (не оплачено/частично/оплачено) программа всегда считает сама.
+  const choice = await askPaymentChoice();
+  if(!choice || editingNote == null) return;
   editingNote.paymentAuto = false;
-  const next = status === 'full' ? 'none' : 'full';
-  setPaymentStatus(editingNote, next, { paidAt: next === 'full' ? Date.now() : null, paidAmount: next === 'full' ? (editingNote.amount || editingNote.paidAmount || 0) : 0, statusPhotoId: null });
+  if(choice.reset){
+    editingNote.payments = [];
+    recomputePaymentStatus(editingNote);
+    showToast('Расчёт очищен');
+  } else {
+    addPayment(editingNote, choice.amount);
+    showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
+  }
+  updatePaidBadge();
+  updateDueBadge();
+  renderPaymentEntryList();
+  pushHistory();
+});
+
+document.getElementById('paySectionToggle').addEventListener('click', () => {
+  const body = document.getElementById('paySectionBody');
+  const chevron = document.getElementById('paySectionChevron');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+});
+
+// Ввод суммы в "Расчёт" — по кнопке ОК или клавише Enter.
+function submitPaymentEntry(){
+  const input = document.getElementById('paymentEntryInput');
+  const val = parseAmount(input.value);
+  if(!val) { input.focus(); return; }
+  addPayment(editingNote, val);
+  input.value = '';
+  renderPaymentEntryList();
   updatePaidBadge();
   updateDueBadge();
   pushHistory();
-  showToast(next === 'full' ? 'Отмечено как оплачено' : 'Отметка об оплате снята');
+}
+document.getElementById('paymentEntryAdd').addEventListener('click', submitPaymentEntry);
+document.getElementById('paymentEntryInput').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); submitPaymentEntry(); }
+});
+document.getElementById('paymentEntryList').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-payrm]');
+  if(!rm) return;
+  const idx = parseInt(rm.getAttribute('data-payrm'), 10);
+  removePayment(editingNote, idx);
+  renderPaymentEntryList();
+  updatePaidBadge();
+  updateDueBadge();
+  pushHistory();
 });
 
 function renderChecklistEditor(){
@@ -3520,6 +3659,11 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
   if(currentSection === 'income') return;
+  if(currentSection === 'service'){
+    if(svArchiveView) return;
+    svCreateNote(true);
+    return;
+  }
   document.getElementById('composeBar').click();
 });
 
@@ -4320,19 +4464,21 @@ function renderSvNotes(){
       <div class="sv-note-card${n.done ? ' done' : ''}${n.favorite ? ' favorite' : ''}" data-svnoteid="${n.id}">
       <div class="sv-note-left">
         <textarea class="sv-note-text${n.done ? ' done' : ''}" data-svnotetext="${n.id}" placeholder="Заметка...">${escapeHtml(n.text || '')}</textarea>
-        <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.reminderAt ? ` · <span class="sv-note-reminder${n.reminderAt < Date.now() ? ' overdue' : ''}">🔔 ${svFormatReminder(n.reminderAt)}</span>` : ''}</div>
+        <div class="sv-note-bottom-row">
+          <div class="sv-note-meta">${formatNoteDate(n.createdAt)}${n.reminderAt ? ` · <span class="sv-note-reminder${n.reminderAt < Date.now() ? ' overdue' : ''}">🔔 ${svFormatReminder(n.reminderAt)}</span>` : ''}</div>
+          <div class="sv-note-right">
+            <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
+            <button type="button" class="sv-note-remind${n.reminderAt ? ' has-remind' : ''}" data-svnoteremind="${n.id}" aria-label="Напоминание">🔔</button>
+            <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
+            ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
+          </div>
+        </div>
       </div>
       <div class="sv-drum sv-drum-locked" data-svdrum="${n.id}">
         <div class="sv-drum-fade top"></div>
         <div class="sv-drum-selection"></div>
         <div class="sv-drum-track" data-svdrumtrack="${n.id}">${svDrumItemsFor(n).map(t => `<div class="sv-drum-item">${escapeHtml(t)}</div>`).join('')}</div>
         <div class="sv-drum-fade bottom"></div>
-      </div>
-      <div class="sv-note-right">
-        <button type="button" class="sv-note-doc${(n.docDesc || (n.docLinks && n.docLinks.length) || (n.docPhotos && n.docPhotos.length)) ? ' has-doc' : ''}" data-svnotedoc="${n.id}" aria-label="Документ">📄</button>
-        <button type="button" class="sv-note-remind${n.reminderAt ? ' has-remind' : ''}" data-svnoteremind="${n.id}" aria-label="Напоминание">🔔</button>
-        ${n.done ? '' : `<span class="sv-note-handle" data-svnotehandle="${n.id}">≡</span>`}
-        <input type="checkbox" class="sv-note-check" data-svnotedone="${n.id}" ${n.done ? 'checked' : ''}>
       </div>
       </div>
     </div>`).join('');
@@ -4439,6 +4585,7 @@ function svOpenDoc(id){
   document.getElementById('svDocOverlay').classList.add('show');
   svAutoResizeDocDesc(); // после show — иначе scrollHeight ещё 0, экран скрыт
   svUpdateDocDescPreview();
+  svUpdateDocChecklistView();
 }
 function svCloseDoc(){
   document.getElementById('svDocOverlay').classList.remove('show');
@@ -4476,6 +4623,153 @@ svDocDescPreview.addEventListener('click', (e) => {
   ta.selectionStart = ta.selectionEnd = ta.value.length;
 });
 document.getElementById('svDocDesc').addEventListener('blur', () => setTimeout(svUpdateDocDescPreview, 0));
+
+// ---- «Описание» заметки автосервиса: текст или список (чек-лист) ----
+// Работает так же, как в «Заявках»: жмём на значок — весь текущий текст,
+// построчно, превращается в список с галочками, и наоборот.
+function svUpdateDocChecklistView(){
+  const note = svCurrentDocNote();
+  const isList = !!(note && note.docChecklist);
+  document.getElementById('svDocChecklistWrap').style.display = isList ? 'block' : 'none';
+  document.getElementById('svDocDesc').style.display = isList ? 'none' : '';
+  document.getElementById('svDocDescPreview').style.display = 'none';
+  if(isList) renderSvDocChecklist();
+  else svUpdateDocDescPreview();
+}
+function renderSvDocChecklist(){
+  const note = svCurrentDocNote();
+  const wrap = document.getElementById('svDocClItems');
+  if(!note || !note.docChecklist){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = note.docChecklist.map((it) => `
+    <div class="cl-row ${it.done?'done':''}" data-svdocrow="${it.id}">
+      <input type="checkbox" data-svdoccheck="${it.id}" ${it.done?'checked':''}>
+      <input type="text" data-svdoctext="${it.id}" value="${(it.text||'').replace(/"/g,'&quot;')}" placeholder="Пункт списка">
+      <button class="rm" data-svdocrm="${it.id}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <button type="button" data-svdocdrag="${it.id}" style="background:none;border:none;padding:2px 0 2px 6px;color:#9aa0a6;cursor:grab;touch-action:none;flex-shrink:0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+      </button>
+    </div>`).join('');
+}
+document.getElementById('svDocChecklistToggleBtn').addEventListener('click', () => {
+  const note = svCurrentDocNote();
+  if(!note) return;
+  if(note.docChecklist){
+    // список -> обратно в текст
+    note.docDesc = note.docChecklist.map(i => (i.done?'[x] ':'[ ] ') + i.text).join('\n');
+    note.docChecklist = null;
+    document.getElementById('svDocDesc').value = note.docDesc;
+    svAutoResizeDocDesc();
+  } else {
+    // текст -> список: каждая непустая строка становится отдельным пунктом
+    const desc = note.docDesc || '';
+    note.docChecklist = desc.trim()
+      ? desc.split('\n').filter(Boolean).map(t => ({ id: clIdSeq++, text: t.replace(/^\[[ x]\]\s*/,''), done:false }))
+      : [];
+    note.docDesc = '';
+  }
+  svUpdateDocChecklistView();
+  scheduleSvNotesSave();
+});
+document.getElementById('svDocClItems').addEventListener('input', (e) => {
+  const t = e.target.closest('[data-svdoctext]');
+  if(!t) return;
+  const note = svCurrentDocNote();
+  const it = note.docChecklist.find(i => i.id == t.getAttribute('data-svdoctext'));
+  if(it) it.text = t.value;
+  scheduleSvNotesSave();
+});
+document.getElementById('svDocClItems').addEventListener('change', (e) => {
+  const c = e.target.closest('[data-svdoccheck]');
+  if(!c) return;
+  const note = svCurrentDocNote();
+  const it = note.docChecklist.find(i => i.id == c.getAttribute('data-svdoccheck'));
+  if(it) it.done = c.checked;
+  renderSvDocChecklist();
+  scheduleSvNotesSave();
+});
+document.getElementById('svDocClItems').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-svdocrm]');
+  if(!rm) return;
+  const note = svCurrentDocNote();
+  note.docChecklist = note.docChecklist.filter(i => i.id != rm.getAttribute('data-svdocrm'));
+  renderSvDocChecklist();
+  scheduleSvNotesSave();
+});
+
+// ---- Перетаскивание пунктов списка за ручку (⋮⋮), как в обычных приложениях ----
+let svDocDragState = null;
+document.getElementById('svDocClItems').addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-svdocdrag]');
+  if(!handle) return;
+  const row = handle.closest('[data-svdocrow]');
+  const wrap = document.getElementById('svDocClItems');
+  handle.setPointerCapture(e.pointerId);
+  svDocDragState = { pointerId: e.pointerId, row, wrap, startY: e.clientY };
+  row.style.position = 'relative';
+  row.style.zIndex = '5';
+  row.style.background = 'var(--surface)';
+  row.style.boxShadow = '0 3px 10px rgba(0,0,0,.18)';
+  row.style.borderRadius = '8px';
+  e.preventDefault();
+});
+document.getElementById('svDocClItems').addEventListener('pointermove', (e) => {
+  if(!svDocDragState || e.pointerId !== svDocDragState.pointerId) return;
+  const { row, wrap, startY } = svDocDragState;
+  const delta = e.clientY - startY;
+  row.style.transform = `translateY(${delta}px)`;
+  const rowRect = row.getBoundingClientRect();
+  const rowMid = rowRect.top + rowRect.height / 2;
+  for(const sib of Array.from(wrap.children)){
+    if(sib === row) continue;
+    const rect = sib.getBoundingClientRect();
+    const sibMid = rect.top + rect.height / 2;
+    const following = !!(row.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if(following && rowMid > sibMid){
+      wrap.insertBefore(row, sib.nextSibling);
+      svDocDragState.startY = e.clientY;
+      row.style.transform = 'translateY(0px)';
+      break;
+    }
+    if(!following && rowMid < sibMid){
+      wrap.insertBefore(row, sib);
+      svDocDragState.startY = e.clientY;
+      row.style.transform = 'translateY(0px)';
+      break;
+    }
+  }
+});
+function svDocEndDrag(e){
+  if(!svDocDragState || (e && e.pointerId !== svDocDragState.pointerId)) return;
+  const { row, wrap } = svDocDragState;
+  row.style.transform = '';
+  row.style.position = '';
+  row.style.zIndex = '';
+  row.style.background = '';
+  row.style.boxShadow = '';
+  row.style.borderRadius = '';
+  const note = svCurrentDocNote();
+  const idOrder = Array.from(wrap.children).map(el => el.getAttribute('data-svdocrow'));
+  note.docChecklist.sort((a, b) => idOrder.indexOf(String(a.id)) - idOrder.indexOf(String(b.id)));
+  svDocDragState = null;
+  scheduleSvNotesSave();
+}
+document.getElementById('svDocClItems').addEventListener('pointerup', svDocEndDrag);
+document.getElementById('svDocClItems').addEventListener('pointercancel', svDocEndDrag);
+document.getElementById('svDocClNewInput').addEventListener('keydown', (e) => {
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  const input = document.getElementById('svDocClNewInput');
+  const val = input.value.trim();
+  if(!val) return;
+  const note = svCurrentDocNote();
+  if(!note.docChecklist) note.docChecklist = [];
+  note.docChecklist.push({ id: clIdSeq++, text: val, done:false });
+  input.value = '';
+  renderSvDocChecklist();
+  scheduleSvNotesSave();
+});
 function renderSvDocLinks(){
   const note = svCurrentDocNote();
   if(!note) return;
@@ -4822,7 +5116,7 @@ svMainEl.addEventListener('touchstart', (e) => {
   // получает фокус и клавиатура сама чуть подскролливает список, чтобы показать его —
   // из-за этого «до самого верха» иногда означает 1-3px, а не ровно 0.
   if(currentSection !== 'service' || svArchiveView || svMainEl.scrollTop > 4
-    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row')){
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row') || e.target.closest('[data-svnotehandle]')){
     // Барабан папки и сама строка папок — не этот жест. А вот существующие заметки
     // ИСКЛЮЧАТЬ не нужно: тянуть вниз для создания можно начать с любой точки списка,
     // направление (вниз vs в сторону) разберём ниже в touchmove, а не блокировкой здесь —
@@ -4895,7 +5189,7 @@ let svPullingBottom = false;
 svMainEl.addEventListener('touchstart', (e) => {
   const atBottom = svMainEl.scrollTop + svMainEl.clientHeight >= svMainEl.scrollHeight - 4;
   if(currentSection !== 'service' || svArchiveView || !atBottom
-    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row')){
+    || e.target.closest('.sv-drum') || e.target.closest('.sv-cat-row') || e.target.closest('[data-svnotehandle]')){
     svPullBottomStartY = null; return;
   }
   svPullBottomStartY = e.touches[0].clientY;
@@ -5000,9 +5294,39 @@ function scheduleCloudSave(){
   if(!currentUID || suppressCloudSave) return;
   if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(() => {
-    db.collection('users').doc(currentUID).set(stateSnapshot())
+    const snap = stateSnapshot();
+    db.collection('users').doc(currentUID).set(snap)
+      .then(() => maybeSaveDailyBackup(snap))
       .catch(e => console.warn('Не удалось сохранить в облако:', e));
   }, 800);
+}
+
+// ---- Ежедневный бэкап ----
+// Раз в сутки (при первом сохранении в этот день) кладём копию данных в
+// отдельную подколлекцию backups, чтобы при случайной перезаписи основного
+// документа было куда откатиться. Храним только последние 7 копий.
+function todayKey(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function maybeSaveDailyBackup(snap){
+  if(!currentUID) return;
+  const key = todayKey();
+  const backupsRef = db.collection('users').doc(currentUID).collection('backups');
+  backupsRef.doc(key).get().then(doc => {
+    if(doc.exists) return; // сегодня уже есть копия — не трогаем
+    backupsRef.doc(key).set(Object.assign({}, snap, { backupCreatedAt: Date.now() }))
+      .then(() => cleanupOldBackups(backupsRef))
+      .catch(e => console.warn('Не удалось сохранить бэкап:', e));
+  }).catch(e => console.warn('Не удалось проверить бэкап:', e));
+}
+function cleanupOldBackups(backupsRef){
+  backupsRef.get().then(snapshot => {
+    const docs = snapshot.docs.slice().sort((a, b) => (b.data().backupCreatedAt || 0) - (a.data().backupCreatedAt || 0));
+    if(docs.length <= 7) return;
+    const toDelete = docs.slice(7);
+    toDelete.forEach(d => d.ref.delete().catch(() => {}));
+  }).catch(e => console.warn('Не удалось очистить старые бэкапы:', e));
 }
 
 const authOverlay = document.getElementById('authOverlay');
@@ -5049,7 +5373,7 @@ document.getElementById('authForgotBtn').addEventListener('click', () => {
     authError.style.color = '#1e8e3e';
     authError.textContent = 'Письмо со ссылкой для сброса пароля отправлено на ' + email;
   }).catch(err => {
-    authError.style.color = '#d93025';
+    authError.style.color = 'var(--danger)';
     authError.textContent = authErrorText(err);
   });
 });
@@ -5087,11 +5411,25 @@ function loadFromCloud(){
       const cloudData = doc.data();
       const cloudUpdatedAt = cloudData.updatedAt || 0;
       if(cloudUpdatedAt >= localSnapshotAt){
-        // В облаке версия свежее (или такая же) — берём её как обычно.
-        suppressCloudSave = true;
-        applyState(cloudData);
-        try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-        suppressCloudSave = false;
+        // Защита от случайного затирания: если в облаке записей заметно
+        // меньше, чем сейчас на телефоне, — это подозрительно (похоже на
+        // старую/пустую копию), спрашиваем подтверждение вместо тихой замены.
+        const itemCount = s => (s.notes||[]).length + (s.svNotes||[]).length + (s.expenses||[]).length;
+        const localCount = itemCount(stateSnapshot());
+        const cloudCount = itemCount(cloudData);
+        const suspicious = localCount >= 4 && cloudCount < localCount / 2;
+        if(suspicious && !confirm(
+          `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
+          `Заменить данные на телефоне облачной версией? Если не уверены — нажмите «Отмена», ` +
+          `и текущие данные с телефона будут отправлены в облако вместо замены.`
+        )){
+          scheduleCloudSave();
+        } else {
+          suppressCloudSave = true;
+          applyState(cloudData);
+          try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+          suppressCloudSave = false;
+        }
       } else {
         // На телефоне есть более свежие правки, которые не успели долететь до облака
         // (например, были сделаны без интернета) — не затираем их, а сами
@@ -5188,6 +5526,87 @@ cpSaveBtn.addEventListener('click', () => {
     })
     .catch(err => { cpError.textContent = authErrorText(err); })
     .finally(() => { cpSaveBtn.disabled = false; });
+});
+
+// ---- Резервные копии: просмотр и восстановление ----
+const backupsOverlay = document.getElementById('backupsOverlay');
+const backupsList = document.getElementById('backupsList');
+
+function formatBackupLabel(key){
+  if(key.startsWith('preRestore-')){
+    const ts = parseInt(key.slice('preRestore-'.length), 10);
+    const d = new Date(ts);
+    return { title: `Резервная копия за ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` };
+  }
+  const [y, m, dNum] = key.split('-');
+  const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  return { title: `Резервная копия за ${parseInt(dNum,10)} ${months[parseInt(m,10)-1]} ${y}` };
+}
+
+document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  drawer.classList.remove('show'); overlay.classList.remove('show');
+  if(!currentUID) return;
+  backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Загрузка...</div>';
+  backupsOverlay.style.display = 'flex';
+  db.collection('users').doc(currentUID).collection('backups')
+    .get().then(snapshot => {
+      if(snapshot.empty){
+        backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Копий пока нет. Первая появится в течение суток после начала работы.</div>';
+        return;
+      }
+      backupsList.innerHTML = '';
+      const sortedDocs = snapshot.docs.slice().sort((a, b) => (b.data().backupCreatedAt || 0) - (a.data().backupCreatedAt || 0));
+      sortedDocs.forEach(doc => {
+        const data = doc.data();
+        const itemsCount = (data.notes||[]).length + (data.svNotes||[]).length + (data.expenses||[]).length;
+        const label = formatBackupLabel(doc.id);
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--card-line, #e0e0e0);';
+        row.innerHTML = `
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--ink);">${label.title}</div>
+            <div style="font-size:12px;color:var(--muted);">записей: ${itemsCount}</div>
+          </div>
+          <button type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;">Восстановить</button>
+        `;
+        row.querySelector('button').addEventListener('click', () => {
+          if(!confirm(`Заменить текущие данные копией «${label.title}»? Перед заменой текущее состояние тоже будет сохранено как копия — при необходимости сможете вернуть его обратно.`)) return;
+          const restoreBtn = row.querySelector('button');
+          restoreBtn.disabled = true;
+          restoreBtn.textContent = 'Восстановление...';
+          // Сначала сохраняем текущее состояние отдельной "аварийной" копией —
+          // если восстановили не ту дату, можно откатиться на момент прямо
+          // перед этим действием, а не потерять недавние правки навсегда.
+          const currentSnap = stateSnapshot();
+          const preRestoreKey = 'preRestore-' + Date.now();
+          const backupsRef = db.collection('users').doc(currentUID).collection('backups');
+          backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
+            .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
+            .then(() => {
+              suppressCloudSave = true;
+              applyState(data);
+              try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+              suppressCloudSave = false;
+              localUpdatedAt = Date.now();
+              return db.collection('users').doc(currentUID).set(stateSnapshot());
+            })
+            .catch(e => console.warn('Не удалось сохранить восстановленные данные в облако:', e))
+            .then(() => cleanupOldBackups(backupsRef))
+            .finally(() => {
+              renderContent();
+              backupsOverlay.style.display = 'none';
+            });
+        });
+        backupsList.appendChild(row);
+      });
+    }).catch(e => {
+      backupsList.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:13px;padding:20px 0;">Не удалось загрузить копии.</div>';
+      console.warn('Не удалось загрузить бэкапы:', e);
+    });
+});
+document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
+  backupsOverlay.style.display = 'none';
 });
 
 // ---- Экспорт / импорт данных (для переноса между версиями файла) ----
