@@ -953,6 +953,12 @@
   const auth = firebase.auth();
   auth.useDeviceLanguage();
   const db = firebase.firestore();
+  // Офлайн-персистентность: Firestore сам хранит несохранённые записи локально
+  // и досылает их в облако, как только появится связь — без риска "тихо" потерять
+  // заявку, если приложение закрыли до того, как запрос успел уйти.
+  db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+    console.warn('Офлайн-режим Firestore не включился:', err.code);
+  });
 </script>
 </head>
 <body>
@@ -5274,6 +5280,9 @@ function saveState(){
   }
   scheduleCloudSave();
 }
+// Обновляем облачный документ каждую секунду, а не при каждом изменении —
+// чтобы не тратить лишние записи при быстром наборе текста, но не задерживать
+// отправку настолько, чтобы закрытие приложения могло "обрезать" правку.
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -5288,18 +5297,35 @@ loadState();
 // ---- Firebase: авторизация и облачная синхронизация между устройствами ----
 let currentUID = null;
 let cloudSaveTimer = null;
-let suppressCloudSave = false; // true, пока применяем данные, только что пришедшие из облака
+let suppressCloudSave = false; // true, пока применяем данные, только что пришедшие из облака (свои же правки эхом не пересохраняем)
 
+function flushCloudSave(){
+  if(!currentUID || suppressCloudSave) return;
+  if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
+  const snap = stateSnapshot();
+  // .set() с включённой offline-персистентностью пишет в локальную очередь Firestore
+  // СРАЗУ, синхронно — то есть запись не потеряется, даже если через долю секунды
+  // после этого закрыть приложение или пропадёт связь. Сама отправка на сервер
+  // произойдёт сама, когда появится интернет — ждать промиса не нужно.
+  db.collection('users').doc(currentUID).set(snap)
+    .then(() => maybeSaveDailyBackup(snap))
+    .catch(e => console.warn('Не удалось сохранить в облако:', e));
+}
 function scheduleCloudSave(){
   if(!currentUID || suppressCloudSave) return;
+  // Небольшая задержка нужна только чтобы не плодить отдельную запись на каждую
+  // нажатую клавишу при вводе текста — сама надёжность обеспечивается тем, что
+  // при сворачивании/закрытии приложения (ниже) отправка форсируется немедленно.
   if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
-  cloudSaveTimer = setTimeout(() => {
-    const snap = stateSnapshot();
-    db.collection('users').doc(currentUID).set(snap)
-      .then(() => maybeSaveDailyBackup(snap))
-      .catch(e => console.warn('Не удалось сохранить в облако:', e));
-  }, 800);
+  cloudSaveTimer = setTimeout(flushCloudSave, 800);
 }
+// Досылаем несохранённые правки, как только приложение сворачивается, теряет
+// фокus или закладка/страница закрывается — раньше правка, сделанная прямо
+// перед закрытием, могла не успеть уйти даже в локальную очередь Firestore.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden') flushCloudSave();
+});
+window.addEventListener('pagehide', flushCloudSave);
 
 // ---- Ежедневный бэкап ----
 // Раз в сутки (при первом сохранении в этот день) кладём копию данных в
@@ -5404,20 +5430,32 @@ authSubmitBtn.addEventListener('click', () => {
     .finally(() => { authSubmitBtn.disabled = false; });
 });
 
+let cloudUnsubscribe = null; // отписка от живой подписки при выходе из аккаунта
+let isFirstCloudSnapshot = true; // защиту от случайной перезаписи проверяем только один раз — при входе
+
 function loadFromCloud(){
-  const localSnapshotAt = localUpdatedAt; // время последней локальной правки на этот момент
-  db.collection('users').doc(currentUID).get().then(doc => {
+  isFirstCloudSnapshot = true;
+  if(cloudUnsubscribe){ cloudUnsubscribe(); cloudUnsubscribe = null; }
+  // onSnapshot вместо разового get(): документ слушается постоянно, пока открыто
+  // приложение, — как только на ДРУГОМ устройстве что-то изменится и долетит до
+  // облака, здесь это применится само, без необходимости перезапускать приложение.
+  cloudUnsubscribe = db.collection('users').doc(currentUID).onSnapshot(doc => {
+    // Если это эхо нашей же собственной записи (ещё даже не подтверждённой сервером
+    // или только что подтверждённой) — применять её заново не нужно, чтобы не сбивать
+    // то, что человек, возможно, прямо сейчас печатает.
+    if(doc.metadata.hasPendingWrites) return;
     if(doc.exists){
       const cloudData = doc.data();
       const cloudUpdatedAt = cloudData.updatedAt || 0;
-      if(cloudUpdatedAt >= localSnapshotAt){
-        // Защита от случайного затирания: если в облаке записей заметно
-        // меньше, чем сейчас на телефоне, — это подозрительно (похоже на
-        // старую/пустую копию), спрашиваем подтверждение вместо тихой замены.
+      if(cloudUpdatedAt > localUpdatedAt){
+        // Защита от случайного затирания: если в облаке записей заметно меньше,
+        // чем сейчас на телефоне, — это подозрительно (похоже на старую/пустую
+        // копию). Спрашиваем только при первом снимке после входа, а не на
+        // каждое живое обновление.
         const itemCount = s => (s.notes||[]).length + (s.svNotes||[]).length + (s.expenses||[]).length;
         const localCount = itemCount(stateSnapshot());
         const cloudCount = itemCount(cloudData);
-        const suspicious = localCount >= 4 && cloudCount < localCount / 2;
+        const suspicious = isFirstCloudSnapshot && localCount >= 4 && cloudCount < localCount / 2;
         if(suspicious && !confirm(
           `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
           `Заменить данные на телефоне облачной версией? Если не уверены — нажмите «Отмена», ` +
@@ -5430,13 +5468,12 @@ function loadFromCloud(){
           try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
           suppressCloudSave = false;
         }
-      } else {
-        // На телефоне есть более свежие правки, которые не успели долететь до облака
-        // (например, были сделаны без интернета) — не затираем их, а сами
-        // досылаем актуальную версию в облако.
+      } else if(isFirstCloudSnapshot && cloudUpdatedAt < localUpdatedAt) {
+        // На телефоне при входе есть более свежие правки, которые не успели
+        // долететь до облака (например, сделаны без интернета) — досылаем их.
         scheduleCloudSave();
       }
-    } else {
+    } else if(isFirstCloudSnapshot) {
       // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
       // в памяти телефона от предыдущего входа под другим аккаунтом
       suppressCloudSave = true;
@@ -5445,9 +5482,10 @@ function loadFromCloud(){
       suppressCloudSave = false;
       scheduleCloudSave();
     }
+    isFirstCloudSnapshot = false;
     renderContent();
-  }).catch(e => {
-    console.warn('Не удалось загрузить данные из облака, работаем с локальной копией:', e);
+  }, e => {
+    console.warn('Не удалось подписаться на облачные данные, работаем с локальной копией:', e);
     renderContent();
   });
 }
@@ -5463,6 +5501,7 @@ auth.onAuthStateChanged(user => {
     if(drawerEmailEl) drawerEmailEl.textContent = emailStr;
     loadFromCloud();
   } else {
+    if(cloudUnsubscribe){ cloudUnsubscribe(); cloudUnsubscribe = null; }
     currentUID = null;
     authOverlay.style.display = 'flex';
   }
@@ -5484,6 +5523,7 @@ document.getElementById('themeToggleBtn')?.addEventListener('click', (e) => {
 
 document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
+  if(cloudUnsubscribe){ cloudUnsubscribe(); cloudUnsubscribe = null; }
   auth.signOut();
   drawer.classList.remove('show'); overlay.classList.remove('show');
   suppressCloudSave = true;
