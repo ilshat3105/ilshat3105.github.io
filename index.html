@@ -1155,7 +1155,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 19:12</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 19:26</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -2031,6 +2031,8 @@ function newPhotoId(){ return 'ph' + (photoIdSeq++); }
 
 function openEditor(note, isNew){
   isNewNote = !!isNew;
+  bodyLastTapTime = 0; // сбрасываем счётчик двойного тапа — новое открытие редактора не должно
+                        // засчитываться как продолжение тапов из предыдущей сессии
   editingNote = isNew ? note : Object.assign({}, note, {
     checklist: note.checklist ? note.checklist.map(i=>({...i})) : null,
     photos: (note.photos || []).slice(),
@@ -2263,6 +2265,10 @@ const BODY_DOUBLE_TAP_MS = 350;
 function bodyLongPressEligible(){
   return isNewNote && !bodyInput.value.trim() && !editingNote.checklist;
 }
+let bodyIgnoreMouseUntil = 0; // после настоящего touch-события браузер ещё
+  // какое-то время шлёт "синтетические" mouse-события той же природы — без
+  // этой защиты один физический тап на телефоне засчитывался кодом как два
+  // отдельных тапа (touch + следом mouse) и сам себя принимал за двойной тап
 function startBodyLongPress(x, y){
   if(!bodyLongPressEligible()) return;
   bodyLongPressFired = false;
@@ -2309,6 +2315,7 @@ function endBodyLongPress(e){
   }
 }
 bodyInput.addEventListener('touchstart', (e) => {
+  bodyIgnoreMouseUntil = Date.now() + 800;
   const t = e.touches[0];
   startBodyLongPress(t.clientX, t.clientY);
 }, { passive: true });
@@ -2316,11 +2323,20 @@ bodyInput.addEventListener('touchmove', (e) => {
   const t = e.touches[0];
   moveBodyLongPress(t.clientX, t.clientY);
 }, { passive: true });
-bodyInput.addEventListener('touchend', endBodyLongPress);
+bodyInput.addEventListener('touchend', (e) => {
+  bodyIgnoreMouseUntil = Date.now() + 800;
+  endBodyLongPress(e);
+});
 bodyInput.addEventListener('touchcancel', () => clearTimeout(bodyLongPressTimer));
-bodyInput.addEventListener('mousedown', (e) => startBodyLongPress(e.clientX, e.clientY));
+bodyInput.addEventListener('mousedown', (e) => {
+  if(Date.now() < bodyIgnoreMouseUntil) return; // это синтетическое эхо только что бывшего touch-тапа
+  startBodyLongPress(e.clientX, e.clientY);
+});
 bodyInput.addEventListener('mousemove', (e) => { if(bodyLongPressTimer) moveBodyLongPress(e.clientX, e.clientY); });
-bodyInput.addEventListener('mouseup', endBodyLongPress);
+bodyInput.addEventListener('mouseup', (e) => {
+  if(Date.now() < bodyIgnoreMouseUntil) return;
+  endBodyLongPress(e);
+});
 let lastBodyValue = '';
 bodyInput.addEventListener('input', () => {
   // Если это похоже на вставку большого куска текста (резкий скачок длины за одно
