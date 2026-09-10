@@ -120,7 +120,7 @@
   .note .photo-more{width:44px;height:44px;border-radius:8px;flex-shrink:0;background:rgba(0,0,0,.06);
     display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#3c4043;}
 
-  .ed-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:flex-start;}
+  .ed-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:0;align-items:flex-start;}
   .ed-photo-item{display:flex;flex-direction:column;align-items:center;gap:3px;}
   .ed-photo-date{font-size:10px;color:var(--faint);}
   .ed-photo-thumb{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;
@@ -399,7 +399,7 @@
     font-size:13.5px;font-weight:500;padding:9px 16px;cursor:pointer;border-radius:6px;}
   .editor-toolbar .close-btn:active{background:var(--concrete);}
 
-  .ed-photos-wrap{padding:12px 0 0;flex-shrink:0;}
+  .ed-photos-wrap{padding:6px 0 0;flex-shrink:0;}
 
   /* ---- Окно с распознанным текстом фото (OCR) — переиспользует те же стили листа ---- */
   .route-import-overlay{position:fixed;inset:0;background:transparent;z-index:70;
@@ -1149,7 +1149,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 19:40</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-09 21:15</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1217,11 +1217,11 @@
           <input id="clNewInput" placeholder="Добавить пункт">
         </div>
       </div>
-      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:6px 2px 4px;">Заявка (фото):</div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:18px 2px 4px;">Заявка (фото):</div>
       <div class="ed-photos-wrap">
         <div class="ed-photos" id="edPhotos"></div>
       </div>
-      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:2px 2px 4px;">Стоимость перевозки:</div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:18px 2px 4px;">Стоимость перевозки:</div>
       <div class="amount-row" id="amountRowBottom">
         <input id="amountInput" placeholder="Сумма" inputmode="decimal" pattern="[0-9]*">
         <span id="amountPreview"></span>
