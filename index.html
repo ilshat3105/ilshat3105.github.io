@@ -1155,7 +1155,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 18:26</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 19:12</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -2181,7 +2181,7 @@ const bodyPreview = document.getElementById('bodyPreview');
 function updateBodyPreview(){
   // Предпросмотр только для обычного свободного текста: не во время редактирования,
   // не для чек-листа и не для пустого поля/плейсхолдера «Вставить заявку».
-  if(editingNote.checklist || bodyInput.readOnly || document.activeElement === bodyInput || !bodyInput.value.trim()){
+  if(editingNote.checklist || document.activeElement === bodyInput || !bodyInput.value.trim()){
     bodyPreview.style.display = 'none';
     return;
   }
@@ -2213,36 +2213,30 @@ function autoResizeBody(){
 function updatePasteOrderBtn(){
   const empty = !bodyInput.value.trim();
   if(isNewNote && empty && !editingNote.checklist){
-    bodyInput.placeholder = 'Вставить скопированную заявку с АТИ';
-    bodyInput.readOnly = true;
+    bodyInput.placeholder = 'Тап — печатать вручную, двойной тап или удержание — вставить заявку с АТИ';
     bodyInput.classList.add('body-dim');
     // сдвигаем плейсхолдер почти к самому низу поля — туда, где удобно
-    // тапнуть большим пальцем, не тянясь наверх экрана
+    // тапнуть/удержать большим пальцем, не тянясь наверх экрана
     const parentH = bodyInput.parentElement.clientHeight || Math.round(window.innerHeight * 0.55);
     bodyInput.style.paddingTop = Math.round(parentH * 0.82) + 'px';
   } else {
     bodyInput.placeholder = 'Заметка...';
-    bodyInput.readOnly = false;
     bodyInput.classList.remove('body-dim');
     bodyInput.style.paddingTop = '';
   }
 }
-bodyInput.addEventListener('click', async () => {
-  if(!bodyInput.readOnly) return; // обычное поле — стандартное поведение
+async function pasteOrderFromClipboard(){
   let text = '';
   try{
     text = await navigator.clipboard.readText();
   } catch(err){
-    // Clipboard API недоступна (нет HTTPS или нет разрешения) — снимаем readOnly,
-    // чтобы можно было вставить текст вручную через системное меню.
-    bodyInput.readOnly = false;
-    bodyInput.classList.remove('body-dim');
-    bodyInput.placeholder = 'Заметка...';
-    bodyInput.focus();
+    // Clipboard API недоступна (нет HTTPS или нет разрешения) — молча ничего не
+    // делаем; обычный тап и так уже открыл клавиатуру для вставки вручную через
+    // системное меню, отдельный жест здесь бессилен без разрешения браузера.
     return;
   }
   text = (text || '').replace(/\s+$/, '');
-  if(!text) return;
+  if(!text) return; // в буфере пусто — вставлять нечего
   bodyInput.value = text;
   lastBodyValue = text;
   editingNote.text = text;
@@ -2251,7 +2245,82 @@ bodyInput.addEventListener('click', async () => {
   pushHistory();
   document.getElementById('amountInput').focus();
   updateBodyPreview();
-});
+}
+// ---- Тап печатает, удержание вставляет ----
+// Раньше пустое поле целиком превращалось в кнопку "вставить" (readOnly=true) —
+// напечатать вручную было нельзя вообще, а если в буфере обмена было пусто,
+// поле молча оставалось заблокированным навсегда. Теперь два разных жеста:
+// обычный тап — стандартное поведение textarea (открывает клавиатуру для
+// ручного ввода), а удержание (долгий тап) — отдельно читает буфер обмена.
+let bodyLongPressTimer = null;
+let bodyLongPressFired = false;
+let bodyPressStartX = 0, bodyPressStartY = 0;
+let bodyLastTapTime = 0;
+let bodyLastTapX = 0, bodyLastTapY = 0;
+const BODY_LONG_PRESS_MS = 500;
+const BODY_LONG_PRESS_MOVE_TOLERANCE = 12;
+const BODY_DOUBLE_TAP_MS = 350;
+function bodyLongPressEligible(){
+  return isNewNote && !bodyInput.value.trim() && !editingNote.checklist;
+}
+function startBodyLongPress(x, y){
+  if(!bodyLongPressEligible()) return;
+  bodyLongPressFired = false;
+  bodyPressStartX = x; bodyPressStartY = y;
+  clearTimeout(bodyLongPressTimer);
+  bodyLongPressTimer = setTimeout(() => {
+    bodyLongPressFired = true;
+    bodyInput.blur(); // если клавиатура уже успела открыться — убираем её перед вставкой
+    pasteOrderFromClipboard();
+  }, BODY_LONG_PRESS_MS);
+}
+function moveBodyLongPress(x, y){
+  if(Math.abs(x - bodyPressStartX) > BODY_LONG_PRESS_MOVE_TOLERANCE || Math.abs(y - bodyPressStartY) > BODY_LONG_PRESS_MOVE_TOLERANCE){
+    clearTimeout(bodyLongPressTimer);
+  }
+}
+function endBodyLongPress(e){
+  clearTimeout(bodyLongPressTimer);
+  if(bodyLongPressFired){
+    // Удержание уже сработало и вставило текст — гасим следующий за этим
+    // обычный тап/клик, чтобы поле не переключилось в режим ручного ввода
+    // поверх только что вставленного текста.
+    e.preventDefault();
+    bodyLastTapTime = 0; // удержание не считается тапом для счётчика двойного тапа
+    return;
+  }
+  // Обычного тапа недостаточно для вставки (он просто открывает клавиатуру для
+  // ручного ввода) — но если это ВТОРОЙ тап подряд в одном месте за короткое
+  // время, считаем это двойным тапом и тоже вставляем заявку из буфера.
+  if(bodyLongPressEligible()){
+    const now = Date.now();
+    const dx = Math.abs(bodyPressStartX - bodyLastTapX);
+    const dy = Math.abs(bodyPressStartY - bodyLastTapY);
+    if(now - bodyLastTapTime < BODY_DOUBLE_TAP_MS && dx < BODY_LONG_PRESS_MOVE_TOLERANCE && dy < BODY_LONG_PRESS_MOVE_TOLERANCE){
+      e.preventDefault();
+      bodyLastTapTime = 0;
+      bodyInput.blur();
+      pasteOrderFromClipboard();
+      return;
+    }
+    bodyLastTapTime = now;
+    bodyLastTapX = bodyPressStartX;
+    bodyLastTapY = bodyPressStartY;
+  }
+}
+bodyInput.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  startBodyLongPress(t.clientX, t.clientY);
+}, { passive: true });
+bodyInput.addEventListener('touchmove', (e) => {
+  const t = e.touches[0];
+  moveBodyLongPress(t.clientX, t.clientY);
+}, { passive: true });
+bodyInput.addEventListener('touchend', endBodyLongPress);
+bodyInput.addEventListener('touchcancel', () => clearTimeout(bodyLongPressTimer));
+bodyInput.addEventListener('mousedown', (e) => startBodyLongPress(e.clientX, e.clientY));
+bodyInput.addEventListener('mousemove', (e) => { if(bodyLongPressTimer) moveBodyLongPress(e.clientX, e.clientY); });
+bodyInput.addEventListener('mouseup', endBodyLongPress);
 let lastBodyValue = '';
 bodyInput.addEventListener('input', () => {
   // Если это похоже на вставку большого куска текста (резкий скачок длины за одно
