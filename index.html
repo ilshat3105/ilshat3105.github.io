@@ -873,7 +873,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 19:33</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 21:24</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4233,19 +4233,13 @@ try{
   }
 } catch(e){ console.warn('Push-уведомления не поддерживаются в этом браузере:', e); }
 
-async function registerPushToken(){
+function registerPushToken(){
   if(!messaging || !currentUID) return;
-  Notification.requestPermission().then(async permission => {
+  Notification.requestPermission().then(permission => {
     if(permission !== 'granted') return;
     // VAPID-ключ берётся из консоли Firebase: Project Settings → Cloud Messaging →
     // Web configuration → Generate key pair. Без него getToken() не отработает.
-    // Передаём уже зарегистрированный sw.js явно: иначе Firebase ищет файл
-    // firebase-messaging-sw.js, которого в проекте нет.
-    const serviceWorkerRegistration = await navigator.serviceWorker.ready;
-    messaging.getToken({
-      vapidKey: 'BOek9xs32MFnIwaY-_fFjCDV4qFvgx1lxUz_9qQ7OfxZaLPKVe3YVR89Wk1C6ULQStYstP_87oDWZmG8g0mSqec',
-      serviceWorkerRegistration
-    })
+    messaging.getToken({ vapidKey: 'BOek9xs32MFnIwaY-_fFjCDV4qFvgx1lxUz_9qQ7OfxZaLPKVe3YVR89Wk1C6ULQStYstP_87oDWZmG8g0mSqec' })
       .then(token => {
         if(!token || !currentUID) return;
         db.collection('users').doc(currentUID).collection('devices').doc(token).set({
