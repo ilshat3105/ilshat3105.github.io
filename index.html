@@ -870,7 +870,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 17:16</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 17:41</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4505,10 +4505,33 @@ if ('serviceWorker' in navigator) {
       document.addEventListener('visibilitychange', () => {
         if(document.visibilityState === 'visible'){
           registration.update().catch(() => {});
+          refreshFromCloudOnResume();
         }
       });
     }).catch(() => {});
   });
+}
+// Живая подписка onSnapshot иногда не успевает быстро переподключиться после того,
+// как WebView на Android "замораживает" фоновое приложение (это не то же самое, что
+// реальное закрытие) — соединение может повиснуть, и новые данные с другого
+// устройства не долетают, пока пользователь не откроет приложение несколько раз.
+// Поэтому при каждом возврате в приложение отдельно, напрямую, спрашиваем сервер
+// (а не локальный кэш Firestore) — так свежие данные гарантированно подтягиваются
+// сразу, а не только тогда, когда наконец "проснётся" сама живая подписка.
+function refreshFromCloudOnResume(){
+  if(!currentUID) return;
+  db.collection('users').doc(currentUID).get({ source: 'server' }).then(doc => {
+    if(!doc.exists) return;
+    const cloudData = doc.data();
+    const cloudUpdatedAt = toMillis(cloudData.updatedAt);
+    if(cloudUpdatedAt > localUpdatedAt){
+      suppressCloudSave = true;
+      applyState(cloudData);
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+      suppressCloudSave = false;
+      renderContent();
+    }
+  }).catch(e => console.warn('Не удалось обновиться с сервера при возврате в приложение:', e));
 }
 </script>
 
