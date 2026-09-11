@@ -827,6 +827,8 @@
     <div class="avatar" id="avatar">Я</div>
   </header>
 
+  <div id="syncBadge" style="display:none;padding:6px 16px;font-size:12px;text-align:center;cursor:pointer;"></div>
+
   <div class="top-tabs" id="topTabs">
     <button class="top-tab active" data-section="notes">Заявки</button>
     <button class="top-tab" data-section="fuel">Расходы</button>
@@ -870,7 +872,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 17:41</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 18:35</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -3912,14 +3914,68 @@ let currentUID = null;
 let cloudSaveTimer = null;
 let suppressCloudSave = false; // true, пока применяем данные, только что пришедшие из облака (свои же правки эхом не пересохраняем)
 
+// Статус последней попытки отправки в облако — раньше при неудаче ничего не
+// происходило видимо: ни значка, ни сообщения, только тихая запись в консоль,
+// которую никто не смотрит. Теперь статус хранится и показывается в интерфейсе
+// (см. renderSyncBadge), а при ошибке автоматически повторяем попытку, а не
+// оставляем правку висеть без следа до случайного повторного сохранения.
+let cloudSyncStatus = 'idle'; // 'idle' | 'pending' | 'synced' | 'error'
+let cloudRetryTimer = null;
+const syncBadgeEl = document.getElementById('syncBadge');
+// 'idle'/'synced' — бейдж скрыт, чтобы не мешать в обычной работе. 'pending' —
+// короткая нейтральная пометка. 'error' — ЗАМЕТНАЯ, не исчезает сама, с тапом
+// для ручного повтора: раньше неудачная отправка была видна только в консоли
+// браузера, которую никто не открывает.
+let cloudLastErrorCode = '';
+function renderSyncBadge(){
+  if(cloudSyncStatus === 'pending'){
+    syncBadgeEl.style.display = 'block';
+    syncBadgeEl.style.background = 'var(--concrete)';
+    syncBadgeEl.style.color = 'var(--muted)';
+    syncBadgeEl.textContent = 'Отправка…';
+  } else if(cloudSyncStatus === 'error'){
+    syncBadgeEl.style.display = 'block';
+    syncBadgeEl.style.background = '#fdecea';
+    syncBadgeEl.style.color = '#c0392b';
+    // Код ошибки Firestore (permission-denied, unavailable, resource-exhausted и т.п.)
+    // показываем прямо в самой полоске — раньше эта информация оседала только в
+    // консоли браузера, которую никто не открывает, и настоящая причина отказа
+    // оставалась неизвестной даже после нескольких повторных попыток.
+    syncBadgeEl.textContent = 'Не удалось отправить в облако'
+      + (cloudLastErrorCode ? ' (' + cloudLastErrorCode + ')' : '')
+      + ' — нажмите, чтобы повторить';
+  } else {
+    syncBadgeEl.style.display = 'none';
+  }
+}
+syncBadgeEl.addEventListener('click', () => {
+  if(cloudSyncStatus === 'error' && currentUID){
+    flushCloudSave();
+  }
+});
+// Как только связь физически появилась — сразу пробуем отправить то, что не
+// дошло, не дожидаясь отдельного таймера повтора.
+window.addEventListener('online', () => {
+  if(currentUID && (cloudSyncStatus === 'error' || cloudSyncStatus === 'pending')){
+    flushCloudSave();
+  }
+});
+function setCloudSyncStatus(status){
+  cloudSyncStatus = status;
+  renderSyncBadge();
+}
 function flushCloudSave(){
   if(!currentUID || suppressCloudSave) return;
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
+  if(cloudRetryTimer){ clearTimeout(cloudRetryTimer); cloudRetryTimer = null; }
   const snap = stateSnapshot();
+  setCloudSyncStatus('pending');
   // .set() с включённой offline-персистентностью пишет в локальную очередь Firestore
   // СРАЗУ, синхронно — то есть запись не потеряется, даже если через долю секунды
-  // после этого закрыть приложение или пропадёт связь. Сама отправка на сервер
-  // произойдёт сама, когда появится интернет — ждать промиса не нужно.
+  // после этого закрыть приложение или пропадёт связь. Но сам промис .then()/.catch()
+  // подтверждается только когда сервер реально ответил — раньше это подтверждение
+  // никак не использовалось. Теперь по нему обновляется видимый статус, а при ошибке
+  // автоматически планируется повтор через 10 секунд, а не тишина навсегда.
   // updatedAt в самом облачном документе отдельно переопределяем на serverTimestamp() —
   // так метку "кто новее" при сравнении устройств назначает сервер Google в момент
   // получения записи, а не часы конкретного телефона (см. пояснение в toMillis() выше).
@@ -3929,8 +3985,19 @@ function flushCloudSave(){
       ...snap,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     })
-    .then(() => maybeSaveDailyBackup(snap))
-    .catch(e => console.warn('Не удалось сохранить в облако:', e));
+    .then(() => {
+      cloudLastErrorCode = '';
+      setCloudSyncStatus('synced');
+      maybeSaveDailyBackup(snap);
+    })
+    .catch(e => {
+      console.warn('Не удалось сохранить в облако:', e);
+      cloudLastErrorCode = e && e.code ? e.code : (e && e.message ? e.message : 'неизвестная ошибка');
+      setCloudSyncStatus('error');
+      cloudRetryTimer = setTimeout(() => {
+        if(currentUID && !suppressCloudSave) flushCloudSave();
+      }, 10000);
+    });
 }
 function scheduleCloudSave(){
   if(!currentUID || suppressCloudSave) return;
