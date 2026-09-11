@@ -1,3 +1,31 @@
+// ---- Push-уведомления (Firebase Cloud Messaging), фоновый режим ----
+// Пока приложение свёрнуто (не открыта ни одна вкладка), именно этот файл
+// получает пуш и обязан показать хоть какое-то уведомление — иначе браузер
+// сам подставит системное "Сайт обновился в фоне", которое выглядит хуже.
+// Делаем уведомление максимально тихим и незаметным: без звука по умолчанию,
+// с автоматическим скрытием.
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyAVcifT9Ip69CSuSt_8naJHr4ZbplOMtgI",
+  authDomain: "v-reyse.firebaseapp.com",
+  projectId: "v-reyse",
+  storageBucket: "v-reyse.firebasestorage.app",
+  messagingSenderId: "200272195894",
+  appId: "1:200272195894:web:6139f885fb49e0e747c397"
+});
+
+const messaging = firebase.messaging();
+messaging.onBackgroundMessage(() => {
+  self.registration.showNotification('В рейсе', {
+    body: 'Данные обновлены',
+    icon: './icon-192.png',
+    silent: true,
+    tag: 'vreyse-sync' // одинаковый tag — новое уведомление заменяет предыдущее, не копится
+  });
+});
+
 const CACHE_NAME = 'vreyse-v1';
 
 const FILES_TO_CACHE = [
