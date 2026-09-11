@@ -4233,13 +4233,19 @@ try{
   }
 } catch(e){ console.warn('Push-уведомления не поддерживаются в этом браузере:', e); }
 
-function registerPushToken(){
+async function registerPushToken(){
   if(!messaging || !currentUID) return;
-  Notification.requestPermission().then(permission => {
+  Notification.requestPermission().then(async permission => {
     if(permission !== 'granted') return;
     // VAPID-ключ берётся из консоли Firebase: Project Settings → Cloud Messaging →
     // Web configuration → Generate key pair. Без него getToken() не отработает.
-    messaging.getToken({ vapidKey: 'ВСТАВЬТЕ_СЮДА_VAPID_КЛЮЧ_ИЗ_КОНСОЛИ_FIREBASE' })
+    // Передаём уже зарегистрированный sw.js явно: иначе Firebase ищет файл
+    // firebase-messaging-sw.js, которого в проекте нет.
+    const serviceWorkerRegistration = await navigator.serviceWorker.ready;
+    messaging.getToken({
+      vapidKey: 'BOek9xs32MFnIwaY-_fFjCDV4qFvgx1lxUz_9qQ7OfxZaLPKVe3YVR89Wk1C6ULQStYstP_87oDWZmG8g0mSqec',
+      serviceWorkerRegistration
+    })
       .then(token => {
         if(!token || !currentUID) return;
         db.collection('users').doc(currentUID).collection('devices').doc(token).set({
