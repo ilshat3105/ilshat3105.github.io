@@ -870,7 +870,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-10 23:20</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-11 17:16</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -910,11 +910,13 @@
   </nav>
 
   <div id="backupsOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:110;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;">
-    <div style="background:var(--surface);border-radius:14px;padding:24px 20px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto;box-sizing:border-box;">
-      <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Резервные копии</div>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Автоматический снимок ваших данных за каждый из последних 7 дней. Восстановление заменит текущие данные выбранной копией.</div>
-      <div id="backupsList"></div>
-      <button id="backupsCloseBtn" type="button" style="width:100%;margin-top:10px;background:var(--concrete);color:var(--ink);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
+    <div style="background:var(--surface);border-radius:14px;padding:20px 20px 0;width:100%;max-width:340px;max-height:80vh;box-sizing:border-box;display:flex;flex-direction:column;">
+      <div style="flex-shrink:0;">
+        <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:6px;">Резервные копии</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Автоматический снимок ваших данных — не чаще раза в 3 часа, хранятся последние 7 копий. Восстановление заменит текущие данные выбранной копией.</div>
+      </div>
+      <div id="backupsList" style="flex:1;overflow-y:auto;min-height:0;"></div>
+      <button id="backupsCloseBtn" type="button" style="flex-shrink:0;width:100%;margin:10px 0;background:var(--concrete);color:var(--ink);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
     </div>
   </div>
 
@@ -1357,9 +1359,16 @@ function escapeHtml(s){
 }
 
 function renderContent(){
-  purgeOldTrash();
+  // ВАЖНО: saveState() здесь вызывается, только если purgeOldTrash() реально
+  // что-то удалила. Раньше saveState() вызывался безусловно при КАЖДОМ рендере —
+  // а значит, метка времени "обновлено только что" проставлялась даже когда
+  // ничего не менялось (например, просто открыли приложение). Из-за этого
+  // при восстановлении связи на телефоне со старыми/неполными данными эта
+  // фальшиво "свежая" метка заставляла его данные выглядеть новее, чем они
+  // есть на самом деле — и перетирать более актуальные данные в облаке.
+  const trashChanged = purgeOldTrash();
   renumberNotes();
-  saveState();
+  if(trashChanged) saveState();
   const content = document.getElementById('content');
   document.getElementById('composeBar').style.display = view === 'notes' ? 'block' : 'none';
   renderSummaryBar();
@@ -3853,6 +3862,15 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 const STORAGE_KEY = 'moyreys_notes_v1';
 let localUpdatedAt = 0; // метка времени последней правки на этом телефоне — чтобы облако
                          // не затирало более свежие локальные изменения, сделанные без интернета
+// В облаке updatedAt хранится как серверная метка времени Firestore (объект Timestamp,
+// назначается сервером Google в момент получения записи, а не самим телефоном — так
+// не получится случайно "обмануть" систему временем самого устройства). Здесь эта метка
+// приходит как объект с методом toMillis(); в localStorage и в старых облачных записях,
+// сделанных до этого перехода, она может быть обычным числом — поддерживаем оба вида.
+function toMillis(v){
+  if(v && typeof v.toMillis === 'function') return v.toMillis();
+  return v || 0;
+}
 function stateSnapshot(){
   return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, updatedAt: localUpdatedAt };
 }
@@ -3864,7 +3882,7 @@ function applyState(s){
   expenses = s.expenses || [];
   expenseIdSeq = s.expenseIdSeq || 1;
   expenseCategories = s.expenseCategories || [];
-  localUpdatedAt = s.updatedAt || 0;
+  localUpdatedAt = toMillis(s.updatedAt);
 }
 function saveState(){
   localUpdatedAt = Date.now();
@@ -3902,7 +3920,15 @@ function flushCloudSave(){
   // СРАЗУ, синхронно — то есть запись не потеряется, даже если через долю секунды
   // после этого закрыть приложение или пропадёт связь. Сама отправка на сервер
   // произойдёт сама, когда появится интернет — ждать промиса не нужно.
-  db.collection('users').doc(currentUID).set(snap)
+  // updatedAt в самом облачном документе отдельно переопределяем на serverTimestamp() —
+  // так метку "кто новее" при сравнении устройств назначает сервер Google в момент
+  // получения записи, а не часы конкретного телефона (см. пояснение в toMillis() выше).
+  // В резервную копию (maybeSaveDailyBackup) уходит snap с обычным числом — там это
+  // просто время создания копии для сортировки, конфликтов между устройствами там нет.
+  db.collection('users').doc(currentUID).set({
+      ...snap,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    })
     .then(() => maybeSaveDailyBackup(snap))
     .catch(e => console.warn('Не удалось сохранить в облако:', e));
 }
@@ -3926,16 +3952,21 @@ window.addEventListener('pagehide', flushCloudSave);
 // Раз в сутки (при первом сохранении в этот день) кладём копию данных в
 // отдельную подколлекцию backups, чтобы при случайной перезаписи основного
 // документа было куда откатиться. Храним только последние 7 копий.
-function todayKey(){
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-}
+const BACKUP_INTERVAL_MS = 3 * 60 * 60 * 1000; // не чаще раза в 3 часа
 function maybeSaveDailyBackup(snap){
   if(!currentUID) return;
-  const key = todayKey();
   const backupsRef = db.collection('users').doc(currentUID).collection('backups');
-  backupsRef.doc(key).get().then(doc => {
-    if(doc.exists) return; // сегодня уже есть копия — не трогаем
+  // Раньше копия делалась максимум одна за календарный день — если несколько
+  // важных изменений произошло в один день (как и случилось), только самое
+  // первое из них попадало в копию, а остальные оставались вообще без защиты.
+  // Теперь смотрим на время последней копии, а не на календарную дату: если
+  // прошло больше 3 часов с прошлой копии — делаем новую, независимо от того,
+  // тот же это день или уже другой.
+  backupsRef.orderBy('backupCreatedAt', 'desc').limit(1).get().then(snapshot => {
+    const last = snapshot.docs[0];
+    const lastAt = last ? (last.data().backupCreatedAt || 0) : 0;
+    if(Date.now() - lastAt < BACKUP_INTERVAL_MS) return; // недавняя копия уже есть
+    const key = 'periodic-' + Date.now();
     backupsRef.doc(key).set(Object.assign({}, snap, { backupCreatedAt: Date.now() }))
       .then(() => cleanupOldBackups(backupsRef))
       .catch(e => console.warn('Не удалось сохранить бэкап:', e));
@@ -4048,16 +4079,18 @@ function loadFromCloud(){
     if(doc.metadata.hasPendingWrites) return;
     if(doc.exists){
       const cloudData = doc.data();
-      const cloudUpdatedAt = cloudData.updatedAt || 0;
+      const cloudUpdatedAt = toMillis(cloudData.updatedAt);
       if(cloudUpdatedAt > localUpdatedAt){
-        // Защита от случайного затирания: если в облаке записей заметно меньше,
-        // чем сейчас на телефоне, — это подозрительно (похоже на старую/пустую
+        // Защита от случайного затирания: если в облаке записей меньше, чем
+        // сейчас на телефоне, — это подозрительно (похоже на старую/пустую
         // копию). Спрашиваем только при первом снимке после входа, а не на
-        // каждое живое обновление.
+        // каждое живое обновление. Порог занижен намеренно — реальный случай
+        // потери данных был всего 3 записи → 1, что не ловилось прежним
+        // порогом «минимум 4 записи и потеря больше половины».
         const itemCount = s => (s.notes||[]).length + (s.expenses||[]).length;
         const localCount = itemCount(stateSnapshot());
         const cloudCount = itemCount(cloudData);
-        const suspicious = isFirstCloudSnapshot && localCount >= 4 && cloudCount < localCount / 2;
+        const suspicious = isFirstCloudSnapshot && localCount >= 2 && cloudCount < localCount;
         if(suspicious){
           showConfirm(
             `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
@@ -4183,11 +4216,13 @@ const backupsOverlay = document.getElementById('backupsOverlay');
 const backupsList = document.getElementById('backupsList');
 
 function formatBackupLabel(key){
-  if(key.startsWith('preRestore-')){
-    const ts = parseInt(key.slice('preRestore-'.length), 10);
+  if(key.startsWith('preRestore-') || key.startsWith('periodic-')){
+    const ts = parseInt(key.slice(key.indexOf('-') + 1), 10);
     const d = new Date(ts);
     return { title: `Резервная копия за ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` };
   }
+  // Старый формат ключа "ГГГГ-ММ-ДД" — от копий, сделанных ещё до перехода
+  // на интервал в 3 часа. Оставлено для совместимости со старыми записями.
   const [y, m, dNum] = key.split('-');
   const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
   return { title: `Резервная копия за ${parseInt(dNum,10)} ${months[parseInt(m,10)-1]} ${y}` };
@@ -4215,16 +4250,16 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
         const data = doc.data();
         const itemsCount = (data.notes||[]).length + (data.expenses||[]).length;
         const label = formatBackupLabel(doc.id);
-        // Превью содержимого копии — заголовки первых нескольких заявок,
+        // Превью содержимого копии — заголовок первой заявки в ней,
         // чтобы можно было понять, какую именно копию восстанавливать,
         // не открывая её вслепую. Настоящий скриншот экрана здесь не хранится —
         // копия это только данные, а не картинка.
         const previewTitles = (data.notes||[])
           .map(n => n.title || (n.text || '').split('\n')[0].replace(/^Груз:\s*/, '') || '')
           .filter(t => t.trim())
-          .slice(0, 3);
+          .slice(0, 1);
         const previewText = previewTitles.length
-          ? previewTitles.map(escapeHtml).join(' · ') + (data.notes.length > 3 ? '…' : '')
+          ? escapeHtml(previewTitles[0])
           : 'Заявок нет';
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--card-line, #e0e0e0);gap:10px;';
@@ -4260,7 +4295,10 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
                   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
                   suppressCloudSave = false;
                   localUpdatedAt = Date.now();
-                  return db.collection('users').doc(currentUID).set(stateSnapshot());
+                  return db.collection('users').doc(currentUID).set({
+                    ...stateSnapshot(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                  });
                 })
                 .then(() => showToast('Данные восстановлены из копии'))
                 .catch(e => {
