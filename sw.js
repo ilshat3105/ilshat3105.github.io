@@ -26,7 +26,7 @@ messaging.onBackgroundMessage(() => {
   });
 });
 
-const CACHE_NAME = 'vreyse-v1';
+const CACHE_NAME = 'vreyse-v2';
 
 const FILES_TO_CACHE = [
   './',
