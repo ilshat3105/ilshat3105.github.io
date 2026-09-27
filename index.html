@@ -873,7 +873,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-15 21:35 (исправлено слияние)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-15 22:00 (упрощена синхронизация)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4194,45 +4194,19 @@ function loadFromCloud(){
     if(doc.metadata.hasPendingWrites) return;
     if(doc.exists){
       const cloudData = doc.data();
-      const cloudUpdatedAt = toMillis(cloudData.updatedAt);
-      if(cloudUpdatedAt > localUpdatedAt){
-        // Защита от случайного затирания: если в облаке записей меньше, чем
-        // сейчас на телефоне, — это подозрительно (похоже на старую/пустую
-        // копию). Спрашиваем только при первом снимке после входа, а не на
-        // каждое живое обновление. Порог занижен намеренно — реальный случай
-        // потери данных был всего 3 записи → 1, что не ловилось прежним
-        // порогом «минимум 4 записи и потеря больше половины».
-        const itemCount = s => (s.notes||[]).length + (s.expenses||[]).length;
-        const localCount = itemCount(stateSnapshot());
-        const cloudCount = itemCount(cloudData);
-        const suspicious = isFirstCloudSnapshot && localCount >= 2 && cloudCount < localCount;
-        if(suspicious){
-          showConfirm(
-            `В облаке заметно меньше данных (${cloudCount}), чем сейчас на этом телефоне (${localCount}). ` +
-            `Заменить данные на телефоне облачной версией? Если не уверены — нажмите «Отмена», ` +
-            `и текущие данные с телефона будут отправлены в облако вместо замены.`,
-            () => { // Да — заменить локальные данные облачными
-              suppressCloudSave = true;
-              applyState(cloudData);
-              try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-              suppressCloudSave = false;
-              renderContent();
-            },
-            () => { scheduleCloudSave(); } // Отмена — досылаем то, что есть на телефоне, в облако
-          );
-        } else {
-          const changed = applyStateMerged(cloudData);
-          try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-          if(changed){
-            // Слияние добавило то, чего сервер ещё не видел (например, только
-            // что созданную на этом телефоне заявку) — досылаем именно это.
-            localUpdatedAt = Date.now();
-            scheduleCloudSave();
-          }
-        }
-      } else if(isFirstCloudSnapshot && cloudUpdatedAt < localUpdatedAt) {
-        // На телефоне при входе есть более свежие правки, которые не успели
-        // долететь до облака (например, сделаны без интернета) — досылаем их.
+      // Раньше слияние запускалось только если метка времени всего документа в
+      // облаке была новее локальной. Это оказалось источником бага: если у
+      // локальной метки времени случайно оказывалось завышенное значение
+      // (например, из-за сбоя синхронизации в прошлом), новые данные с других
+      // устройств полностью игнорировались, хотя само слияние по отдельным
+      // записям исправно и ничего не портит. Теперь сливаем при каждом
+      // обновлении безусловно — это надёжнее.
+      const changed = applyStateMerged(cloudData);
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+      if(changed){
+        // Слияние добавило то, чего сервер ещё не видел (например, только
+        // что созданную на этом телефоне заявку) — досылаем именно это.
+        localUpdatedAt = Date.now();
         scheduleCloudSave();
       }
     } else if(isFirstCloudSnapshot) {
@@ -4684,16 +4658,13 @@ function refreshFromCloudOnResume(){
   db.collection('users').doc(currentUID).get({ source: 'server' }).then(doc => {
     if(!doc.exists) return;
     const cloudData = doc.data();
-    const cloudUpdatedAt = toMillis(cloudData.updatedAt);
-    if(cloudUpdatedAt > localUpdatedAt){
-      const changed = applyStateMerged(cloudData);
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-      if(changed){
-        localUpdatedAt = Date.now();
-        scheduleCloudSave();
-      }
-      renderContent();
+    const changed = applyStateMerged(cloudData);
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+    if(changed){
+      localUpdatedAt = Date.now();
+      scheduleCloudSave();
     }
+    renderContent();
   }).catch(e => console.warn('Не удалось обновиться с сервера при возврате в приложение:', e));
 }
 </script>
