@@ -873,7 +873,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 01:07 (исправлен порядок заявок — совпадает на всех телефонах)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 01:35 (чекбокс и порядок избранного теперь тоже синхронизируются)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1500,6 +1500,12 @@ document.getElementById('content').addEventListener('click', (e) => {
     const n = notes.find(x => x.id == nid);
     const it = n.checklist.find(x => x.id == iid);
     it.done = chk.checked;
+    // ВАЖНО: без editedAt+saveState() это изменение оставалось только в
+    // памяти телефона — flushCloudSave() решает, что отправлять в облако,
+    // именно по сравнению editedAt с тем, что уже подтверждено, поэтому
+    // отметка "выполнено" прямо на карточке не долетала до другого телефона.
+    n.editedAt = Date.now();
+    saveState();
     renderContent();
     return;
   }
@@ -1656,7 +1662,15 @@ function finishCardGesture(){
     if(toIdx === -1) toIdx = favs.length;
     if(insertAfter) toIdx++;
     favs.splice(toIdx, 0, item);
-    favs.forEach((n, i) => { n.favoriteOrder = i + 1; });
+    // ВАЖНО: раньше здесь менялся только favoriteOrder — flushCloudSave()
+    // решает, что отправлять в облако, по editedAt, а не по факту изменения
+    // объекта, поэтому новый порядок избранных мог остаться только на этом
+    // телефоне. Помечаем editedAt только у тех заявок, чей порядок реально
+    // поменялся (не у всех избранных подряд).
+    favs.forEach((n, i) => {
+      const newOrder = i + 1;
+      if(n.favoriteOrder !== newOrder){ n.favoriteOrder = newOrder; n.editedAt = Date.now(); }
+    });
     saveState();
     renderContent();
   }
@@ -1719,7 +1733,12 @@ function finishDrag(e){
   if(toIdx === -1) toIdx = favs.length;
   if(insertAfter) toIdx++;
   favs.splice(toIdx, 0, item);
-  favs.forEach((n, i) => { n.favoriteOrder = i + 1; });
+  // Та же причина, что и в touch-варианте перетаскивания выше: без editedAt
+  // новый порядок избранных не считался изменением для отправки в облако.
+  favs.forEach((n, i) => {
+    const newOrder = i + 1;
+    if(n.favoriteOrder !== newOrder){ n.favoriteOrder = newOrder; n.editedAt = Date.now(); }
+  });
   saveState();
   renderContent();
 }
