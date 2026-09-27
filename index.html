@@ -873,7 +873,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-15 22:00 (упрощена синхронизация)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-27 18:40 (убрана лишняя пересылка после слияния)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4201,14 +4201,22 @@ function loadFromCloud(){
       // устройств полностью игнорировались, хотя само слияние по отдельным
       // записям исправно и ничего не портит. Теперь сливаем при каждом
       // обновлении безусловно — это надёжнее.
-      const changed = applyStateMerged(cloudData);
+      //
+      // Раньше здесь же, если слияние находило локальную запись, которой ещё
+      // нет в облаке, сразу вызывался scheduleCloudSave() — досылали её обратно.
+      // Это оказалось лишним и опасным: applyStateMerged() сравнивает целые
+      // объекты через JSON.stringify, а Firestore не гарантирует тот же порядок
+      // полей внутри объектов массива, в котором они были записаны — значит
+      // сравнение могло считать «изменением» одну и ту же по смыслу запись
+      // только из-за другого порядка полей. Сервер в ответ на такую пустую
+      // отправку присылал новое подтверждение, оно снова "не совпадало" по
+      // JSON.stringify — и получался бесконечный круг "Отправка…". Пересылка
+      // тут и не нужна: любая настоящая локальная правка уже и так уходит в
+      // облако через saveState()→scheduleCloudSave() в момент самой правки, а
+      // если её не удалось отправить, пока не было связи, — это сделает сама
+      // офлайн-очередь Firestore, как только связь вернётся.
+      applyStateMerged(cloudData);
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-      if(changed){
-        // Слияние добавило то, чего сервер ещё не видел (например, только
-        // что созданную на этом телефоне заявку) — досылаем именно это.
-        localUpdatedAt = Date.now();
-        scheduleCloudSave();
-      }
     } else if(isFirstCloudSnapshot) {
       // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
       // в памяти телефона от предыдущего входа под другим аккаунтом
@@ -4658,12 +4666,10 @@ function refreshFromCloudOnResume(){
   db.collection('users').doc(currentUID).get({ source: 'server' }).then(doc => {
     if(!doc.exists) return;
     const cloudData = doc.data();
-    const changed = applyStateMerged(cloudData);
+    // Пересылку убрали по той же причине, что и в loadFromCloud() выше — см.
+    // пояснение там.
+    applyStateMerged(cloudData);
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-    if(changed){
-      localUpdatedAt = Date.now();
-      scheduleCloudSave();
-    }
     renderContent();
   }).catch(e => console.warn('Не удалось обновиться с сервера при возврате в приложение:', e));
 }
