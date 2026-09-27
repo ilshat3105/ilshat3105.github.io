@@ -873,7 +873,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-27 18:40 (убрана лишняя пересылка после слияния)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-27 21:05 (заявки и расходы хранятся отдельными записями)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -3891,48 +3891,28 @@ function applyState(s){
   expenseCategories = s.expenseCategories || [];
   localUpdatedAt = toMillis(s.updatedAt);
 }
-// Сравнивает список с этого устройства и список, пришедший из облака, ЗАПИСЬ ЗА
-// ЗАПИСЬЮ (по id), а не выбирает целиком один из двух списков. У каждой заявки/
-// расхода теперь есть своя метка editedAt — побеждает та версия конкретной записи,
-// что новее. Записи, которых нет на одной из сторон (например, только что созданная
-// на этом телефоне заявка, которую сервер ещё не видел) — сохраняются в результате,
-// а не теряются, как было раньше при полной замене списка.
-function mergeArraysById(localArr, cloudArr){
-  const map = new Map();
-  (cloudArr||[]).forEach(item => { if(item && item.id != null) map.set(item.id, item); });
-  (localArr||[]).forEach(item => {
-    if(!item || item.id == null) return;
-    const existing = map.get(item.id);
-    if(!existing){ map.set(item.id, item); return; }
-    const localTime = item.editedAt || item.createdAt || 0;
-    const cloudTime = existing.editedAt || existing.createdAt || 0;
-    if(localTime >= cloudTime) map.set(item.id, item);
-  });
-  return Array.from(map.values());
-}
-// Применяет данные из облака через слияние (см. mergeArraysById), а не через
-// applyState(), которая заменяет всё целиком. Используется для обычных живых
-// обновлений с других устройств — там, где раньше терялись ещё не отправленные
-// локальные правки (см. пояснение выше). Возвращает true, если после слияния
-// список отличается от того, что прислал сервер, — то есть локально нашлось
-// что-то, чего сервер ещё не видел, и это стоит отправить обратно. Если вернуть
-// true всегда без проверки — получится бесконечная пересылка туда-обратно между
-// устройствами: сервер при подтверждении записи присваивает свою метку времени,
-// которая почти всегда чуть новее локальной, и без этой проверки каждое такое
-// подтверждение снова выглядело бы как повод для новой отправки.
-function applyStateMerged(s){
-  const mergedNotes = mergeArraysById(notes, s.notes || []);
-  const mergedExpenses = mergeArraysById(expenses, s.expenses || []);
-  const changed = JSON.stringify(mergedNotes) !== JSON.stringify(s.notes || [])
-    || JSON.stringify(mergedExpenses) !== JSON.stringify(s.expenses || []);
-  notes = mergedNotes;
-  expenses = mergedExpenses;
-  idSeq = Math.max(idSeq || 1, s.idSeq || 1);
-  expenseIdSeq = Math.max(expenseIdSeq || 1, s.expenseIdSeq || 1);
-  monthKey = s.monthKey || monthKey;
-  monthlyGoal = (s.monthlyGoal != null) ? s.monthlyGoal : monthlyGoal;
-  expenseCategories = (s.expenseCategories && s.expenseCategories.length) ? s.expenseCategories : expenseCategories;
-  return changed;
+// ---- Синхронизация теперь идёт ПО ОТДЕЛЬНОЙ ЗАПИСИ, а не общим массивом ----
+// Раньше каждое сохранение отправляло в облако ВЕСЬ список заявок и расходов
+// одним документом (.set() поверх users/{uid}). Из-за этого была гонка: пока
+// телефон А отправлял документ с новой заявкой №11, телефон Б мог в этот же
+// момент сохранить СВОЙ старый список (без №11) — и стереть её из облака же
+// после того, как она уже там появилась. Слияние по id (было ниже) спасало
+// только то, что ПРИХОДИЛО из облака, но не защищало от того, что каждое
+// устройство при любой правке перезаписывало документ целиком.
+// Теперь у каждой заявки и каждого расхода — свой документ:
+//   users/{uid}/notes/{id}  и  users/{uid}/expenses/{id}
+// Устройство отправляет в облако ТОЛЬКО те записи, которые реально изменились
+// у него локально (сравнение с lastSyncedNotes/lastSyncedExpenses — что мы
+// сами последний раз подтверждённо отправили или получили). Другую, не
+// тронутую другим устройством запись, никто не трогает и не может случайно
+// стереть. Это же автоматически чинит и старый баг с "воскрешением" удалённого
+// расхода: удаление теперь — это удаление ИМЕННО его документа, а не
+// пересборка общего списка.
+let lastSyncedNotes = new Map();     // id -> editedAt, который точно уже в облаке
+let lastSyncedExpenses = new Map();  // id -> editedAt, который точно уже в облаке
+let lastSyncedMetaJSON = null;       // последняя отправленная/полученная версия служебных полей
+function metaSnapshotForSync(){
+  return { idSeq, expenseIdSeq, monthKey, monthlyGoal, expenseCategories };
 }
 function saveState(){
   localUpdatedAt = Date.now();
@@ -4012,31 +3992,96 @@ function setCloudSyncStatus(status){
   cloudSyncStatus = status;
   renderSyncBadge();
 }
+// Отправляем в облако ТОЛЬКО те заявки/расходы, у которых editedAt отличается
+// от того, что мы сами последний раз подтверждённо синхронизировали
+// (lastSyncedNotes/lastSyncedExpenses) — а не весь список целиком, как было
+// раньше. Запись, которую этот телефон не трогал, этим же телефоном никогда
+// не перезаписывается — значит, гонка "кто последний прислал целый список,
+// тот и победил" больше физически невозможна. Запись, которая исчезла из
+// локального списка (корзина почищена по сроку, расход удалён), но всё ещё
+// числится синхронизированной — удаляем именно её документ в облаке.
 function flushCloudSave(){
-  if(!currentUID || suppressCloudSave) return;
+  if(!currentUID || suppressCloudSave) return Promise.resolve();
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
   if(cloudRetryTimer){ clearTimeout(cloudRetryTimer); cloudRetryTimer = null; }
-  const snap = stateSnapshot();
+
+  const userRef = db.collection('users').doc(currentUID);
+  const notesRef = userRef.collection('notes');
+  const expensesRef = userRef.collection('expenses');
+  const ops = []; // { ref, action:'set'|'delete', data, id, et, kind }
+
+  notes.forEach(n => {
+    if(!n || n.id == null) return;
+    const et = n.editedAt || n.createdAt || 0;
+    if(lastSyncedNotes.get(n.id) !== et){
+      ops.push({ ref: notesRef.doc(String(n.id)), action: 'set', data: n, id: n.id, et, kind: 'note' });
+    }
+  });
+  const localNoteIds = new Set(notes.filter(n => n && n.id != null).map(n => n.id));
+  lastSyncedNotes.forEach((et, id) => {
+    if(!localNoteIds.has(id)) ops.push({ ref: notesRef.doc(String(id)), action: 'delete', id, kind: 'note' });
+  });
+
+  expenses.forEach(x => {
+    if(!x || x.id == null) return;
+    const et = x.editedAt || x.createdAt || 0;
+    if(lastSyncedExpenses.get(x.id) !== et){
+      ops.push({ ref: expensesRef.doc(String(x.id)), action: 'set', data: x, id: x.id, et, kind: 'expense' });
+    }
+  });
+  const localExpenseIds = new Set(expenses.filter(x => x && x.id != null).map(x => x.id));
+  lastSyncedExpenses.forEach((et, id) => {
+    if(!localExpenseIds.has(id)) ops.push({ ref: expensesRef.doc(String(id)), action: 'delete', id, kind: 'expense' });
+  });
+
+  const metaJSON = JSON.stringify(metaSnapshotForSync());
+  const metaChanged = metaJSON !== lastSyncedMetaJSON;
+
+  if(ops.length === 0 && !metaChanged){
+    // Отправлять реально нечего (например, это просто эхо уже известных
+    // данных) — раньше в такой ситуации всё равно уходил лишний запрос,
+    // из-за чего и была бесконечная "Отправка…". Теперь запроса просто нет.
+    setCloudSyncStatus('synced');
+    return Promise.resolve();
+  }
+
   setCloudSyncStatus('pending');
-  // .set() с включённой offline-персистентностью пишет в локальную очередь Firestore
-  // СРАЗУ, синхронно — то есть запись не потеряется, даже если через долю секунды
-  // после этого закрыть приложение или пропадёт связь. Но сам промис .then()/.catch()
-  // подтверждается только когда сервер реально ответил — раньше это подтверждение
-  // никак не использовалось. Теперь по нему обновляется видимый статус, а при ошибке
-  // автоматически планируется повтор через 10 секунд, а не тишина навсегда.
-  // updatedAt в самом облачном документе отдельно переопределяем на serverTimestamp() —
-  // так метку "кто новее" при сравнении устройств назначает сервер Google в момент
-  // получения записи, а не часы конкретного телефона (см. пояснение в toMillis() выше).
-  // В резервную копию (maybeSaveDailyBackup) уходит snap с обычным числом — там это
-  // просто время создания копии для сортировки, конфликтов между устройствами там нет.
-  db.collection('users').doc(currentUID).set({
-      ...snap,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    })
-    .then(() => {
+  // Firestore ограничивает батч 500 операциями — при очень большом числе
+  // изменившихся записей (например, первая синхронизация старого архива)
+  // разбиваем на несколько батчей подряд.
+  const chunks = [];
+  for(let i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
+  if(chunks.length === 0) chunks.push([]);
+
+  let chain = Promise.resolve();
+  chunks.forEach((chunk, idx) => {
+    chain = chain.then(() => {
+      const batch = db.batch();
+      chunk.forEach(op => {
+        if(op.action === 'set') batch.set(op.ref, op.data);
+        else batch.delete(op.ref);
+      });
+      // Служебные поля (счётчики id, цель месяца, категории расходов) кладём
+      // в главный документ вместе с последним батчем.
+      if(idx === chunks.length - 1){
+        batch.set(userRef, Object.assign({}, metaSnapshotForSync(), {
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }), { merge: true });
+      }
+      return batch.commit();
+    });
+  });
+
+  return chain.then(() => {
       cloudLastErrorCode = '';
       setCloudSyncStatus('synced');
-      maybeSaveDailyBackup(snap);
+      ops.forEach(op => {
+        const map = op.kind === 'note' ? lastSyncedNotes : lastSyncedExpenses;
+        if(op.action === 'set') map.set(op.id, op.et);
+        else map.delete(op.id);
+      });
+      lastSyncedMetaJSON = metaJSON;
+      maybeSaveDailyBackup(stateSnapshot());
     })
     .catch(e => {
       console.warn('Не удалось сохранить в облако:', e);
@@ -4171,67 +4216,152 @@ authSubmitBtn.addEventListener('click', () => {
     .finally(() => { authSubmitBtn.disabled = false; });
 });
 
-let cloudUnsubscribe = null; // отписка от живой подписки при выходе из аккаунта
-let isFirstCloudSnapshot = true; // защиту от случайной перезаписи проверяем только один раз — при входе
+let cloudUnsubscribes = []; // отписки от всех живых подписок при выходе из аккаунта
+function unsubscribeCloud(){
+  cloudUnsubscribes.forEach(fn => { try{ fn(); }catch(e){} });
+  cloudUnsubscribes = [];
+}
+
+// Старые аккаунты хранили ВСЕ заявки/расходы одним большим документом
+// (users/{uid}.notes[] / .expenses[]) — именно это и было корнем гонки между
+// двумя телефонами (см. пояснение у flushCloudSave()). Здесь этот старый
+// документ один раз переносится в отдельные документы (users/{uid}/notes/{id}
+// и users/{uid}/expenses/{id}), после чего массивы в главном документе больше
+// не нужны и удаляются. Безопасно вызывать повторно — если массивов там уже
+// нет, функция сразу выходит, ничего не делая.
+function migrateToPerRecordDocsIfNeeded(uid, data){
+  if(!Array.isArray(data.notes) && !Array.isArray(data.expenses)) return Promise.resolve();
+  const userRef = db.collection('users').doc(uid);
+  const notesRef = userRef.collection('notes');
+  const expensesRef = userRef.collection('expenses');
+  const items = [];
+  (data.notes || []).forEach(n => { if(n && n.id != null) items.push({ ref: notesRef.doc(String(n.id)), data: n }); });
+  (data.expenses || []).forEach(x => { if(x && x.id != null) items.push({ ref: expensesRef.doc(String(x.id)), data: x }); });
+  const chunks = [];
+  for(let i = 0; i < items.length; i += 400) chunks.push(items.slice(i, i + 400));
+  let chain = Promise.resolve();
+  chunks.forEach(chunk => {
+    chain = chain.then(() => {
+      const batch = db.batch();
+      chunk.forEach(it => batch.set(it.ref, it.data));
+      return batch.commit();
+    });
+  });
+  return chain
+    .then(() => userRef.set({
+      notes: firebase.firestore.FieldValue.delete(),
+      expenses: firebase.firestore.FieldValue.delete()
+    }, { merge: true }))
+    .catch(e => console.warn('Не удалось перенести старые данные в отдельные документы:', e));
+}
 
 function loadFromCloud(){
-  isFirstCloudSnapshot = true;
-  if(cloudUnsubscribe){ cloudUnsubscribe(); cloudUnsubscribe = null; }
-  // onSnapshot вместо разового get(): документ слушается постоянно, пока открыто
-  // приложение, — как только на ДРУГОМ устройстве что-то изменится и долетит до
-  // облака, здесь это применится само, без необходимости перезапускать приложение.
-  cloudUnsubscribe = db.collection('users').doc(currentUID).onSnapshot(doc => {
-    // При включённой офлайн-персистентности Firestore сначала присылает snapshot
-    // из ЛОКАЛЬНОГО кэша (который на этом устройстве может быть попросту пустым,
-    // если оно раньше не синхронизировалось), и только следующим — подтверждённый
-    // сервером. Пока не пришёл ответ именно от сервера, самый первый snapshot после
-    // входа не обрабатываем вообще — иначе можно принять "кэш ещё пуст" за
-    // "в облаке ничего нет" и по ошибке стереть реальные данные.
-    if(isFirstCloudSnapshot && doc.metadata.fromCache) return;
-    // Если это эхо нашей же собственной записи (ещё даже не подтверждённой сервером
-    // или только что подтверждённой) — применять её заново не нужно, чтобы не сбивать
-    // то, что человек, возможно, прямо сейчас печатает.
-    if(doc.metadata.hasPendingWrites) return;
-    if(doc.exists){
-      const cloudData = doc.data();
-      // Раньше слияние запускалось только если метка времени всего документа в
-      // облаке была новее локальной. Это оказалось источником бага: если у
-      // локальной метки времени случайно оказывалось завышенное значение
-      // (например, из-за сбоя синхронизации в прошлом), новые данные с других
-      // устройств полностью игнорировались, хотя само слияние по отдельным
-      // записям исправно и ничего не портит. Теперь сливаем при каждом
-      // обновлении безусловно — это надёжнее.
-      //
-      // Раньше здесь же, если слияние находило локальную запись, которой ещё
-      // нет в облаке, сразу вызывался scheduleCloudSave() — досылали её обратно.
-      // Это оказалось лишним и опасным: applyStateMerged() сравнивает целые
-      // объекты через JSON.stringify, а Firestore не гарантирует тот же порядок
-      // полей внутри объектов массива, в котором они были записаны — значит
-      // сравнение могло считать «изменением» одну и ту же по смыслу запись
-      // только из-за другого порядка полей. Сервер в ответ на такую пустую
-      // отправку присылал новое подтверждение, оно снова "не совпадало" по
-      // JSON.stringify — и получался бесконечный круг "Отправка…". Пересылка
-      // тут и не нужна: любая настоящая локальная правка уже и так уходит в
-      // облако через saveState()→scheduleCloudSave() в момент самой правки, а
-      // если её не удалось отправить, пока не было связи, — это сделает сама
-      // офлайн-очередь Firestore, как только связь вернётся.
-      applyStateMerged(cloudData);
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-    } else if(isFirstCloudSnapshot) {
+  unsubscribeCloud();
+  const userRef = db.collection('users').doc(currentUID);
+  // Разовая, не "живая" проверка через сервер (а не локальный кэш) — чтобы
+  // надёжно отличить "новый аккаунт, в облаке правда пусто" от "кэш на этом
+  // телефоне ещё пуст, но в облаке данные есть", и при необходимости сразу
+  // перенести старый формат данных (см. migrateToPerRecordDocsIfNeeded).
+  userRef.get({ source: 'server' }).then(doc => {
+    if(!doc.exists){
       // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
       // в памяти телефона от предыдущего входа под другим аккаунтом
       suppressCloudSave = true;
       applyState({});
+      lastSyncedNotes = new Map();
+      lastSyncedExpenses = new Map();
+      lastSyncedMetaJSON = null;
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       suppressCloudSave = false;
+      renderContent();
+      subscribeCloud(userRef);
       scheduleCloudSave();
+      return;
     }
-    isFirstCloudSnapshot = false;
-    renderContent();
-  }, e => {
-    console.warn('Не удалось подписаться на облачные данные, работаем с локальной копией:', e);
-    renderContent();
+    migrateToPerRecordDocsIfNeeded(currentUID, doc.data()).then(() => subscribeCloud(userRef));
+  }).catch(e => {
+    console.warn('Не удалось проверить облачные данные через сервер, подписываемся как есть:', e);
+    subscribeCloud(userRef);
   });
+}
+
+// Три отдельные живые подписки вместо одной на весь документ: на служебные
+// поля, на коллекцию заявок и на коллекцию расходов. Каждая обрабатывает
+// только те записи, что реально добавились/изменились/удалились — не может
+// случайно затереть остальные, даже если придёт из ещё не прогретого кэша.
+function subscribeCloud(userRef){
+  cloudUnsubscribes.push(userRef.onSnapshot(doc => {
+    if(doc.metadata.hasPendingWrites) return; // эхо нашей же ещё не подтверждённой записи
+    if(!doc.exists) return;
+    const d = doc.data();
+    idSeq = Math.max(idSeq || 1, d.idSeq || 1);
+    expenseIdSeq = Math.max(expenseIdSeq || 1, d.expenseIdSeq || 1);
+    if(d.monthKey) monthKey = d.monthKey;
+    if(d.monthlyGoal != null) monthlyGoal = d.monthlyGoal;
+    if(d.expenseCategories && d.expenseCategories.length) expenseCategories = d.expenseCategories;
+    lastSyncedMetaJSON = JSON.stringify(metaSnapshotForSync());
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+    renderContent();
+  }, e => console.warn('Не удалось подписаться на служебные данные:', e)));
+
+  cloudUnsubscribes.push(userRef.collection('notes').onSnapshot(snapshot => {
+    let touched = false;
+    snapshot.docChanges().forEach(change => {
+      if(change.doc.metadata.hasPendingWrites) return; // это наша же ещё не подтверждённая запись
+      const id = change.doc.id;
+      if(change.type === 'removed'){
+        const before = notes.length;
+        notes = notes.filter(n => String(n.id) !== id);
+        lastSyncedNotes.delete(id);
+        if(notes.length !== before) touched = true;
+        return;
+      }
+      const incoming = change.doc.data();
+      const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+      const idx = notes.findIndex(n => String(n.id) === id);
+      if(idx === -1){ notes.push(incoming); touched = true; }
+      else {
+        const localEt = notes[idx].editedAt || notes[idx].createdAt || 0;
+        // Если локальная версия новее — оставляем её как есть, ничего не
+        // теряя: она и так будет отправлена в облако через flushCloudSave(),
+        // как только к нему дойдёт очередь (сравнение там идёт по editedAt).
+        if(incomingEt >= localEt){ notes[idx] = incoming; touched = true; }
+      }
+      lastSyncedNotes.set(id, incomingEt);
+    });
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+      renderContent();
+    }
+  }, e => console.warn('Не удалось подписаться на заявки:', e)));
+
+  cloudUnsubscribes.push(userRef.collection('expenses').onSnapshot(snapshot => {
+    let touched = false;
+    snapshot.docChanges().forEach(change => {
+      if(change.doc.metadata.hasPendingWrites) return;
+      const id = change.doc.id;
+      if(change.type === 'removed'){
+        const before = expenses.length;
+        expenses = expenses.filter(x => String(x.id) !== id);
+        lastSyncedExpenses.delete(id);
+        if(expenses.length !== before) touched = true;
+        return;
+      }
+      const incoming = change.doc.data();
+      const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+      const idx = expenses.findIndex(x => String(x.id) === id);
+      if(idx === -1){ expenses.push(incoming); touched = true; }
+      else {
+        const localEt = expenses[idx].editedAt || expenses[idx].createdAt || 0;
+        if(incomingEt >= localEt){ expenses[idx] = incoming; touched = true; }
+      }
+      lastSyncedExpenses.set(id, incomingEt);
+    });
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+      renderContent();
+    }
+  }, e => console.warn('Не удалось подписаться на расходы:', e)));
 }
 
 auth.onAuthStateChanged(user => {
@@ -4246,7 +4376,7 @@ auth.onAuthStateChanged(user => {
     loadFromCloud();
     registerPushToken();
   } else {
-    if(cloudUnsubscribe){ cloudUnsubscribe(); cloudUnsubscribe = null; }
+    unsubscribeCloud();
     currentUID = null;
     authOverlay.style.display = 'flex';
   }
@@ -4309,11 +4439,14 @@ document.getElementById('themeToggleBtn')?.addEventListener('click', (e) => {
 
 document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
-  if(cloudUnsubscribe){ cloudUnsubscribe(); cloudUnsubscribe = null; }
+  unsubscribeCloud();
   auth.signOut();
   drawer.classList.remove('show'); overlay.classList.remove('show');
   suppressCloudSave = true;
   applyState({});
+  lastSyncedNotes = new Map();
+  lastSyncedExpenses = new Map();
+  lastSyncedMetaJSON = null;
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   suppressCloudSave = false;
   renderContent();
@@ -4433,15 +4566,14 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
               backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
                 .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
                 .then(() => {
-                  suppressCloudSave = true;
                   applyState(data);
                   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-                  suppressCloudSave = false;
                   localUpdatedAt = Date.now();
-                  return db.collection('users').doc(currentUID).set({
-                    ...stateSnapshot(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                  });
+                  // Прямая (не отложенная) отправка: flushCloudSave() сам сравнит
+                  // восстановленные записи с тем, что сейчас числится отправленным
+                  // (lastSyncedNotes/lastSyncedExpenses), и отправит/удалит именно
+                  // то, что реально отличается — как при любой обычной правке.
+                  return flushCloudSave();
                 })
                 .then(() => showToast('Данные восстановлены из копии'))
                 .catch(e => {
@@ -4663,14 +4795,71 @@ if ('serviceWorker' in navigator) {
 // сразу, а не только тогда, когда наконец "проснётся" сама живая подписка.
 function refreshFromCloudOnResume(){
   if(!currentUID) return;
-  db.collection('users').doc(currentUID).get({ source: 'server' }).then(doc => {
-    if(!doc.exists) return;
-    const cloudData = doc.data();
-    // Пересылку убрали по той же причине, что и в loadFromCloud() выше — см.
-    // пояснение там.
-    applyStateMerged(cloudData);
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-    renderContent();
+  const userRef = db.collection('users').doc(currentUID);
+  Promise.all([
+    userRef.get({ source: 'server' }),
+    userRef.collection('notes').get({ source: 'server' }),
+    userRef.collection('expenses').get({ source: 'server' })
+  ]).then(([mainDoc, notesSnap, expensesSnap]) => {
+    let touched = false;
+    if(mainDoc.exists){
+      const d = mainDoc.data();
+      idSeq = Math.max(idSeq || 1, d.idSeq || 1);
+      expenseIdSeq = Math.max(expenseIdSeq || 1, d.expenseIdSeq || 1);
+      if(d.monthKey) monthKey = d.monthKey;
+      if(d.monthlyGoal != null) monthlyGoal = d.monthlyGoal;
+      if(d.expenseCategories && d.expenseCategories.length) expenseCategories = d.expenseCategories;
+      lastSyncedMetaJSON = JSON.stringify(metaSnapshotForSync());
+    }
+    notesSnap.forEach(docSnap => {
+      const id = docSnap.id;
+      const incoming = docSnap.data();
+      const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+      const idx = notes.findIndex(n => String(n.id) === id);
+      if(idx === -1){ notes.push(incoming); touched = true; }
+      else {
+        const localEt = notes[idx].editedAt || notes[idx].createdAt || 0;
+        if(incomingEt >= localEt){ notes[idx] = incoming; touched = true; }
+      }
+      lastSyncedNotes.set(id, incomingEt);
+    });
+    // Запись, которую сервер сейчас не вернул, хотя раньше мы её точно
+    // синхронизировали, — значит, её удалили на другом устройстве, пока этот
+    // телефон был свёрнут.
+    const serverNoteIds = new Set(notesSnap.docs.map(d => d.id));
+    Array.from(lastSyncedNotes.keys()).forEach(id => {
+      if(!serverNoteIds.has(id)){
+        const before = notes.length;
+        notes = notes.filter(n => String(n.id) !== id);
+        lastSyncedNotes.delete(id);
+        if(notes.length !== before) touched = true;
+      }
+    });
+    expensesSnap.forEach(docSnap => {
+      const id = docSnap.id;
+      const incoming = docSnap.data();
+      const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+      const idx = expenses.findIndex(x => String(x.id) === id);
+      if(idx === -1){ expenses.push(incoming); touched = true; }
+      else {
+        const localEt = expenses[idx].editedAt || expenses[idx].createdAt || 0;
+        if(incomingEt >= localEt){ expenses[idx] = incoming; touched = true; }
+      }
+      lastSyncedExpenses.set(id, incomingEt);
+    });
+    const serverExpenseIds = new Set(expensesSnap.docs.map(d => d.id));
+    Array.from(lastSyncedExpenses.keys()).forEach(id => {
+      if(!serverExpenseIds.has(id)){
+        const before = expenses.length;
+        expenses = expenses.filter(x => String(x.id) !== id);
+        lastSyncedExpenses.delete(id);
+        if(expenses.length !== before) touched = true;
+      }
+    });
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
+      renderContent();
+    }
   }).catch(e => console.warn('Не удалось обновиться с сервера при возврате в приложение:', e));
 }
 </script>
