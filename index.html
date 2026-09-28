@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 18:22 (исправлена настоящая причина пропажи фото — эхо своей же отправки стирало ещё не загруженное фото на обоих телефонах)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 23:11 (sw.js: index.html — обязательный файл при установке, иконки/manifest — нет)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4244,6 +4244,13 @@ let currentUID = null;
 let authGeneration = 0;
 let cloudSaveTimer = null;
 let suppressCloudSave = false; // true, пока применяем данные, только что пришедшие из облака (свои же правки эхом не пересохраняем)
+// Пока suppressCloudSave=true (идёт короткая синхронная чистка при входе/
+// выходе/смене аккаунта), запрос на отправку в облако раньше просто молча
+// пропадал — если правка (например, только что залитое фото) случится ровно
+// в эту секунду, отправить её было уже некому. Теперь такой запрос
+// запоминается и выполняется сразу же, как только suppressCloudSave снова
+// станет false.
+let cloudSaveRequestedWhileSuppressed = false;
 
 // Статус последней попытки отправки в облако — раньше при неудаче ничего не
 // происходило видимо: ни значка, ни сообщения, только тихая запись в консоль,
@@ -4252,6 +4259,18 @@ let suppressCloudSave = false; // true, пока применяем данные
 // оставляем правку висеть без следа до случайного повторного сохранения.
 let cloudSyncStatus = 'idle'; // 'idle' | 'pending' | 'synced' | 'error'
 let cloudRetryTimer = null;
+// flushCloudSave() раньше мог быть запущен повторно, пока предыдущий вызов
+// ещё летит на сервер (например: обычный debounce-таймер и форс-отправка при
+// сворачивании приложения совпали по времени). Два независимых батча в один
+// и тот же документ могут завершиться НЕ в том порядке, в котором стартовали
+// — и тогда более старая, уже неактуальная отправка (например, ещё с
+// "фото: null", пока настоящая ссылка не была готова) способна прийти на
+// сервер ПОЗЖЕ и перезаписать уже отправленную свежую версию. cloudSaveInFlight
+// не даёт второй отправке стартовать параллельно; вместо этого она просто
+// помечает cloudSaveAgainNeeded, и как только текущая отправка завершится,
+// сразу запускается ещё одна — уже по самому свежему состоянию на тот момент.
+let cloudSaveInFlight = null;
+let cloudSaveAgainNeeded = false;
 const syncBadgeEl = document.getElementById('syncBadge');
 // 'idle'/'synced' — бейдж скрыт, чтобы не мешать в обычной работе. 'pending' —
 // короткая нейтральная пометка. 'error' — ЗАМЕТНАЯ, не исчезает сама, с тапом
@@ -4308,6 +4327,13 @@ function setCloudSyncStatus(status){
 function flushCloudSave(){
   if(!currentUID || suppressCloudSave) return Promise.resolve();
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
+  if(cloudSaveInFlight){
+    // Предыдущая отправка ещё летит — не запускаем вторую поверх неё (см.
+    // комментарий у cloudSaveInFlight выше). Просто просим повторить, как
+    // только текущая закончится.
+    cloudSaveAgainNeeded = true;
+    return cloudSaveInFlight;
+  }
   if(cloudRetryTimer){ clearTimeout(cloudRetryTimer); cloudRetryTimer = null; }
 
   // Пока батч летит на сервер, можно успеть выйти и войти в другой аккаунт —
@@ -4404,7 +4430,7 @@ function flushCloudSave(){
     });
   });
 
-  return chain.then(() => {
+  const runPromise = chain.then(() => {
       if(currentUID !== uid || authGeneration !== gen) return; // см. комментарий выше
       cloudLastErrorCode = '';
       setCloudSyncStatus('synced');
@@ -4424,10 +4450,36 @@ function flushCloudSave(){
       cloudRetryTimer = setTimeout(() => {
         if(currentUID && !suppressCloudSave) flushCloudSave();
       }, 10000);
+    })
+    .then(() => {
+      // Отправка (успешная или нет) закончилась — освобождаем "занято" и, если
+      // за это время что-то ещё раз попросилось отправиться (scheduleCloudSave
+      // или прямой flushCloudSave не смогли запуститься параллельно), сразу
+      // запускаем ещё одну отправку по самому свежему состоянию на сейчас.
+      // ВАЖНО: cloudSaveInFlight/cloudSaveAgainNeeded — общие на всё
+      // приложение, а не привязаны к конкретному аккаунту. Если за время этой
+      // отправки успели выйти и войти в ДРУГОЙ аккаунт, повторный запуск
+      // должен пройти через его обычный, безопасный путь (baseline у
+      // subscribeCloud), а не запуститься отсюда напрямую в обход этой
+      // защиты — иначе можно повторить ту самую гонку с самого начала, из-за
+      // которой ещё не пришедший первый снимок мог "воскресить" удалённые на
+      // другом телефоне записи.
+      const sameSession = currentUID === uid && authGeneration === gen;
+      cloudSaveInFlight = null;
+      if(cloudSaveAgainNeeded){
+        cloudSaveAgainNeeded = false;
+        if(sameSession) flushCloudSave();
+      }
     });
+  cloudSaveInFlight = runPromise;
+  return runPromise;
 }
 function scheduleCloudSave(){
-  if(!currentUID || suppressCloudSave) return;
+  if(!currentUID) return;
+  if(suppressCloudSave){
+    cloudSaveRequestedWhileSuppressed = true;
+    return;
+  }
   // Небольшая задержка нужна только чтобы не плодить отдельную запись на каждую
   // нажатую клавишу при вводе текста — сама надёжность обеспечивается тем, что
   // при сворачивании/закрытии приложения (ниже) отправка форсируется немедленно.
@@ -4474,6 +4526,22 @@ function cleanupOldBackups(backupsRef){
     toDelete.forEach(d => d.ref.delete().catch(() => {}));
   }).catch(e => console.warn('Не удалось очистить старые бэкапы:', e));
 }
+
+// Последний известный e-mail показываем сразу при запуске, ещё до того как
+// Firebase Auth успеет восстановить сессию (это может занимать заметное
+// время) — так шапка/меню не выглядят "пустыми" в первые секунды. Как
+// только auth.onAuthStateChanged подтвердит вход — значение заменяется на
+// настоящее, актуальное.
+const LAST_EMAIL_KEY = 'vreyse_lastEmail';
+try{
+  const cachedEmail = localStorage.getItem(LAST_EMAIL_KEY);
+  if(cachedEmail){
+    const avatarElInit = document.getElementById('avatar');
+    if(avatarElInit) avatarElInit.textContent = cachedEmail.charAt(0).toUpperCase();
+    const drawerEmailElInit = document.getElementById('drawerEmail');
+    if(drawerEmailElInit) drawerEmailElInit.textContent = cachedEmail;
+  }
+}catch(e){}
 
 const authOverlay = document.getElementById('authOverlay');
 const authEmail = document.getElementById('authEmail');
@@ -4622,6 +4690,7 @@ function loadFromCloud(){
       lastSyncedMetaJSON = null;
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       suppressCloudSave = false;
+      cloudSaveRequestedWhileSuppressed = false; // подписка ниже сама решит, когда безопасно отправлять (см. baseline)
       renderContent();
       // scheduleCloudSave передаётся как колбэк, а не вызывается немедленно —
       // subscribeCloud сам дождётся первого снимка заявок и расходов с сервера
@@ -4830,6 +4899,7 @@ auth.onAuthStateChanged(user => {
       lastSyncedMetaJSON = null;
       try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
       suppressCloudSave = false;
+      cloudSaveRequestedWhileSuppressed = false; // подписка ниже сама решит, когда безопасно отправлять (см. baseline)
       renderContent();
     }
     try{ localStorage.setItem(CACHE_OWNER_KEY, currentUID); }catch(e){}
@@ -4839,6 +4909,7 @@ auth.onAuthStateChanged(user => {
     if(avatarEl) avatarEl.textContent = emailStr ? emailStr.charAt(0).toUpperCase() : '?';
     const drawerEmailEl = document.getElementById('drawerEmail');
     if(drawerEmailEl) drawerEmailEl.textContent = emailStr;
+    try{ if(emailStr) localStorage.setItem(LAST_EMAIL_KEY, emailStr); }catch(e){}
     loadFromCloud();
     registerPushToken();
   } else {
@@ -4916,7 +4987,12 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   lastSyncedMetaJSON = null;
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
+  try{ localStorage.removeItem(LAST_EMAIL_KEY); } catch(e){}
   suppressCloudSave = false;
+  if(cloudSaveRequestedWhileSuppressed){
+    cloudSaveRequestedWhileSuppressed = false;
+    scheduleCloudSave(); // currentUID к этому моменту уже пуст — вызов сам ничего не сделает, просто не теряем запрос молча
+  }
   renderContent();
 });
 
