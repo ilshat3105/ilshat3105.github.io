@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 00:14 (проверка обновления сразу при запуске, без ожидания сворачивания/разворачивания; sw.js больше не берётся из HTTP-кэша браузера)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:05 (поиск заявки после загрузки фото — по photoId, а не по id заявки)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1851,6 +1851,19 @@ const photoPendingUpload = new Set();
 // тяжёлой картинки (см. sanitizeNoteForCloud) — так документ Firestore не
 // упирается в лимит 1 МБ на заявку и не портит уже сохранённые фото поверх,
 // пока одна большая фотография ещё грузится.
+// base64 (data:) → Blob напрямую, без похода через fetch(). fetch() — это
+// сетевой API, задуманный для запросов по сети; для чисто локальной операции
+// "раскодировать base64" он используется не по назначению, и в некоторых
+// Android WebView такое использование может вести себя нестабильно.
+// atob() — синхронный, без сети, стандартный приём именно для этой задачи.
+function dataURItoBlob(dataURI){
+  const byteString = atob(dataURI.split(',')[1]);
+  const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for(let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+  return new Blob([ab], { type: mimeString });
+}
 function uploadPhotoAndReplace(note, photoId, dataUrl){
   if(!currentUID || !photoId) return;
   if(photoPendingUpload.has(photoId)) return; // уже грузится
@@ -1866,9 +1879,16 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
   // попасть в очередь нового аккаунта (см. queueStorageDeletePath).
   const uploadUID = currentUID;
   const path = 'users/' + uploadUID + '/photos/' + photoId + '.jpg';
-  fetch(dataUrl)
-    .then(r => r.blob())
-    .then(blob => storage.ref(path).put(blob))
+  let blob;
+  try{
+    blob = dataURItoBlob(dataUrl);
+  }catch(convErr){
+    photoPendingUpload.delete(photoId);
+    photoUploadErrorMsg.set(photoId, 'не удалось подготовить файл: ' + (convErr && convErr.message || convErr));
+    renderContent();
+    return;
+  }
+  storage.ref(path).put(blob)
     .then(snap => snap.ref.getDownloadURL())
     .then(url => {
       photoPendingUpload.delete(photoId);
@@ -1883,9 +1903,11 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
       // "с сервера" снимок (например, эхо нашей же более ранней отправки —
       // см. fillMissingPhotosFromLocal) — тогда объект, на который до сих пор
       // ссылается замыкание note, уже не тот, что лежит в notes[idx], и правка
-      // в него никуда бы не попала. Находим АКТУАЛЬНЫЙ объект этой заявки по
-      // id заново, а не полагаемся на старую ссылку.
-      const liveNote = notes.find(n => n && String(n.id) === String(note.id)) || note;
+      // в него никуда бы не попала. Находим АКТУАЛЬНЫЙ объект этой заявки
+      // заново — по самому photoId (он однозначно определяет именно это фото
+      // и не зависит от того, успел ли у новой заявки появиться свой id к
+      // этому моменту), а не по note.id.
+      const liveNote = notes.find(n => n && Array.isArray(n.photoIds) && n.photoIds.includes(photoId)) || note;
       const idx = (liveNote.photoIds || []).indexOf(photoId);
       if(idx === -1){
         // Фото успели удалить из заявки, пока шла загрузка (deletePhotoFromStorage
