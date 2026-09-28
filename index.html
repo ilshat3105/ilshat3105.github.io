@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:20 (диагностика загрузки фото показывает реальный прогресс в байтах — видно, дошёл ли запрос до сети вообще)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:26 (добавлен отдельный error-колбэк у state_changed для более точной диагностики зависшей загрузки)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1926,10 +1926,18 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
   // (блокировка/CORS); если застревает где-то в середине — связь оборвалась
   // посреди самой передачи. Отдельно от .then/.catch самого put() — это
   // именно для диагностики на экране, ни на что в логике не влияет.
-  uploadTask.on('state_changed', (snapshot) => {
-    const pct = snapshot.totalBytes ? Math.round(100 * snapshot.bytesTransferred / snapshot.totalBytes) : 0;
-    setPhotoStage(photoId, 'uploading-storage ' + pct + '% (' + snapshot.bytesTransferred + '/' + snapshot.totalBytes + ' байт, ' + snapshot.state + ')');
-  });
+  uploadTask.on('state_changed',
+    (snapshot) => {
+      const pct = snapshot.totalBytes ? Math.round(100 * snapshot.bytesTransferred / snapshot.totalBytes) : 0;
+      setPhotoStage(photoId, 'uploading-storage ' + pct + '% (' + snapshot.bytesTransferred + '/' + snapshot.totalBytes + ' байт, ' + snapshot.state + ')');
+    },
+    (observerErr) => {
+      // Отдельный от .then/.catch колбэк ошибки самого наблюдателя —
+      // иногда SDK сообщает код именно здесь раньше/подробнее, чем во
+      // внешнем promise. Просто фиксируем в стадии для диагностики.
+      setPhotoStage(photoId, 'state_changed error: ' + ((observerErr && (observerErr.code || observerErr.message)) || observerErr));
+    }
+  );
   uploadTask
     .then(snap => { clearTimeout(uploadTimeoutTimer); setPhotoStage(photoId, 'storage-uploaded'); return snap.ref.getDownloadURL(); })
     .then(url => {
