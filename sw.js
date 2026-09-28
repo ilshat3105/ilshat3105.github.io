@@ -26,7 +26,7 @@ messaging.onBackgroundMessage(() => {
   });
 });
 
-const CACHE_NAME = 'vreyse-v4';
+const CACHE_NAME = 'vreyse-v5';
 
 // Установка: скачиваем и сохраняем нужные файлы.
 //
@@ -102,7 +102,17 @@ self.addEventListener('activate', (event) => {
 // ждать ответа десятки секунд, прежде чем сорвётся сам. FETCH_TIMEOUT_MS
 // ниже обрывает ожидание раньше и сразу переключает на кэш, чтобы
 // приложение не "зависало", а быстро открывалось из сохранённой копии.
+//
+// Важно: сам index.html — это ОДИН большой файл (всё приложение целиком,
+// сотни килобайт), и именно его нужно скачать заново при каждом открытии
+// или обновлении версии. В движущейся машине с постоянной сменой вышек
+// сотовой связи 3.5 секунды на такой файл — мало: одна неудачная попытка
+// на слабом сигнале в моменте — и обновление откатывается на старую
+// сохранённую копию, даже если в среднем LTE вполне нормальный. Поэтому
+// для самой страницы (index.html / './') даём заметно больше времени, чем
+// для мелких файлов (иконки, manifest) — тем достаточно и короткого тайм-аута.
 const FETCH_TIMEOUT_MS = 3500;
+const NAVIGATION_FETCH_TIMEOUT_MS = 12000;
 
 function fetchWithTimeout(request, ms) {
   return new Promise((resolve, reject) => {
@@ -132,8 +142,16 @@ self.addEventListener('fetch', (event) => {
   const requestURL = new URL(event.request.url);
   if(requestURL.origin !== self.location.origin) return;
 
+  // Запрос самой страницы (открытие приложения, "потянуть вниз", переход
+  // после клика "Обновить") — даём ему увеличенный тайм-аут (см. выше),
+  // остальным мелким файлам хватает обычного короткого.
+  const isNavigation = event.request.mode === 'navigate'
+    || event.request.destination === 'document'
+    || requestURL.pathname.endsWith('/index.html');
+  const timeoutMs = isNavigation ? NAVIGATION_FETCH_TIMEOUT_MS : FETCH_TIMEOUT_MS;
+
   event.respondWith(
-    fetchWithTimeout(event.request, FETCH_TIMEOUT_MS)
+    fetchWithTimeout(event.request, timeoutMs)
       .then((response) => {
         const responseClone = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
