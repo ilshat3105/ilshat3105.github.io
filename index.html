@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 23:38 (загрузка фото в облако сама повторяется — при ошибке через 10 сек и при каждом возврате в приложение)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 00:14 (проверка обновления сразу при запуске, без ожидания сворачивания/разворачивания; sw.js больше не берётся из HTTP-кэша браузера)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -5346,7 +5346,17 @@ renderContent();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then((registration) => {
+    // updateViaCache:'none' — явно говорим браузеру не брать сам sw.js (и
+    // файлы, которые он импортирует) из обычного HTTP-кэша при проверке
+    // обновлений. Без этого на некоторых телефонах браузер мог решить, что
+    // sw.js не изменился, даже когда на сервере уже лежит новая версия.
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((registration) => {
+      // Раньше проверка обновления запускалась только при возврате в
+      // приложение (см. visibilitychange ниже) — то есть при самом первом
+      // запуске (или после "Остановить приложение") новая версия могла
+      // обнаружиться далеко не сразу. Теперь проверяем сразу же, не дожидаясь
+      // этого события.
+      registration.update().catch(() => {});
       const banner = document.getElementById('updateBanner');
 
       // Новый sw.js уже скачался и ждёт — показываем плашку.
@@ -5373,6 +5383,15 @@ if ('serviceWorker' in navigator) {
       document.getElementById('updateBannerBtn').addEventListener('click', () => {
         location.reload();
       });
+      // Сознательно НЕ делаем automatic location.reload() на событие
+      // navigator.serviceWorker.controllerchange (даже несмотря на то, что
+      // skipWaiting()+clients.claim() в sw.js уже позволяют это). Причина: пока
+      // открыт редактор заявки, правки живут только в editingNote — в памяти,
+      // ни в localStorage, ни тем более в облаке их ещё нет, вплоть до закрытия
+      // редактора (см. closeEditor). Незапрошенная перезагрузка страницы прямо
+      // во время набора текста в дороге молча стёрла бы всё, что человек только
+      // что напечатал. Поэтому переход на новую версию — через банер и клик
+      // "Обновить" (как сейчас), не автоматически.
 
       // Приложение на телефоне часто не перезапускается по-настоящему при сворачивании —
       // Android просто держит его в памяти. Поэтому при каждом возврате на экран сами
