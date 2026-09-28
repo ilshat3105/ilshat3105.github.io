@@ -752,6 +752,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyAVcifT9Ip69CSuSt_8naJHr4ZbplOMtgI",
@@ -772,6 +773,7 @@
     console.warn('Не удалось зафиксировать LOCAL-персистентность входа:', err.code);
   });
   const db = firebase.firestore();
+  const storage = firebase.storage();
   // Офлайн-персистентность: Firestore сам хранит несохранённые записи локально
   // и досылает их в облако, как только появится связь — без риска "тихо" потерять
   // заявку, если приложение закрыли до того, как запрос успел уйти.
@@ -873,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 01:35 (чекбокс и порядок избранного теперь тоже синхронизируются)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 15:21 (защита от смены аккаунта во время отправки в облако доведена до конца)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1147,6 +1149,16 @@ const TRASH_AUTO_DELETE_DAYS = 30;
 function purgeOldTrash(){
   const cutoff = Date.now() - TRASH_AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000;
   const before = notes.length;
+  // Заявка, которую автоматически удаляют из корзины насовсем (прошло 30
+  // дней), могла содержать фото — они лежат в Firebase Storage отдельно от
+  // самой заявки и просто исчезновение заявки из notes их не трогает.
+  // Без этого фото навсегда оставались бы висеть в хранилище бесполезным
+  // мусором, даже когда сама заявка давно и безвозвратно удалена.
+  notes.forEach(n => {
+    if(n.trashed && n.trashedAt && n.trashedAt < cutoff && Array.isArray(n.photoIds)){
+      n.photoIds.forEach(pid => deletePhotoFromStorage(pid));
+    }
+  });
   notes = notes.filter(n => !(n.trashed && n.trashedAt && n.trashedAt < cutoff));
   return notes.length !== before;
 }
@@ -1316,7 +1328,7 @@ function noteCardHtml(n, favInfo){
   if(hasPhotos){
     const shownPhotos = photos.slice(0,3);
     photosHtml = `<div class="photos-row">
-      ${shownPhotos.map((p,i) => `<div class="photo-thumb-sm" data-cardphoto="${n.id}:${i}"><img src="${p}"></div>`).join('')}
+      ${shownPhotos.map((p,i) => `<div class="photo-thumb-sm" data-cardphoto="${n.id}:${i}"><img src="${photoSrc(p)}"></div>`).join('')}
       ${photos.length > 3 ? `<div class="photo-more" data-cardphoto="${n.id}:3">+${photos.length-3}</div>` : ''}
     </div>`;
   }
@@ -1782,8 +1794,206 @@ document.getElementById('composeBar').addEventListener('click', () => {
   openEditor(editingNote, true);
 });
 
-let photoIdSeq = 1;
-function newPhotoId(){ return 'ph' + (photoIdSeq++); }
+// ВАЖНО: id фото не должен зависеть от счётчика в памяти — счётчик сбрасывается
+// на 1 при каждом перезапуске приложения (не сохраняется никуда), а фото в
+// Firebase Storage кладётся по пути users/{uid}/photos/{photoId}.jpg. Со
+// счётчиком "ph1", "ph2"... второе фото после перезапуска приложения снова
+// получало бы "ph1" — и новый файл ЗАМЕНЯЛ бы собой старый в Storage (тот же
+// путь = тот же файл), а на двух телефонах это могло случиться даже без
+// перезапуска. Поэтому, как и id заявок/расходов, id фото строится из
+// времени + случайной части — риск совпадения астрономически мал.
+function newPhotoId(){ return 'ph_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
+// Пока фото не загружено в Firebase Storage (см. uploadPhotoAndReplace),
+// в облачной копии заявки на месте этого фото стоит null — само фото ещё
+// нигде, кроме этого телефона, не лежит. На ДРУГОМ телефоне, получившем
+// такую заявку раньше, чем фото успело долететь, показываем нейтральную
+// заглушку вместо сломанной иконки картинки.
+const PENDING_PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">' +
+  '<rect width="120" height="120" fill="#dddddd"/>' +
+  '<text x="60" y="66" font-size="13" text-anchor="middle" fill="#888888" font-family="sans-serif">фото…</text>' +
+  '</svg>'
+);
+function photoSrc(p){ return p || PENDING_PHOTO_PLACEHOLDER; }
+function isDataUrlPhoto(p){ return typeof p === 'string' && p.indexOf('data:image') === 0; }
+
+// id фото, которые прямо сейчас грузятся в Firebase Storage — чтобы не запускать
+// повторную загрузку того же фото дважды параллельно (например, если и обычная
+// отправка, и retryPendingPhotoUploads() сработают почти одновременно).
+const photoPendingUpload = new Set();
+// Заливает одно фото (base64) в Firebase Storage и, когда загрузка реально
+// завершилась, заменяет base64 на постоянную ссылку прямо в заявке — и в
+// массиве note.photos на ЭТОМ телефоне, и (через обычный flushCloudSave,
+// который сам увидит новый editedAt) в облаке. До этого момента фото живёт
+// только как base64 локально — на этом телефоне всё показывается и
+// распознаётся как обычно, просто в облако пока уходит "photos: null" вместо
+// тяжёлой картинки (см. sanitizeNoteForCloud) — так документ Firestore не
+// упирается в лимит 1 МБ на заявку и не портит уже сохранённые фото поверх,
+// пока одна большая фотография ещё грузится.
+function uploadPhotoAndReplace(note, photoId, dataUrl){
+  if(!currentUID || !photoId) return;
+  if(photoPendingUpload.has(photoId)) return; // уже грузится
+  photoPendingUpload.add(photoId);
+  // Фиксируем, под каким аккаунтом эта загрузка началась. Загрузка идёт
+  // несколько секунд — если за это время выйти из этого аккаунта и войти в
+  // другой (currentUID сменится), то к моменту завершения "текущим" уже будет
+  // другой аккаунт. Без этой фиксации файл ушёл бы по правильному пути (он
+  // строится один раз сейчас), но дальнейшие действия — запись note.photos,
+  // постановка в очередь на удаление при необходимости — использовали бы уже
+  // ЧУЖОЙ currentUID, и например очередь удаления чужого фото могла бы
+  // попасть в очередь нового аккаунта (см. queueStorageDeletePath).
+  const uploadUID = currentUID;
+  const path = 'users/' + uploadUID + '/photos/' + photoId + '.jpg';
+  fetch(dataUrl)
+    .then(r => r.blob())
+    .then(blob => storage.ref(path).put(blob))
+    .then(snap => snap.ref.getDownloadURL())
+    .then(url => {
+      photoPendingUpload.delete(photoId);
+      if(currentUID !== uploadUID){
+        // Аккаунт сменился, пока фото грузилось — эта заявка и эта очередь
+        // удаления больше не относятся к тому, что сейчас открыто в
+        // приложении. Ничего не трогаем: файл в Storage останется (редкий
+        // случай, не страшно), но точно не попадёт не в тот аккаунт.
+        return;
+      }
+      const idx = (note.photoIds || []).indexOf(photoId);
+      if(idx === -1){
+        // Фото успели удалить из заявки, пока шла загрузка (deletePhotoFromStorage
+        // в этот момент ничего не нашёл и тихо ничего не сделал — файла ещё не
+        // было). Теперь он появился, но уже никому не нужен — удаляем через ту
+        // же постоянную очередь, что и обычное удаление фото: если именно
+        // сейчас нет связи, попытка не потеряется, а повторится позже.
+        queueStorageDeletePath(path);
+        return;
+      }
+      if(!isDataUrlPhoto(note.photos[idx])) return; // уже заменено раньше (повторная попытка)
+      note.photos[idx] = url;
+      note.editedAt = Date.now();
+      saveState();
+      if(editingNote === note) renderEditorPhotos();
+      renderContent();
+      scheduleCloudSave();
+    })
+    .catch(e => {
+      photoPendingUpload.delete(photoId);
+      console.warn('Не удалось загрузить фото в облако (осталось локально на этом телефоне):', e);
+    });
+}
+// На случай, если фото добавили без связи (или загрузка не удалась) — как только
+// приложение снова онлайн, пробуем долить в облако все фото, что до сих пор лежат
+// в заявках как base64, а не как ссылка.
+// Когда фото убирают из заявки (вручную или как дубликат платёжки), сам файл
+// в Firebase Storage раньше не удалялся — оставался висеть там бесполезным
+// мусором и занимал место. Ошибку удаления (например, файл ещё не успел
+// долететь до Storage — нечего удалять) тихо игнорируем.
+// ВАЖНО: раньше удаление файла из Storage было "выстрелил и забыл" — если оно
+// не удавалось (нет связи, Storage временно недоступен), ошибка тихо
+// проглатывалась. Для обычного удаления фото это не страшно (файл просто
+// останется мусором), но для автоочистки корзины (purgeOldTrash) это была
+// настоящая потеря: заявка удалялась из notes сразу же, не дожидаясь ответа
+// от Storage, и если конкретно в этот момент не было связи — попытку удалить
+// файл больше НЕЧЕМ было повторить, id заявки и её фото просто исчезали.
+// Теперь путь к каждому файлу, который нужно удалить, сначала кладётся в
+// список в localStorage — и убирается из него только после того, как
+// удаление реально подтвердилось (или Storage сказал "файла и так нет").
+// Список переживает закрытие приложения и повторяется при связи/запуске.
+// Ключ этой очереди привязан к UID конкретного аккаунта (а не общий на
+// телефон) — иначе, если на одном телефоне выйти из одного аккаунта и войти
+// в другой, в очереди остались бы чужие пути ("users/{старый uid}/photos/…"),
+// которые под новым аккаунтом просто никогда не смогут удалиться (нет прав) и
+// будут бесполезно висеть в списке вечно.
+function pendingPhotoDeleteKey(uid){ return 'vreyse_pendingPhotoDeletes_' + uid; }
+let pendingPhotoDeletePaths = [];
+function loadPendingPhotoDeletesForUID(uid){
+  try{ pendingPhotoDeletePaths = JSON.parse(localStorage.getItem(pendingPhotoDeleteKey(uid)) || '[]'); }
+  catch(e){ pendingPhotoDeletePaths = []; }
+}
+function savePendingPhotoDeletes(){
+  if(!currentUID) return;
+  try{ localStorage.setItem(pendingPhotoDeleteKey(currentUID), JSON.stringify(pendingPhotoDeletePaths)); }catch(e){}
+}
+function attemptStorageDelete(path){
+  storage.ref(path).delete()
+    .then(() => {
+      pendingPhotoDeletePaths = pendingPhotoDeletePaths.filter(p => p !== path);
+      savePendingPhotoDeletes();
+    })
+    .catch(e => {
+      if(e && e.code === 'storage/object-not-found'){
+        // Файла и так уже нет (например, не успел долететь до Storage до
+        // того, как фото убрали, или его уже удалили раньше) — это не ошибка,
+        // повторять нечего.
+        pendingPhotoDeletePaths = pendingPhotoDeletePaths.filter(p => p !== path);
+        savePendingPhotoDeletes();
+        return;
+      }
+      // Любая другая ошибка (нет сети и т.п.) — путь остаётся в очереди,
+      // retryPendingPhotoDeletes() повторит попытку позже.
+    });
+}
+function queueStorageDeletePath(path){
+  if(!path) return;
+  if(pendingPhotoDeletePaths.indexOf(path) === -1){
+    pendingPhotoDeletePaths.push(path);
+    savePendingPhotoDeletes();
+  }
+  attemptStorageDelete(path);
+}
+function deletePhotoFromStorage(photoId){
+  if(!currentUID || !photoId) return;
+  queueStorageDeletePath('users/' + currentUID + '/photos/' + photoId + '.jpg');
+}
+function retryPendingPhotoDeletes(){
+  if(!pendingPhotoDeletePaths.length) return;
+  pendingPhotoDeletePaths.slice().forEach(attemptStorageDelete);
+}
+function retryPendingPhotoUploads(){
+  if(!currentUID) return;
+  notes.forEach(n => {
+    if(!n || !n.photos || !n.photoIds) return;
+    n.photos.forEach((p, i) => {
+      const photoId = n.photoIds[i];
+      if(photoId && isDataUrlPhoto(p)) uploadPhotoAndReplace(n, photoId, p);
+    });
+  });
+}
+// Пока заявка открыта в редакторе, editingNote — это ОТДЕЛЬНАЯ копия, не
+// связанная с "живым" notes[idx]. Если за это время где-то ещё (другой
+// телефон, или на этом же телефоне — фоновая заливка фото в Storage) у
+// заявки успел появиться URL фото, а editingNote всё ещё помнит место под это
+// фото пустым/base64 — при закрытии редактора editingNote целиком заменяет
+// notes[idx] и УЖЕ ГОТОВЫЙ url потерялся бы. Перед заменой подтягиваем в
+// editingNote любые URL фото, которых там ещё нет, но которые уже есть в
+// текущей "живой" версии этой же заявки — по совпадению id самого фото
+// (photoIds), а не по порядковому номеру (порядок мог измениться).
+function absorbKnownPhotoUrls(target, source){
+  if(!target || !source || !Array.isArray(target.photoIds) || !Array.isArray(source.photoIds) || !Array.isArray(source.photos)) return false;
+  let changed = false;
+  source.photoIds.forEach((pid, i) => {
+    if(!pid) return;
+    const url = source.photos[i];
+    if(url == null || isDataUrlPhoto(url)) return;
+    const ti = target.photoIds.indexOf(pid);
+    if(ti !== -1 && (target.photos[ti] == null || isDataUrlPhoto(target.photos[ti]))){
+      target.photos[ti] = url;
+      changed = true;
+    }
+  });
+  return changed;
+}
+// Копия заявки для отправки в облако: пока какое-то фото ещё не долетело до
+// Firebase Storage (лежит как base64), в облако вместо него уходит null —
+// иначе один документ заявки со всеми фото легко перевалит за лимит Firestore
+// в 1 МБ, и ВСЯ заявка перестанет сохраняться (не только фото, а вообще всё:
+// текст, суммы, расчёт). Сами файлы note.photos на этом телефоне не трогаем —
+// только то, что уходит по сети.
+function sanitizeNoteForCloud(n){
+  if(!n || !n.photos || !n.photos.some(isDataUrlPhoto)) return n;
+  const copy = Object.assign({}, n);
+  copy.photos = n.photos.map(p => isDataUrlPhoto(p) ? null : p);
+  return copy;
+}
 
 function openEditor(note, isNew){
   isNewNote = !!isNew;
@@ -2163,6 +2373,7 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
     const idx = parseInt(rm.getAttribute('data-edphotorm'), 10);
     if(!editingNote.photoIds) editingNote.photoIds = [];
     const removedId = editingNote.photoIds[idx];
+    deletePhotoFromStorage(removedId);
     editingNote.photos.splice(idx, 1);
     if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
     if(!editingNote.photoDates) editingNote.photoDates = [];
@@ -2202,7 +2413,7 @@ function openLightbox(i, photosArr){
 }
 function renderLightbox(){
   const photos = lightboxPhotos || editingNote.photos || [];
-  document.getElementById('lbImg').src = photos[lbIndex];
+  document.getElementById('lbImg').src = photoSrc(photos[lbIndex]);
   document.getElementById('lbCount').textContent = `${lbIndex+1} / ${photos.length}`;
   const multi = photos.length > 1;
   document.getElementById('lbPrev').style.display = multi ? 'flex' : 'none';
@@ -2219,6 +2430,11 @@ document.getElementById('lbClose').addEventListener('click', () => {
 function cropVisibleLightboxRegion(dataUrl, screenBox){
   return new Promise((resolve) => {
     const img = new Image();
+    // Фото может быть уже не base64, а постоянной ссылкой на Firebase Storage
+    // (см. uploadPhotoAndReplace) — crossOrigin нужен, чтобы вырезанный кусок
+    // потом можно было прочитать через canvas.toDataURL() без ошибки браузера
+    // "холст испачкан чужим доменом". На сами base64-фото это никак не влияет.
+    if(typeof dataUrl === 'string' && dataUrl.indexOf('data:') !== 0) img.crossOrigin = 'anonymous';
     img.onload = () => {
       try{
         const imgRect = lbImgEl.getBoundingClientRect();
@@ -2529,6 +2745,7 @@ document.getElementById('photoInput').addEventListener('change', async (e) => {
     editingNote.photoNumbers.push(null);
     renderEditorPhotos();
     pushHistory();
+    uploadPhotoAndReplace(editingNote, photoId, dataUrl);
     if(getPaymentStatus(editingNote) !== 'full'){
       checkIfPaymentOrderOCR(dataUrl, photoId);
     }
@@ -3006,6 +3223,7 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
             'Похоже, это дубликат платёжки № ' + orderNumber + ' — она уже прикреплена к этой заявке.\nУбрать повторное фото?'
           );
           if(remove){
+            deletePhotoFromStorage(editingNote.photoIds[photoIndex]);
             editingNote.photos.splice(photoIndex, 1);
             editingNote.photoAmounts.splice(photoIndex, 1);
             editingNote.photoDates.splice(photoIndex, 1);
@@ -3439,7 +3657,18 @@ function closeEditor(commit){
     } else {
       const idx = notes.findIndex(n => n.id === editingNote.id);
       editingNote.editedAt = Date.now();
-      notes[idx] = editingNote;
+      if(idx === -1){
+        // Заявку успели удалить на ДРУГОМ телефоне, пока она была открыта
+        // здесь в редакторе. Раньше notes[-1] = editingNote просто создавало
+        // фантомное свойство "-1" на массиве — заявка нигде не появлялась и
+        // не сохранялась, правка молча терялась. Теперь считаем это намерением
+        // пользователя восстановить заявку с его правкой — добавляем её обратно
+        // в список, а не теряем молча.
+        notes.unshift(editingNote);
+      } else {
+        absorbKnownPhotoUrls(editingNote, notes[idx]);
+        notes[idx] = editingNote;
+      }
     }
     // ВАЖНО: раньше здесь не было saveState() — заявка попадала в массив notes
     // и на экране всё выглядело нормально, но ни в localStorage, ни в облако
@@ -3761,7 +3990,12 @@ function renderExpHistoryList(){
 document.getElementById('expList').addEventListener('click', (e) => {
   const el = e.target.closest('[data-expopen]') || e.target.closest('[data-expedit]');
   if(!el) return;
-  const id = parseInt(el.getAttribute('data-expopen') || el.getAttribute('data-expedit'), 10);
+  // ВАЖНО: id расхода — строка вида "5_ab12cd" (число + случайный суффикс).
+  // parseInt() обрезал её до "5" (числа), и expenses.find(x => x.id === id)
+  // дальше сравнивал число со строкой — никогда не находил расход. Из-за
+  // этого тап по любому расходу открывал пустую форму создания вместо
+  // редактирования, а удаление расхода молча ничего не удаляло.
+  const id = el.getAttribute('data-expopen') || el.getAttribute('data-expedit');
   openExpenseSheet(id);
 });
 
@@ -3966,6 +4200,16 @@ loadState();
 
 // ---- Firebase: авторизация и облачная синхронизация между устройствами ----
 let currentUID = null;
+// Растёт на 1 при каждом входе/выходе (см. auth.onAuthStateChanged ниже).
+// Нужен для асинхронных операций (запрос к Firestore, загрузка фото, отправка
+// батча), которые стартовали под ОДНИМ аккаунтом, но успевают завершиться уже
+// после того, как на этом же телефоне вышли и вошли в ДРУГОЙ — без этой
+// проверки такой "запоздавший" результат мог бы применить чужие данные
+// (заявки, статус синхронизации, резервную копию) поверх уже другого
+// открытого аккаунта. Каждая такая операция запоминает текущее значение в
+// момент старта и перед тем, как менять что-то общее (notes, expenses,
+// lastSynced..., localStorage), сверяет, что оно не изменилось.
+let authGeneration = 0;
 let cloudSaveTimer = null;
 let suppressCloudSave = false; // true, пока применяем данные, только что пришедшие из облака (свои же правки эхом не пересохраняем)
 
@@ -4014,6 +4258,8 @@ window.addEventListener('online', () => {
   if(currentUID && (cloudSyncStatus === 'error' || cloudSyncStatus === 'pending')){
     flushCloudSave();
   }
+  retryPendingPhotoUploads();
+  retryPendingPhotoDeletes();
 });
 function setCloudSyncStatus(status){
   cloudSyncStatus = status;
@@ -4032,36 +4278,59 @@ function flushCloudSave(){
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
   if(cloudRetryTimer){ clearTimeout(cloudRetryTimer); cloudRetryTimer = null; }
 
+  // Пока батч летит на сервер, можно успеть выйти и войти в другой аккаунт —
+  // тогда результат этой отправки (обновление lastSynced.../резервная копия)
+  // не должен коснуться уже ДРУГОГО открытого аккаунта.
+  const uid = currentUID;
+  const gen = authGeneration;
   const userRef = db.collection('users').doc(currentUID);
   const notesRef = userRef.collection('notes');
   const expensesRef = userRef.collection('expenses');
   const ops = []; // { ref, action:'set'|'delete', data, id, et, kind }
 
+  // ВАЖНО: lastSyncedNotes/lastSyncedExpenses всегда заполняются СТРОКОВЫМИ
+  // ключами (id документа Firestore — он всегда строка). Но n.id/x.id у
+  // старых записей (созданных до того, как id стали строкой вида "5_ab12cd")
+  // мог остаться числом. Число и строка — разные ключи в Map/Set, поэтому
+  // без String() такая старая запись выглядела бы то как "изменившаяся"
+  // (лишняя отправка), то как "удалённая локально" — а второе означает
+  // ошибочное УДАЛЕНИЕ реальной, никуда не девшейся заявки из облака. Отсюда
+  // и String(...) на каждом шаге ниже — id всегда приводится к строке ДО
+  // сравнения или использования как ключ.
   notes.forEach(n => {
     if(!n || n.id == null) return;
+    const id = String(n.id);
     const et = n.editedAt || n.createdAt || 0;
-    if(lastSyncedNotes.get(n.id) !== et){
-      ops.push({ ref: notesRef.doc(String(n.id)), action: 'set', data: n, id: n.id, et, kind: 'note' });
+    if(lastSyncedNotes.get(id) !== et){
+      ops.push({ ref: notesRef.doc(id), action: 'set', data: sanitizeNoteForCloud(n), id, et, kind: 'note' });
     }
   });
-  const localNoteIds = new Set(notes.filter(n => n && n.id != null).map(n => n.id));
+  const localNoteIds = new Set(notes.filter(n => n && n.id != null).map(n => String(n.id)));
   lastSyncedNotes.forEach((et, id) => {
-    if(!localNoteIds.has(id)) ops.push({ ref: notesRef.doc(String(id)), action: 'delete', id, kind: 'note' });
+    if(!localNoteIds.has(id)) ops.push({ ref: notesRef.doc(id), action: 'delete', id, kind: 'note' });
   });
 
   expenses.forEach(x => {
     if(!x || x.id == null) return;
+    const id = String(x.id);
     const et = x.editedAt || x.createdAt || 0;
-    if(lastSyncedExpenses.get(x.id) !== et){
-      ops.push({ ref: expensesRef.doc(String(x.id)), action: 'set', data: x, id: x.id, et, kind: 'expense' });
+    if(lastSyncedExpenses.get(id) !== et){
+      ops.push({ ref: expensesRef.doc(id), action: 'set', data: x, id, et, kind: 'expense' });
     }
   });
-  const localExpenseIds = new Set(expenses.filter(x => x && x.id != null).map(x => x.id));
+  const localExpenseIds = new Set(expenses.filter(x => x && x.id != null).map(x => String(x.id)));
   lastSyncedExpenses.forEach((et, id) => {
-    if(!localExpenseIds.has(id)) ops.push({ ref: expensesRef.doc(String(id)), action: 'delete', id, kind: 'expense' });
+    if(!localExpenseIds.has(id)) ops.push({ ref: expensesRef.doc(id), action: 'delete', id, kind: 'expense' });
   });
 
-  const metaJSON = JSON.stringify(metaSnapshotForSync());
+  // Снимок служебных полей берём ОДИН раз, сейчас, а не заново внутри
+  // асинхронной цепочки батчей ниже — иначе, если batch этой отправки дойдёт
+  // до сервера уже после того, как на этом телефоне успели выйти и войти в
+  // другой аккаунт, второй вызов metaSnapshotForSync() прочитал бы уже
+  // ЧУЖИЕ глобальные idSeq/monthlyGoal/expenseCategories и мог бы записать их
+  // в документ ЭТОГО (старого) аккаунта.
+  const metaSnapshot = metaSnapshotForSync();
+  const metaJSON = JSON.stringify(metaSnapshot);
   const metaChanged = metaJSON !== lastSyncedMetaJSON;
 
   if(ops.length === 0 && !metaChanged){
@@ -4083,6 +4352,10 @@ function flushCloudSave(){
   let chain = Promise.resolve();
   chunks.forEach((chunk, idx) => {
     chain = chain.then(() => {
+      // Дополнительная страховка при отправке в несколько батчей подряд:
+      // если аккаунт сменился прямо между двумя батчами одной и той же
+      // отправки — не досылаем остаток в уже чужой документ.
+      if(currentUID !== uid || authGeneration !== gen) return Promise.resolve();
       const batch = db.batch();
       chunk.forEach(op => {
         if(op.action === 'set') batch.set(op.ref, op.data);
@@ -4091,7 +4364,7 @@ function flushCloudSave(){
       // Служебные поля (счётчики id, цель месяца, категории расходов) кладём
       // в главный документ вместе с последним батчем.
       if(idx === chunks.length - 1){
-        batch.set(userRef, Object.assign({}, metaSnapshotForSync(), {
+        batch.set(userRef, Object.assign({}, metaSnapshot, {
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }), { merge: true });
       }
@@ -4100,6 +4373,7 @@ function flushCloudSave(){
   });
 
   return chain.then(() => {
+      if(currentUID !== uid || authGeneration !== gen) return; // см. комментарий выше
       cloudLastErrorCode = '';
       setCloudSyncStatus('synced');
       ops.forEach(op => {
@@ -4111,6 +4385,7 @@ function flushCloudSave(){
       maybeSaveDailyBackup(stateSnapshot());
     })
     .catch(e => {
+      if(currentUID !== uid || authGeneration !== gen) return;
       console.warn('Не удалось сохранить в облако:', e);
       cloudLastErrorCode = e && e.code ? e.code : (e && e.message ? e.message : 'неизвестная ошибка');
       setCloudSyncStatus('error');
@@ -4274,22 +4549,37 @@ function migrateToPerRecordDocsIfNeeded(uid, data){
       return batch.commit();
     });
   });
-  return chain
-    .then(() => userRef.set({
-      notes: firebase.firestore.FieldValue.delete(),
-      expenses: firebase.firestore.FieldValue.delete()
-    }, { merge: true }))
-    .catch(e => console.warn('Не удалось перенести старые данные в отдельные документы:', e));
+  // ВАЖНО: раньше здесь стоял .catch(...), который "проглатывал" ошибку —
+  // сам факт того, что внутри что-то упало (например, permission-denied),
+  // не долетал до вызывающего кода: Promise считался успешно завершённым,
+  // и вызывающий код (loadFromCloud) продолжал работу как ни в чём не бывало,
+  // хотя перенос старых данных мог не завершиться. Теперь ошибка НЕ гасится
+  // здесь — она должна дойти до loadFromCloud(), где для неё есть отдельная
+  // обработка (см. комментарий там).
+  return chain.then(() => userRef.set({
+    notes: firebase.firestore.FieldValue.delete(),
+    expenses: firebase.firestore.FieldValue.delete()
+  }, { merge: true }));
 }
 
 function loadFromCloud(){
   unsubscribeCloud();
+  const uid = currentUID;
+  const gen = authGeneration;
+  // Если за время этого запроса (get() к серверу, потом ещё и перенос старых
+  // данных) успели выйти и войти в другой аккаунт — authGeneration уже другой,
+  // и всё, что ниже, должно молча остановиться: subscribeCloud под "старым"
+  // userRef и попытка применить его данные к notes/expenses текущего (уже
+  // ДРУГОГО) аккаунта — это ровно то смешение данных между аккаунтами, что мы
+  // чинили в прошлый раз, только через более редкую асинхронную гонку.
+  function stale(){ return currentUID !== uid || authGeneration !== gen; }
   const userRef = db.collection('users').doc(currentUID);
   // Разовая, не "живая" проверка через сервер (а не локальный кэш) — чтобы
   // надёжно отличить "новый аккаунт, в облаке правда пусто" от "кэш на этом
   // телефоне ещё пуст, но в облаке данные есть", и при необходимости сразу
   // перенести старый формат данных (см. migrateToPerRecordDocsIfNeeded).
   userRef.get({ source: 'server' }).then(doc => {
+    if(stale()) return;
     if(!doc.exists){
       // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
       // в памяти телефона от предыдущего входа под другим аккаунтом
@@ -4301,14 +4591,38 @@ function loadFromCloud(){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       suppressCloudSave = false;
       renderContent();
-      subscribeCloud(userRef);
-      scheduleCloudSave();
+      // scheduleCloudSave передаётся как колбэк, а не вызывается немедленно —
+      // subscribeCloud сам дождётся первого снимка заявок и расходов с сервера
+      // и вызовет его один раз, когда это станет безопасно (см. комментарий
+      // внутри subscribeCloud).
+      subscribeCloud(userRef, scheduleCloudSave);
       return;
     }
-    migrateToPerRecordDocsIfNeeded(currentUID, doc.data()).then(() => subscribeCloud(userRef));
+    migrateToPerRecordDocsIfNeeded(currentUID, doc.data())
+      .then(() => {
+        if(stale()) return;
+        subscribeCloud(userRef, scheduleCloudSave);
+      })
+      .catch(e => {
+        if(stale()) return;
+        // ВАЖНО: раньше ошибка переноса старых данных в отдельные документы
+        // "проглатывалась" внутри migrateToPerRecordDocsIfNeeded — код здесь
+        // считал перенос успешным, даже если он провалился (например, из-за
+        // отсутствия связи или permission-denied), и спокойно продолжал как
+        // обычно. Из-за этого приложение могло начать работать по новой схеме
+        // (пустые notes/expenses), хотя старые данные так и остались в старом
+        // формате и никуда не делись — просто временно не видны. Теперь при
+        // ошибке миграции мы всё равно подписываемся (чтобы приложение не
+        // зависло совсем), но НЕ разрешаем автоматическую отправку — лучше
+        // ничего не отправить, чем отправить поверх не до конца перенесённых
+        // данных. Сама миграция безопасно повторится при следующем входе.
+        console.warn('Перенос старых данных в отдельные документы не завершился — синхронизация ограничена до следующего входа:', e);
+        subscribeCloud(userRef);
+      });
   }).catch(e => {
+    if(stale()) return;
     console.warn('Не удалось проверить облачные данные через сервер, подписываемся как есть:', e);
-    subscribeCloud(userRef);
+    subscribeCloud(userRef, scheduleCloudSave);
   });
 }
 
@@ -4316,7 +4630,27 @@ function loadFromCloud(){
 // поля, на коллекцию заявок и на коллекцию расходов. Каждая обрабатывает
 // только те записи, что реально добавились/изменились/удалились — не может
 // случайно затереть остальные, даже если придёт из ещё не прогретого кэша.
-function subscribeCloud(userRef){
+function subscribeCloud(userRef, onBaselineReady){
+  // ВАЖНО: пока не пришёл первый снимок заявок и расходов с сервера,
+  // lastSyncedNotes/lastSyncedExpenses пусты, а в notes/expenses уже может
+  // лежать старый локальный кэш (localStorage). Если разрешить отправку
+  // (flushCloudSave) раньше, чем придёт этот первый снимок, — весь локальный
+  // кэш покажется "несинхронизированным" и уйдёт в облако как есть, включая
+  // заявки, уже удалённые тем временем на другом телефоне — они бы "воскресли".
+  // Поэтому onBaselineReady (обычно scheduleCloudSave) вызывается только
+  // один раз, и только после того, как оба снимка (заявки и расходы) реально
+  // пришли хотя бы по одному разу.
+  let notesReady = false, expensesReady = false, baselineFired = false;
+  function maybeBaselineReady(){
+    if(baselineFired || !notesReady || !expensesReady) return;
+    baselineFired = true;
+    if(onBaselineReady) onBaselineReady();
+    // На случай, если в кэше телефона остались фото, которые ещё не успели
+    // долететь до Storage в прошлый раз (например, приложение закрыли сразу
+    // после добавления фото без связи).
+    retryPendingPhotoUploads();
+    retryPendingPhotoDeletes();
+  }
   cloudUnsubscribes.push(userRef.onSnapshot(doc => {
     if(doc.metadata.hasPendingWrites) return; // эхо нашей же ещё не подтверждённой записи
     if(!doc.exists) return;
@@ -4324,8 +4658,12 @@ function subscribeCloud(userRef){
     idSeq = Math.max(idSeq || 1, d.idSeq || 1);
     expenseIdSeq = Math.max(expenseIdSeq || 1, d.expenseIdSeq || 1);
     if(d.monthKey) monthKey = d.monthKey;
-    if(d.monthlyGoal != null) monthlyGoal = d.monthlyGoal;
-    if(d.expenseCategories && d.expenseCategories.length) expenseCategories = d.expenseCategories;
+    // ВАЖНО: раньше здесь было "if(d.monthlyGoal != null)" — то есть удаление
+    // цели (запись null) на одном телефоне никогда не долетало до другого:
+    // null неотличим от "поля вообще нет". Проверяем именно наличие поля в
+    // документе ('in'), а не его значение — тогда явное null/[] тоже применяется.
+    if('monthlyGoal' in d) monthlyGoal = d.monthlyGoal;
+    if('expenseCategories' in d) expenseCategories = d.expenseCategories || [];
     lastSyncedMetaJSON = JSON.stringify(metaSnapshotForSync());
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
     renderContent();
@@ -4337,6 +4675,23 @@ function subscribeCloud(userRef){
       if(change.doc.metadata.hasPendingWrites) return; // это наша же ещё не подтверждённая запись
       const id = change.doc.id;
       if(change.type === 'removed'){
+        const idxDel = notes.findIndex(n => String(n.id) === id);
+        if(idxDel !== -1){
+          const localEt = notes[idxDel].editedAt || notes[idxDel].createdAt || 0;
+          const knownEt = lastSyncedNotes.get(id);
+          // Если на ЭТОМ телефоне есть правка новее того, что было в облаке в
+          // момент удаления, — значит, эта правка ещё не подтверждена и, скорее
+          // всего, произошла уже ПОСЛЕ удаления на другом телефоне (или ещё не
+          // успела уйти). Раньше код удалял такую заявку безусловно, стирая
+          // локальную правку. Теперь оставляем заявку локально и просто забываем
+          // её как "подтверждённо синхронизированную" — flushCloudSave() сам
+          // восстановит её в облаке при следующей отправке.
+          if(knownEt != null && localEt > knownEt){
+            lastSyncedNotes.delete(id);
+            touched = true;
+            return;
+          }
+        }
         const before = notes.length;
         notes = notes.filter(n => String(n.id) !== id);
         lastSyncedNotes.delete(id);
@@ -4362,6 +4717,7 @@ function subscribeCloud(userRef){
         // теряя: она и так будет отправлена в облако через flushCloudSave(),
         // как только к нему дойдёт очередь (сравнение там идёт по editedAt).
         if(incomingEt >= localEt){ notes[idx] = incoming; touched = true; }
+        else if(absorbKnownPhotoUrls(notes[idx], incoming)){ touched = true; }
       }
       lastSyncedNotes.set(id, incomingEt);
     });
@@ -4369,6 +4725,8 @@ function subscribeCloud(userRef){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       renderContent();
     }
+    notesReady = true;
+    maybeBaselineReady();
   }, e => console.warn('Не удалось подписаться на заявки:', e)));
 
   cloudUnsubscribes.push(userRef.collection('expenses').onSnapshot(snapshot => {
@@ -4377,6 +4735,18 @@ function subscribeCloud(userRef){
       if(change.doc.metadata.hasPendingWrites) return;
       const id = change.doc.id;
       if(change.type === 'removed'){
+        const idxDel = expenses.findIndex(x => String(x.id) === id);
+        if(idxDel !== -1){
+          const localEt = expenses[idxDel].editedAt || expenses[idxDel].createdAt || 0;
+          const knownEt = lastSyncedExpenses.get(id);
+          // Та же логика, что и для заявок выше: не стираем локальную правку,
+          // которая новее того, что было в облаке в момент удаления.
+          if(knownEt != null && localEt > knownEt){
+            lastSyncedExpenses.delete(id);
+            touched = true;
+            return;
+          }
+        }
         const before = expenses.length;
         expenses = expenses.filter(x => String(x.id) !== id);
         lastSyncedExpenses.delete(id);
@@ -4397,12 +4767,40 @@ function subscribeCloud(userRef){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       renderContent();
     }
+    expensesReady = true;
+    maybeBaselineReady();
   }, e => console.warn('Не удалось подписаться на расходы:', e)));
 }
 
+// Локальный кэш (STORAGE_KEY) — общий на весь телефон, один на все аккаунты.
+// При обычном выходе через кнопку "Выйти" он чистится (см. logoutBtn). Но
+// если сессия слетит сама (протух токен, принудительный выход Firebase) без
+// нажатия "Выйти" — обработчик ниже (user === null) currentUID сбрасывает, а
+// сам кэш на диске не трогает. Если потом на этом же телефоне войти в ДРУГОЙ
+// аккаунт без перезагрузки страницы — данные первого аккаунта иначе остались
+// бы висеть в памяти и могли бы случайно уйти в облако уже второго аккаунта.
+// Поэтому здесь запоминаем, какому UID принадлежит текущий локальный кэш, и
+// если он не совпадает с тем, кто сейчас реально вошёл — кэш сбрасывается,
+// как при первом входе в совершенно новый аккаунт.
+const CACHE_OWNER_KEY = 'vreyse_cacheOwnerUID';
 auth.onAuthStateChanged(user => {
+  authGeneration++;
   if(user){
     currentUID = user.uid;
+    loadPendingPhotoDeletesForUID(currentUID);
+    let cacheOwner = null;
+    try{ cacheOwner = localStorage.getItem(CACHE_OWNER_KEY); }catch(e){}
+    if(cacheOwner && cacheOwner !== currentUID){
+      suppressCloudSave = true;
+      applyState({});
+      lastSyncedNotes = new Map();
+      lastSyncedExpenses = new Map();
+      lastSyncedMetaJSON = null;
+      try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+      suppressCloudSave = false;
+      renderContent();
+    }
+    try{ localStorage.setItem(CACHE_OWNER_KEY, currentUID); }catch(e){}
     authOverlay.style.display = 'none';
     const emailStr = user.email || '';
     const avatarEl = document.getElementById('avatar');
@@ -4414,6 +4812,7 @@ auth.onAuthStateChanged(user => {
   } else {
     unsubscribeCloud();
     currentUID = null;
+    pendingPhotoDeletePaths = []; // сама очередь на диске под прежним UID остаётся нетронутой
     authOverlay.style.display = 'flex';
   }
 });
@@ -4484,6 +4883,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   lastSyncedExpenses = new Map();
   lastSyncedMetaJSON = null;
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
+  try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
   suppressCloudSave = false;
   renderContent();
 });
@@ -4831,20 +5231,30 @@ if ('serviceWorker' in navigator) {
 // сразу, а не только тогда, когда наконец "проснётся" сама живая подписка.
 function refreshFromCloudOnResume(){
   if(!currentUID) return;
+  const uid = currentUID;
+  const gen = authGeneration;
   const userRef = db.collection('users').doc(currentUID);
   Promise.all([
     userRef.get({ source: 'server' }),
     userRef.collection('notes').get({ source: 'server' }),
     userRef.collection('expenses').get({ source: 'server' })
   ]).then(([mainDoc, notesSnap, expensesSnap]) => {
+    // Приложение сворачивали/разворачивали, пока этот запрос летал — за это
+    // время вполне могли успеть выйти и войти в другой аккаунт. Если так —
+    // ответ сервера относится уже к ЧУЖОМУ, не текущему аккаунту, применять
+    // его к notes/expenses нельзя.
+    if(currentUID !== uid || authGeneration !== gen) return;
     let touched = false;
     if(mainDoc.exists){
       const d = mainDoc.data();
       idSeq = Math.max(idSeq || 1, d.idSeq || 1);
       expenseIdSeq = Math.max(expenseIdSeq || 1, d.expenseIdSeq || 1);
       if(d.monthKey) monthKey = d.monthKey;
-      if(d.monthlyGoal != null) monthlyGoal = d.monthlyGoal;
-      if(d.expenseCategories && d.expenseCategories.length) expenseCategories = d.expenseCategories;
+      // Та же причина, что и в живой подписке: 'in' отличает "поля нет" от
+      // "поле есть, но null/пусто" — иначе удаление цели/категорий на другом
+      // телефоне сюда не долетало.
+      if('monthlyGoal' in d) monthlyGoal = d.monthlyGoal;
+      if('expenseCategories' in d) expenseCategories = d.expenseCategories || [];
       lastSyncedMetaJSON = JSON.stringify(metaSnapshotForSync());
     }
     notesSnap.forEach(docSnap => {
@@ -4862,6 +5272,7 @@ function refreshFromCloudOnResume(){
       else {
         const localEt = notes[idx].editedAt || notes[idx].createdAt || 0;
         if(incomingEt >= localEt){ notes[idx] = incoming; touched = true; }
+        else if(absorbKnownPhotoUrls(notes[idx], incoming)){ touched = true; }
       }
       lastSyncedNotes.set(id, incomingEt);
     });
@@ -4871,6 +5282,16 @@ function refreshFromCloudOnResume(){
     const serverNoteIds = new Set(notesSnap.docs.map(d => d.id));
     Array.from(lastSyncedNotes.keys()).forEach(id => {
       if(!serverNoteIds.has(id)){
+        const idxDel = notes.findIndex(n => String(n.id) === id);
+        // Та же защита, что и в живой подписке: не стираем локальную правку,
+        // которая новее того, что мы в последний раз подтверждённо получали
+        // с сервера, — иначе можно потерять правку, сделанную прямо перед тем,
+        // как заявку удалили на другом телефоне.
+        if(idxDel !== -1){
+          const localEt = notes[idxDel].editedAt || notes[idxDel].createdAt || 0;
+          const knownEt = lastSyncedNotes.get(id);
+          if(knownEt != null && localEt > knownEt){ lastSyncedNotes.delete(id); touched = true; return; }
+        }
         const before = notes.length;
         notes = notes.filter(n => String(n.id) !== id);
         lastSyncedNotes.delete(id);
@@ -4892,6 +5313,12 @@ function refreshFromCloudOnResume(){
     const serverExpenseIds = new Set(expensesSnap.docs.map(d => d.id));
     Array.from(lastSyncedExpenses.keys()).forEach(id => {
       if(!serverExpenseIds.has(id)){
+        const idxDel = expenses.findIndex(x => String(x.id) === id);
+        if(idxDel !== -1){
+          const localEt = expenses[idxDel].editedAt || expenses[idxDel].createdAt || 0;
+          const knownEt = lastSyncedExpenses.get(id);
+          if(knownEt != null && localEt > knownEt){ lastSyncedExpenses.delete(id); touched = true; return; }
+        }
         const before = expenses.length;
         expenses = expenses.filter(x => String(x.id) !== id);
         lastSyncedExpenses.delete(id);
