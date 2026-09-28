@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 15:38 (превью фото внутри редактора заявки — забыл заменить на заглушку, теперь тоже показывает "фото…" вместо сломанной иконки)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 18:22 (исправлена настоящая причина пропажи фото — эхо своей же отправки стирало ещё не загруженное фото на обоих телефонах)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1857,7 +1857,14 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
         // случай, не страшно), но точно не попадёт не в тот аккаунт.
         return;
       }
-      const idx = (note.photoIds || []).indexOf(photoId);
+      // Пока фото грузилось, эту же заявку мог целиком заменить пришедший
+      // "с сервера" снимок (например, эхо нашей же более ранней отправки —
+      // см. fillMissingPhotosFromLocal) — тогда объект, на который до сих пор
+      // ссылается замыкание note, уже не тот, что лежит в notes[idx], и правка
+      // в него никуда бы не попала. Находим АКТУАЛЬНЫЙ объект этой заявки по
+      // id заново, а не полагаемся на старую ссылку.
+      const liveNote = notes.find(n => n && String(n.id) === String(note.id)) || note;
+      const idx = (liveNote.photoIds || []).indexOf(photoId);
       if(idx === -1){
         // Фото успели удалить из заявки, пока шла загрузка (deletePhotoFromStorage
         // в этот момент ничего не нашёл и тихо ничего не сделал — файла ещё не
@@ -1867,11 +1874,15 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
         queueStorageDeletePath(path);
         return;
       }
-      if(!isDataUrlPhoto(note.photos[idx])) return; // уже заменено раньше (повторная попытка)
-      note.photos[idx] = url;
-      note.editedAt = Date.now();
+      if(liveNote.photos[idx] === url) return; // уже применено (повторная попытка/дубль)
+      liveNote.photos[idx] = url;
+      liveNote.editedAt = Date.now();
       saveState();
-      if(editingNote === note) renderEditorPhotos();
+      if(editingNote && String(editingNote.id) === String(liveNote.id)){
+        const ei = (editingNote.photoIds || []).indexOf(photoId);
+        if(ei !== -1) editingNote.photos[ei] = url;
+        renderEditorPhotos();
+      }
       renderContent();
       scheduleCloudSave();
     })
@@ -1981,6 +1992,27 @@ function absorbKnownPhotoUrls(target, source){
     }
   });
   return changed;
+}
+// Когда с сервера приходит подтверждённая версия заявки, которая "побеждает"
+// локальную (новее или это просто эхо нашей же только что отправленной
+// правки) — она ЦЕЛИКОМ заменяет заявку в notes[idx]. Проблема: в облако
+// специально уходит "photos: null" вместо ещё не загруженного фото (см.
+// sanitizeNoteForCloud) — так документ не раздувается сверх лимита. Но когда
+// это же "null" потом возвращается назад с сервера как "подтверждённая"
+// версия, оно способно стереть фото, которое реально лежит на ЭТОМ телефоне
+// (даже ещё не залитое в Storage) — включая на том самом телефоне, который
+// это фото только что снял. Перед заменой — переносим в приходящую версию
+// любое фото, которого там нет, но которое реально есть локально (не только
+// готовые ссылки, как в absorbKnownPhotoUrls, а вообще любые непустые
+// значения, в том числе временный base64).
+function fillMissingPhotosFromLocal(incoming, local){
+  if(!incoming || !local || !Array.isArray(incoming.photoIds) || !Array.isArray(local.photoIds) || !Array.isArray(local.photos)) return;
+  if(!Array.isArray(incoming.photos)) incoming.photos = [];
+  incoming.photoIds.forEach((pid, i) => {
+    if(!pid || incoming.photos[i]) return; // уже есть что показать
+    const li = local.photoIds.indexOf(pid);
+    if(li !== -1 && local.photos[li]) incoming.photos[i] = local.photos[li];
+  });
 }
 // Копия заявки для отправки в облако: пока какое-то фото ещё не долетело до
 // Firebase Storage (лежит как base64), в облако вместо него уходит null —
@@ -4716,7 +4748,7 @@ function subscribeCloud(userRef, onBaselineReady){
         // Если локальная версия новее — оставляем её как есть, ничего не
         // теряя: она и так будет отправлена в облако через flushCloudSave(),
         // как только к нему дойдёт очередь (сравнение там идёт по editedAt).
-        if(incomingEt >= localEt){ notes[idx] = incoming; touched = true; }
+        if(incomingEt >= localEt){ fillMissingPhotosFromLocal(incoming, notes[idx]); notes[idx] = incoming; touched = true; }
         else if(absorbKnownPhotoUrls(notes[idx], incoming)){ touched = true; }
       }
       lastSyncedNotes.set(id, incomingEt);
@@ -5271,7 +5303,7 @@ function refreshFromCloudOnResume(){
       }
       else {
         const localEt = notes[idx].editedAt || notes[idx].createdAt || 0;
-        if(incomingEt >= localEt){ notes[idx] = incoming; touched = true; }
+        if(incomingEt >= localEt){ fillMissingPhotosFromLocal(incoming, notes[idx]); notes[idx] = incoming; touched = true; }
         else if(absorbKnownPhotoUrls(notes[idx], incoming)){ touched = true; }
       }
       lastSyncedNotes.set(id, incomingEt);
