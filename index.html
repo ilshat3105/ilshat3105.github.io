@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:26 (добавлен отдельный error-колбэк у state_changed для более точной диагностики зависшей загрузки)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:34 (при таймауте загрузки фото дополнительно показывается реальный код ошибки от Storage после отмены)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1986,9 +1986,15 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
     .catch(e => {
       clearTimeout(uploadTimeoutTimer);
       photoPendingUpload.delete(photoId);
+      // При таймауте дополнительно показываем реальный код/сообщение,
+      // которое в итоге вернул сам UploadTask после нашей отмены — обычно
+      // это ожидаемый 'storage/canceled' (сама отмена), но если SDK вдруг
+      // вернёт что-то другое (например, настоящую ошибку сети/прав,
+      // подоспевшую как раз к моменту отмены) — это будет видно.
+      const realCode = (e && (e.code || e.message)) ? String(e.code || e.message) : null;
       const msg = uploadTimedOut
-        ? 'нет ответа от Storage дольше 30 сек (обрыв/очень слабая связь)'
-        : ((e && (e.code || e.message)) ? String(e.code || e.message) : 'неизвестная ошибка');
+        ? 'нет ответа от Storage дольше 30 сек' + (realCode ? ' (код после отмены: ' + realCode + ')' : ' (код после отмены: нет)')
+        : (realCode || 'неизвестная ошибка');
       photoUploadErrorMsg.set(photoId, msg);
       console.warn('Не удалось загрузить фото в облако (осталось локально на этом телефоне):', e);
       // Раньше ошибка была видна только в консоли браузера — теперь сразу
