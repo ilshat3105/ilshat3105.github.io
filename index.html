@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:05 (поиск заявки после загрузки фото — по photoId, а не по id заявки)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:15 (временная диагностика: под фото в редакторе видна стадия отправки в облако)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1837,6 +1837,22 @@ function photoSrcById(p, photoId){
   if(!p && photoId && photoUploadErrorMsg.has(photoId)) return PHOTO_ERROR_PLACEHOLDER;
   return photoSrc(p);
 }
+// ВРЕМЕННАЯ пошаговая диагностика цепочки "фото → облако" (по просьбе живого
+// теста, когда ошибка нигде не бросается, но фото всё равно не доезжает до
+// второго телефона). Показывает под фото в редакторе, на каком именно шаге
+// цепочка сейчас остановилась — так на живом проблемном телефоне видно место
+// обрыва, а не только "не работает". Отдельно от photoUploadErrorMsg: здесь
+// нет ошибки (никто не бросил исключение), просто цепочка почему-то не
+// доходит до конца.
+const photoUploadStage = new Map(); // photoId -> текст стадии
+function setPhotoStage(photoId, stage){
+  if(!photoId) return;
+  photoUploadStage.set(photoId, stage);
+  if(editingNote){
+    const ei = (editingNote.photoIds || []).indexOf(photoId);
+    if(ei !== -1) renderEditorPhotos();
+  }
+}
 
 // id фото, которые прямо сейчас грузятся в Firebase Storage — чтобы не запускать
 // повторную загрузку того же фото дважды параллельно (например, если и обычная
@@ -1879,6 +1895,7 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
   // попасть в очередь нового аккаунта (см. queueStorageDeletePath).
   const uploadUID = currentUID;
   const path = 'users/' + uploadUID + '/photos/' + photoId + '.jpg';
+  setPhotoStage(photoId, 'converting-to-blob');
   let blob;
   try{
     blob = dataURItoBlob(dataUrl);
@@ -1888,9 +1905,11 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
     renderContent();
     return;
   }
+  setPhotoStage(photoId, 'uploading-storage');
   storage.ref(path).put(blob)
-    .then(snap => snap.ref.getDownloadURL())
+    .then(snap => { setPhotoStage(photoId, 'storage-uploaded'); return snap.ref.getDownloadURL(); })
     .then(url => {
+      setPhotoStage(photoId, 'got-download-url');
       photoPendingUpload.delete(photoId);
       if(currentUID !== uploadUID){
         // Аккаунт сменился, пока фото грузилось — эта заявка и эта очередь
@@ -1921,6 +1940,7 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
       if(liveNote.photos[idx] === url) return; // уже применено (повторная попытка/дубль)
       liveNote.photos[idx] = url;
       liveNote.editedAt = Date.now();
+      setPhotoStage(photoId, 'url-written-local');
       saveState();
       if(editingNote && String(editingNote.id) === String(liveNote.id)){
         const ei = (editingNote.photoIds || []).indexOf(photoId);
@@ -1929,6 +1949,7 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
       }
       renderContent();
       scheduleCloudSave();
+      setPhotoStage(photoId, 'cloud-save-scheduled');
     })
     .catch(e => {
       photoPendingUpload.delete(photoId);
@@ -2460,6 +2481,10 @@ function renderEditorPhotos(){
   wrap.innerHTML = photos.map((p, i) => {
     const pct = ocrProgressPercent[ids[i]];
     const errMsg = ids[i] ? photoUploadErrorMsg.get(ids[i]) : null;
+    // ВРЕМЕННО: показываем стадию цепочки "фото → облако", пока ошибки нет,
+    // но само фото ещё не превратилось в постоянную ссылку (p всё ещё base64
+    // или пусто) — чтобы видеть, на каком шаге цепочка застряла.
+    const stage = (!errMsg && ids[i] && isDataUrlPhoto(p)) ? photoUploadStage.get(ids[i]) : null;
     return `
     <div style="width:64px;">
     <div class="ed-photo-thumb">
@@ -2468,6 +2493,7 @@ function renderEditorPhotos(){
       <button class="ed-rm" data-edphotorm="${i}">×</button>
     </div>
     ${errMsg ? `<div style="font-size:9.5px;line-height:1.2;color:#b02a37;text-align:center;word-break:break-word;margin-top:2px;">${escapeHtml(errMsg)}</div>` : ''}
+    ${stage ? `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;word-break:break-word;margin-top:2px;">${escapeHtml(stage)}</div>` : ''}
     </div>`;
   }).join('') + `<button class="ed-add-photo${photos.length < 2 ? ' labeled' : ''}" id="edAddPhotoBtn">${
     photos.length === 0 ? 'Загрузить заявку' : photos.length === 1 ? 'Загрузить платёжку' : '+'
@@ -4517,6 +4543,14 @@ function flushCloudSave(){
         const map = op.kind === 'note' ? lastSyncedNotes : lastSyncedExpenses;
         if(op.action === 'set') map.set(op.id, op.et);
         else map.delete(op.id);
+        // ВРЕМЕННАЯ диагностика (см. photoUploadStage): эта заявка реально
+        // подтвердилась сервером — если в ней есть фото, чья цепочка ещё
+        // отслеживается, отмечаем последний шаг.
+        if(op.kind === 'note' && op.action === 'set' && op.data && Array.isArray(op.data.photoIds)){
+          op.data.photoIds.forEach(pid => {
+            if(pid && photoUploadStage.has(pid)) setPhotoStage(pid, 'firestore-save-confirmed');
+          });
+        }
       });
       lastSyncedMetaJSON = metaJSON;
       maybeSaveDailyBackup(stateSnapshot());
