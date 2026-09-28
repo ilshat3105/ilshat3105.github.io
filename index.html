@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 23:11 (sw.js: index.html — обязательный файл при установке, иконки/manifest — нет)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-28 23:38 (загрузка фото в облако сама повторяется — при ошибке через 10 сек и при каждом возврате в приложение)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1328,7 +1328,7 @@ function noteCardHtml(n, favInfo){
   if(hasPhotos){
     const shownPhotos = photos.slice(0,3);
     photosHtml = `<div class="photos-row">
-      ${shownPhotos.map((p,i) => `<div class="photo-thumb-sm" data-cardphoto="${n.id}:${i}"><img src="${photoSrc(p)}"></div>`).join('')}
+      ${shownPhotos.map((p,i) => `<div class="photo-thumb-sm" data-cardphoto="${n.id}:${i}"><img src="${photoSrcById(p, n.photoIds && n.photoIds[i])}"></div>`).join('')}
       ${photos.length > 3 ? `<div class="photo-more" data-cardphoto="${n.id}:3">+${photos.length-3}</div>` : ''}
     </div>`;
   }
@@ -1816,6 +1816,27 @@ const PENDING_PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponen
 );
 function photoSrc(p){ return p || PENDING_PHOTO_PLACEHOLDER; }
 function isDataUrlPhoto(p){ return typeof p === 'string' && p.indexOf('data:image') === 0; }
+// Раньше ошибка загрузки фото в Firebase Storage (например, отказ доступа
+// в правилах Storage, а не просто "нет связи") просто писалась в консоль
+// браузера, которую на телефоне никто не видит — снаружи это выглядело
+// точно так же, как обычная "ещё грузится" заглушка, и оставалось так
+// навсегда, даже при рабочем интернете. Теперь такую ошибку запоминаем
+// (по id фото) и показываем отдельной, заметно другой заглушкой — красной,
+// с текстом "ошибка!" вместо серой "фото…", плюс сам текст ошибки под
+// увеличенным фото в редакторе заявки — чтобы её можно было прочитать и
+// понять причину, а не только увидеть, что фото не грузится.
+const photoUploadErrorMsg = new Map();
+const PHOTO_ERROR_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">' +
+  '<rect width="120" height="120" fill="#f8d7da"/>' +
+  '<text x="60" y="60" font-size="13" text-anchor="middle" fill="#b02a37" font-family="sans-serif">ошибка</text>' +
+  '<text x="60" y="76" font-size="13" text-anchor="middle" fill="#b02a37" font-family="sans-serif">загрузки!</text>' +
+  '</svg>'
+);
+function photoSrcById(p, photoId){
+  if(!p && photoId && photoUploadErrorMsg.has(photoId)) return PHOTO_ERROR_PLACEHOLDER;
+  return photoSrc(p);
+}
 
 // id фото, которые прямо сейчас грузятся в Firebase Storage — чтобы не запускать
 // повторную загрузку того же фото дважды параллельно (например, если и обычная
@@ -1834,6 +1855,7 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
   if(!currentUID || !photoId) return;
   if(photoPendingUpload.has(photoId)) return; // уже грузится
   photoPendingUpload.add(photoId);
+  photoUploadErrorMsg.delete(photoId); // новая попытка — прежняя ошибка (если была) больше не актуальна
   // Фиксируем, под каким аккаунтом эта загрузка началась. Загрузка идёт
   // несколько секунд — если за это время выйти из этого аккаунта и войти в
   // другой (currentUID сменится), то к моменту завершения "текущим" уже будет
@@ -1888,7 +1910,37 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
     })
     .catch(e => {
       photoPendingUpload.delete(photoId);
+      const msg = (e && (e.code || e.message)) ? String(e.code || e.message) : 'неизвестная ошибка';
+      photoUploadErrorMsg.set(photoId, msg);
       console.warn('Не удалось загрузить фото в облако (осталось локально на этом телефоне):', e);
+      // Раньше ошибка была видна только в консоли браузера — теперь сразу
+      // перерисовываем список заявок и (если открыт) редактор, чтобы вместо
+      // серой заглушки "фото…" стала видна красная "ошибка загрузки!" с
+      // текстом самой ошибки — иначе с телефона было невозможно понять,
+      // что вообще происходит.
+      renderContent();
+      if(editingNote){
+        const ei = (editingNote.photoIds || []).indexOf(photoId);
+        if(ei !== -1) renderEditorPhotos();
+      }
+      // Раньше повторная попытка загрузки назначалась только на событие
+      // браузера 'online' (реальный переход из офлайна в онлайн) и один раз
+      // при первом подключении к синхронизации. Если телефон всё это время
+      // формально был онлайн (LTE не пропадала), а всего ОДИН конкретный
+      // запрос к Storage сорвался — событие 'online' могло больше не
+      // наступить никогда, и фото так и оставалось бы base64 локально сколь
+      // угодно долго. Поэтому теперь после ошибки сами планируем одну
+      // повторную попытку через 10 секунд — без неё вся надежда была на
+      // счастливый случай (перезапуск приложения, реальный обрыв связи).
+      const retryUID = currentUID;
+      setTimeout(() => {
+        if(currentUID !== retryUID) return; // сменился аккаунт — не наш случай
+        const liveNote = notes.find(n => n && Array.isArray(n.photoIds) && n.photoIds.includes(photoId));
+        if(!liveNote) return;
+        const idx = liveNote.photoIds.indexOf(photoId);
+        const localPhoto = liveNote.photos && liveNote.photos[idx];
+        if(isDataUrlPhoto(localPhoto)) uploadPhotoAndReplace(liveNote, photoId, localPhoto);
+      }, 10000);
     });
 }
 // На случай, если фото добавили без связи (или загрузка не удалась) — как только
@@ -2385,11 +2437,15 @@ function renderEditorPhotos(){
   const ids = editingNote.photoIds || [];
   wrap.innerHTML = photos.map((p, i) => {
     const pct = ocrProgressPercent[ids[i]];
+    const errMsg = ids[i] ? photoUploadErrorMsg.get(ids[i]) : null;
     return `
+    <div style="width:64px;">
     <div class="ed-photo-thumb">
-      <img src="${photoSrc(p)}" data-viewphoto="${i}">
+      <img src="${photoSrcById(p, ids[i])}" data-viewphoto="${i}">
       ${ocrPendingPhotos.has(ids[i]) ? `<div class="ed-photo-checking"><span class="spinner"></span>${typeof pct === 'number' ? `<span class="pct">${pct}%</span>` : ''}</div>` : ''}
       <button class="ed-rm" data-edphotorm="${i}">×</button>
+    </div>
+    ${errMsg ? `<div style="font-size:9.5px;line-height:1.2;color:#b02a37;text-align:center;word-break:break-word;margin-top:2px;">${escapeHtml(errMsg)}</div>` : ''}
     </div>`;
   }).join('') + `<button class="ed-add-photo${photos.length < 2 ? ' labeled' : ''}" id="edAddPhotoBtn">${
     photos.length === 0 ? 'Загрузить заявку' : photos.length === 1 ? 'Загрузить платёжку' : '+'
@@ -2445,7 +2501,8 @@ function openLightbox(i, photosArr){
 }
 function renderLightbox(){
   const photos = lightboxPhotos || editingNote.photos || [];
-  document.getElementById('lbImg').src = photoSrc(photos[lbIndex]);
+  const lbIds = editingNote.photoIds || [];
+  document.getElementById('lbImg').src = photoSrcById(photos[lbIndex], lbIds[lbIndex]);
   document.getElementById('lbCount').textContent = `${lbIndex+1} / ${photos.length}`;
   const multi = photos.length > 1;
   document.getElementById('lbPrev').style.display = multi ? 'flex' : 'none';
@@ -5325,6 +5382,11 @@ if ('serviceWorker' in navigator) {
         if(document.visibilityState === 'visible'){
           registration.update().catch(() => {});
           refreshFromCloudOnResume();
+          // Тот же повод — реальный возврат в приложение — самый надёжный момент
+          // проверить, не остались ли фото, которые так и не долетели до Storage
+          // (см. uploadPhotoAndReplace). 'online' у браузера тут не помогает: если
+          // связь всё это время формально была, событие просто не наступит.
+          retryPendingPhotoUploads();
         }
       });
     }).catch(() => {});
