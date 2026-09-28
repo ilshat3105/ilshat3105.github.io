@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:15 (временная диагностика: под фото в редакторе видна стадия отправки в облако)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:20 (диагностика загрузки фото показывает реальный прогресс в байтах — видно, дошёл ли запрос до сети вообще)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1906,8 +1906,32 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
     return;
   }
   setPhotoStage(photoId, 'uploading-storage');
-  storage.ref(path).put(blob)
-    .then(snap => { setPhotoStage(photoId, 'storage-uploaded'); return snap.ref.getDownloadURL(); })
+  // У storage.put() нет своего таймаута — если запрос на нестабильной связи
+  // просто зависает (не завершается НИ успехом, НИ ошибкой), promise мог не
+  // решиться вообще никогда: .catch() тогда нечему сработать, ошибка нигде
+  // не появляется, а retry (через 10 сек / при возврате в приложение) не
+  // запускается, потому что photoPendingUpload.has(photoId) всё ещё true —
+  // выглядит как "тихо ничего не происходит". Обнаружено именно так живым
+  // тестом (стадия навсегда застревала на uploading-storage). Обрываем сами.
+  const UPLOAD_TIMEOUT_MS = 30000;
+  let uploadTimedOut = false;
+  const uploadTask = storage.ref(path).put(blob);
+  const uploadTimeoutTimer = setTimeout(() => {
+    uploadTimedOut = true;
+    try{ uploadTask.cancel(); }catch(cancelErr){}
+  }, UPLOAD_TIMEOUT_MS);
+  // Наблюдатель state_changed — показывает РЕАЛЬНЫЙ прогресс (сколько байт
+  // реально ушло), а не только факт "зависло/не зависло". Если progress
+  // застревает на 0 байт — запрос, скорее всего, вообще не пробился в сеть
+  // (блокировка/CORS); если застревает где-то в середине — связь оборвалась
+  // посреди самой передачи. Отдельно от .then/.catch самого put() — это
+  // именно для диагностики на экране, ни на что в логике не влияет.
+  uploadTask.on('state_changed', (snapshot) => {
+    const pct = snapshot.totalBytes ? Math.round(100 * snapshot.bytesTransferred / snapshot.totalBytes) : 0;
+    setPhotoStage(photoId, 'uploading-storage ' + pct + '% (' + snapshot.bytesTransferred + '/' + snapshot.totalBytes + ' байт, ' + snapshot.state + ')');
+  });
+  uploadTask
+    .then(snap => { clearTimeout(uploadTimeoutTimer); setPhotoStage(photoId, 'storage-uploaded'); return snap.ref.getDownloadURL(); })
     .then(url => {
       setPhotoStage(photoId, 'got-download-url');
       photoPendingUpload.delete(photoId);
@@ -1952,8 +1976,11 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
       setPhotoStage(photoId, 'cloud-save-scheduled');
     })
     .catch(e => {
+      clearTimeout(uploadTimeoutTimer);
       photoPendingUpload.delete(photoId);
-      const msg = (e && (e.code || e.message)) ? String(e.code || e.message) : 'неизвестная ошибка';
+      const msg = uploadTimedOut
+        ? 'нет ответа от Storage дольше 30 сек (обрыв/очень слабая связь)'
+        : ((e && (e.code || e.message)) ? String(e.code || e.message) : 'неизвестная ошибка');
       photoUploadErrorMsg.set(photoId, msg);
       console.warn('Не удалось загрузить фото в облако (осталось локально на этом телефоне):', e);
       // Раньше ошибка была видна только в консоли браузера — теперь сразу
