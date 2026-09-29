@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 02:34 (при таймауте загрузки фото дополнительно показывается реальный код ошибки от Storage после отмены)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 09:43 (загрузка фото передаёт байты напрямую вместо Blob — пробуем обойти возможное зависание на некоторых Android-телефонах)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1880,7 +1880,7 @@ function dataURItoBlob(dataURI){
   for(let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
   return new Blob([ab], { type: mimeString });
 }
-function uploadPhotoAndReplace(note, photoId, dataUrl){
+async function uploadPhotoAndReplace(note, photoId, dataUrl){
   if(!currentUID || !photoId) return;
   if(photoPendingUpload.has(photoId)) return; // уже грузится
   photoPendingUpload.add(photoId);
@@ -1915,7 +1915,13 @@ function uploadPhotoAndReplace(note, photoId, dataUrl){
   // тестом (стадия навсегда застревала на uploading-storage). Обрываем сами.
   const UPLOAD_TIMEOUT_MS = 30000;
   let uploadTimedOut = false;
-  const uploadTask = storage.ref(path).put(blob);
+  // Передаём не сам Blob, а "чистые" байты (Uint8Array) — на некоторых
+  // Android-устройствах Blob внутри PWA может быть привязан к временному
+  // файловому дескриптору ОС, и SDK не всегда стабильно его читает.
+  // Uint8Array — это байты уже в памяти, без обращения к файловой системе.
+  // Явно указываем contentType, иначе он не определится сам по себе.
+  const uploadBytes = new Uint8Array(await blob.arrayBuffer());
+  const uploadTask = storage.ref(path).put(uploadBytes, { contentType: blob.type });
   const uploadTimeoutTimer = setTimeout(() => {
     uploadTimedOut = true;
     try{ uploadTask.cancel(); }catch(cancelErr){}
