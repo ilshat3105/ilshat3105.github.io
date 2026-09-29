@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 09:43 (загрузка фото передаёт байты напрямую вместо Blob — пробуем обойти возможное зависание на некоторых Android-телефонах)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 10:17 (если обычная загрузка фото зависает 30 сек — теперь пробуем запасной способ через прямой запрос к Storage)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1880,6 +1880,104 @@ function dataURItoBlob(dataURI){
   for(let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
   return new Blob([ab], { type: mimeString });
 }
+
+// Загрузка напрямую по REST API Firebase Storage, В ОБХОД обычного
+// storage.ref(path).put(...). Обычный способ использует внутри себя более
+// сложный протокол "возобновляемой загрузки" (несколько запросов подряд) —
+// если на конкретном телефоне/сети именно этот протокол не проходит (но
+// обычные одиночные запросы к сайту работают нормально), то простой
+// одиночный запрос по REST может пройти там, где не проходит обычный put().
+// Используем только как запасной путь — основной способ не убираем.
+async function uploadBytesViaRest(path, bytes, contentType){
+  const bucket = firebase.app().options.storageBucket;
+  const idToken = await auth.currentUser.getIdToken();
+  const restUploadUrl = 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) + '/o?uploadType=media&name=' + encodeURIComponent(path);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  let resp;
+  try{
+    resp = await fetch(restUploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Firebase ' + idToken,
+        'Content-Type': contentType || 'application/octet-stream'
+      },
+      body: bytes,
+      signal: controller.signal
+    });
+  }finally{
+    clearTimeout(timer);
+  }
+  if(!resp.ok){
+    let bodyText = '';
+    try{ bodyText = await resp.text(); }catch(readErr){}
+    throw new Error('REST HTTP ' + resp.status + (bodyText ? ': ' + bodyText.slice(0, 200) : ''));
+  }
+  const data = await resp.json();
+  const token = data && data.downloadTokens ? String(data.downloadTokens).split(',')[0] : null;
+  if(!token) throw new Error('REST: сервер не вернул downloadTokens');
+  return 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) + '/o/' + encodeURIComponent(path) + '?alt=media&token=' + token;
+}
+
+// Общая часть "загрузка успешно завершилась (неважно, обычным способом или
+// через REST-запасной путь) — записать ссылку в заявку и запланировать
+// сохранение". Вынесено в отдельную функцию, чтобы не дублировать этот код
+// для обоих способов загрузки.
+function applyUploadedPhotoUrl(note, photoId, uploadUID, path, url){
+  photoPendingUpload.delete(photoId);
+  if(currentUID !== uploadUID){
+    // Аккаунт сменился, пока фото грузилось — эта заявка и эта очередь
+    // удаления больше не относятся к тому, что сейчас открыто в
+    // приложении. Ничего не трогаем: файл в Storage останется (редкий
+    // случай, не страшно), но точно не попадёт не в тот аккаунт.
+    return;
+  }
+  // Пока фото грузилось, эту же заявку мог целиком заменить пришедший
+  // "с сервера" снимок (например, эхо нашей же более ранней отправки —
+  // см. fillMissingPhotosFromLocal) — тогда объект, на который до сих пор
+  // ссылается замыкание note, уже не тот, что лежит в notes[idx], и правка
+  // в него никуда бы не попала. Находим АКТУАЛЬНЫЙ объект этой заявки
+  // заново — по самому photoId (он однозначно определяет именно это фото
+  // и не зависит от того, успел ли у новой заявки появиться свой id к
+  // этому моменту), а не по note.id.
+  const liveNote = notes.find(n => n && Array.isArray(n.photoIds) && n.photoIds.includes(photoId)) || note;
+  const idx = (liveNote.photoIds || []).indexOf(photoId);
+  if(idx === -1){
+    // Фото успели удалить из заявки, пока шла загрузка (deletePhotoFromStorage
+    // в этот момент ничего не нашёл и тихо ничего не сделал — файла ещё не
+    // было). Теперь он появился, но уже никому не нужен — удаляем через ту
+    // же постоянную очередь, что и обычное удаление фото: если именно
+    // сейчас нет связи, попытка не потеряется, а повторится позже.
+    queueStorageDeletePath(path);
+    return;
+  }
+  if(liveNote.photos[idx] === url) return; // уже применено (повторная попытка/дубль)
+  liveNote.photos[idx] = url;
+  liveNote.editedAt = Date.now();
+  setPhotoStage(photoId, 'url-written-local');
+  saveState();
+  if(editingNote && String(editingNote.id) === String(liveNote.id)){
+    const ei = (editingNote.photoIds || []).indexOf(photoId);
+    if(ei !== -1) editingNote.photos[ei] = url;
+    renderEditorPhotos();
+  }
+  renderContent();
+  scheduleCloudSave();
+  setPhotoStage(photoId, 'cloud-save-scheduled');
+}
+
+// Общая часть "запланировать одну повторную попытку загрузки через 10 сек" —
+// используется и при обычной ошибке, и когда не сработал даже REST-запасной путь.
+function scheduleUploadRetry(photoId, retryUID){
+  setTimeout(() => {
+    if(currentUID !== retryUID) return; // сменился аккаунт — не наш случай
+    const liveNote = notes.find(n => n && Array.isArray(n.photoIds) && n.photoIds.includes(photoId));
+    if(!liveNote) return;
+    const idx = liveNote.photoIds.indexOf(photoId);
+    const localPhoto = liveNote.photos && liveNote.photos[idx];
+    if(isDataUrlPhoto(localPhoto)) uploadPhotoAndReplace(liveNote, photoId, localPhoto);
+  }, 10000);
+}
 async function uploadPhotoAndReplace(note, photoId, dataUrl){
   if(!currentUID || !photoId) return;
   if(photoPendingUpload.has(photoId)) return; // уже грузится
@@ -1948,59 +2046,46 @@ async function uploadPhotoAndReplace(note, photoId, dataUrl){
     .then(snap => { clearTimeout(uploadTimeoutTimer); setPhotoStage(photoId, 'storage-uploaded'); return snap.ref.getDownloadURL(); })
     .then(url => {
       setPhotoStage(photoId, 'got-download-url');
-      photoPendingUpload.delete(photoId);
-      if(currentUID !== uploadUID){
-        // Аккаунт сменился, пока фото грузилось — эта заявка и эта очередь
-        // удаления больше не относятся к тому, что сейчас открыто в
-        // приложении. Ничего не трогаем: файл в Storage останется (редкий
-        // случай, не страшно), но точно не попадёт не в тот аккаунт.
-        return;
-      }
-      // Пока фото грузилось, эту же заявку мог целиком заменить пришедший
-      // "с сервера" снимок (например, эхо нашей же более ранней отправки —
-      // см. fillMissingPhotosFromLocal) — тогда объект, на который до сих пор
-      // ссылается замыкание note, уже не тот, что лежит в notes[idx], и правка
-      // в него никуда бы не попала. Находим АКТУАЛЬНЫЙ объект этой заявки
-      // заново — по самому photoId (он однозначно определяет именно это фото
-      // и не зависит от того, успел ли у новой заявки появиться свой id к
-      // этому моменту), а не по note.id.
-      const liveNote = notes.find(n => n && Array.isArray(n.photoIds) && n.photoIds.includes(photoId)) || note;
-      const idx = (liveNote.photoIds || []).indexOf(photoId);
-      if(idx === -1){
-        // Фото успели удалить из заявки, пока шла загрузка (deletePhotoFromStorage
-        // в этот момент ничего не нашёл и тихо ничего не сделал — файла ещё не
-        // было). Теперь он появился, но уже никому не нужен — удаляем через ту
-        // же постоянную очередь, что и обычное удаление фото: если именно
-        // сейчас нет связи, попытка не потеряется, а повторится позже.
-        queueStorageDeletePath(path);
-        return;
-      }
-      if(liveNote.photos[idx] === url) return; // уже применено (повторная попытка/дубль)
-      liveNote.photos[idx] = url;
-      liveNote.editedAt = Date.now();
-      setPhotoStage(photoId, 'url-written-local');
-      saveState();
-      if(editingNote && String(editingNote.id) === String(liveNote.id)){
-        const ei = (editingNote.photoIds || []).indexOf(photoId);
-        if(ei !== -1) editingNote.photos[ei] = url;
-        renderEditorPhotos();
-      }
-      renderContent();
-      scheduleCloudSave();
-      setPhotoStage(photoId, 'cloud-save-scheduled');
+      applyUploadedPhotoUrl(note, photoId, uploadUID, path, url);
     })
-    .catch(e => {
+    .catch(async e => {
       clearTimeout(uploadTimeoutTimer);
-      photoPendingUpload.delete(photoId);
       // При таймауте дополнительно показываем реальный код/сообщение,
       // которое в итоге вернул сам UploadTask после нашей отмены — обычно
       // это ожидаемый 'storage/canceled' (сама отмена), но если SDK вдруг
       // вернёт что-то другое (например, настоящую ошибку сети/прав,
       // подоспевшую как раз к моменту отмены) — это будет видно.
       const realCode = (e && (e.code || e.message)) ? String(e.code || e.message) : null;
-      const msg = uploadTimedOut
-        ? 'нет ответа от Storage дольше 30 сек' + (realCode ? ' (код после отмены: ' + realCode + ')' : ' (код после отмены: нет)')
-        : (realCode || 'неизвестная ошибка');
+
+      if(uploadTimedOut){
+        // Обычный способ (Firebase SDK) завис на 0 переданных байт — пробуем
+        // один раз отправить те же самые байты напрямую по REST API, в обход
+        // внутреннего протокола возобновляемой загрузки SDK. См. комментарий
+        // у uploadBytesViaRest выше. Если получится — фото загрузится этим
+        // способом, если нет — покажем более точную причину, чем раньше.
+        setPhotoStage(photoId, 'timeout-retry-via-rest');
+        try{
+          const restUrl = await uploadBytesViaRest(path, uploadBytes, blob.type);
+          setPhotoStage(photoId, 'got-download-url-via-rest');
+          applyUploadedPhotoUrl(note, photoId, uploadUID, path, restUrl);
+          return;
+        }catch(restErr){
+          photoPendingUpload.delete(photoId);
+          const restMsg = (restErr && restErr.message) ? restErr.message : String(restErr);
+          photoUploadErrorMsg.set(photoId, 'нет ответа от Storage дольше 30 сек, запасной способ (REST) тоже не сработал: ' + restMsg);
+          console.warn('Обычная загрузка зависла, REST-запасной путь тоже не сработал:', restErr);
+          renderContent();
+          if(editingNote){
+            const ei = (editingNote.photoIds || []).indexOf(photoId);
+            if(ei !== -1) renderEditorPhotos();
+          }
+          scheduleUploadRetry(photoId, currentUID);
+          return;
+        }
+      }
+
+      photoPendingUpload.delete(photoId);
+      const msg = realCode || 'неизвестная ошибка';
       photoUploadErrorMsg.set(photoId, msg);
       console.warn('Не удалось загрузить фото в облако (осталось локально на этом телефоне):', e);
       // Раньше ошибка была видна только в консоли браузера — теперь сразу
@@ -2022,15 +2107,7 @@ async function uploadPhotoAndReplace(note, photoId, dataUrl){
       // угодно долго. Поэтому теперь после ошибки сами планируем одну
       // повторную попытку через 10 секунд — без неё вся надежда была на
       // счастливый случай (перезапуск приложения, реальный обрыв связи).
-      const retryUID = currentUID;
-      setTimeout(() => {
-        if(currentUID !== retryUID) return; // сменился аккаунт — не наш случай
-        const liveNote = notes.find(n => n && Array.isArray(n.photoIds) && n.photoIds.includes(photoId));
-        if(!liveNote) return;
-        const idx = liveNote.photoIds.indexOf(photoId);
-        const localPhoto = liveNote.photos && liveNote.photos[idx];
-        if(isDataUrlPhoto(localPhoto)) uploadPhotoAndReplace(liveNote, photoId, localPhoto);
-      }, 10000);
+      scheduleUploadRetry(photoId, currentUID);
     });
 }
 // На случай, если фото добавили без связи (или загрузка не удалась) — как только
