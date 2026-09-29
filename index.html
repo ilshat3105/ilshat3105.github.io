@@ -875,7 +875,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 10:17 (если обычная загрузка фото зависает 30 сек — теперь пробуем запасной способ через прямой запрос к Storage)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 10:41 (починен тап по фото прямо на главном экране — раньше не открывалось из-за ошибки в коде)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1529,7 +1529,7 @@ document.getElementById('content').addEventListener('click', (e) => {
     const [nid, idx] = cardPhoto.getAttribute('data-cardphoto').split(':');
     const n = notes.find(x => x.id == nid);
     if(n && n.photos && n.photos.length){
-      openLightbox(Math.min(parseInt(idx, 10), n.photos.length - 1), n.photos);
+      openLightbox(Math.min(parseInt(idx, 10), n.photos.length - 1), n.photos, n.photoIds);
     }
     return;
   }
@@ -1919,6 +1919,27 @@ async function uploadBytesViaRest(path, bytes, contentType){
   return 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) + '/o/' + encodeURIComponent(path) + '?alt=media&token=' + token;
 }
 
+// Простая проверка "жив ли вообще сервер Storage с этого телефона прямо
+// сейчас" — обычный GET без токена и без своих заголовков (никакого
+// Authorization). В отличие от POST выше, у такого запроса НЕТ предварительного
+// OPTIONS-запроса браузера (CORS preflight) — он либо: (а) получит хоть
+// какой-то ответ сервера (даже "доступ запрещён" — это уже ответ, значит
+// сервер отвечает), либо (б) так же сорвётся без ответа вообще — тогда дело
+// не в конкретном POST-запросе с авторизацией, а в самом хосте целиком.
+async function probeStorageReachability(bucket){
+  const probeUrl = 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) + '/o?maxResults=1';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try{
+    const resp = await fetch(probeUrl, { method: 'GET', signal: controller.signal });
+    return 'ответ получен, HTTP ' + resp.status;
+  }catch(probeErr){
+    return 'тоже без ответа: ' + ((probeErr && probeErr.message) || probeErr);
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 // Общая часть "загрузка успешно завершилась (неважно, обычным способом или
 // через REST-запасной путь) — записать ссылку в заявку и запланировать
 // сохранение". Вынесено в отдельную функцию, чтобы не дублировать этот код
@@ -2072,8 +2093,13 @@ async function uploadPhotoAndReplace(note, photoId, dataUrl){
         }catch(restErr){
           photoPendingUpload.delete(photoId);
           const restMsg = (restErr && restErr.message) ? restErr.message : String(restErr);
-          photoUploadErrorMsg.set(photoId, 'нет ответа от Storage дольше 30 сек, запасной способ (REST) тоже не сработал: ' + restMsg);
-          console.warn('Обычная загрузка зависла, REST-запасной путь тоже не сработал:', restErr);
+          // Дополнительная проверка: простой GET без авторизации к тому же
+          // серверу — показывает, отвечает ли сервер Storage вообще с этого
+          // телефона прямо сейчас, или проблема именно в POST-запросе.
+          setPhotoStage(photoId, 'проверяем доступность сервера…');
+          const probeResult = await probeStorageReachability(firebase.app().options.storageBucket);
+          photoUploadErrorMsg.set(photoId, 'нет ответа от Storage дольше 30 сек, запасной способ (REST) тоже не сработал: ' + restMsg + '. Проверка сервера простым запросом: ' + probeResult);
+          console.warn('Обычная загрузка зависла, REST-запасной путь тоже не сработал:', restErr, 'проверка сервера:', probeResult);
           renderContent();
           if(editingNote){
             const ei = (editingNote.photoIds || []).indexOf(photoId);
@@ -2661,9 +2687,16 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
 // ---- lightbox ----
 let lbIndex = 0;
 let lightboxPhotos = null;
-function openLightbox(i, photosArr){
+let lightboxPhotoIds = null;
+function openLightbox(i, photosArr, photoIdsArr){
   lbIndex = i;
   lightboxPhotos = photosArr || null;
+  // Открытие фото прямо с главного списка (карточка заявки) идёт без открытия
+  // самого редактора — editingNote в этот момент равен null. Раньше renderLightbox()
+  // всегда читал editingNote.photoIds напрямую — из-за этого при открытии фото с
+  // главного экрана возникала ошибка (editingNote был null) ещё до того, как
+  // лайтбокс успевал показаться, и по факту тап по фото ничего не делал.
+  lightboxPhotoIds = photoIdsArr || null;
   renderLightbox();
   document.getElementById('lightbox').classList.add('show');
   const hint = document.getElementById('lbLensHint');
@@ -2672,8 +2705,8 @@ function openLightbox(i, photosArr){
   openLightbox._hintTimer = setTimeout(() => hint.classList.remove('show'), 3500);
 }
 function renderLightbox(){
-  const photos = lightboxPhotos || editingNote.photos || [];
-  const lbIds = editingNote.photoIds || [];
+  const photos = lightboxPhotos || (editingNote ? editingNote.photos : null) || [];
+  const lbIds = lightboxPhotoIds || (editingNote ? editingNote.photoIds : null) || [];
   document.getElementById('lbImg').src = photoSrcById(photos[lbIndex], lbIds[lbIndex]);
   document.getElementById('lbCount').textContent = `${lbIndex+1} / ${photos.length}`;
   const multi = photos.length > 1;
@@ -2684,6 +2717,7 @@ function renderLightbox(){
 document.getElementById('lbClose').addEventListener('click', () => {
   document.getElementById('lightbox').classList.remove('show');
   lightboxPhotos = null;
+  lightboxPhotoIds = null;
 });
 // Если фото приблизили пальцами (щипком) перед распознаванием — вырезаем именно ту
 // область, что видна на экране прямо сейчас, а не всё фото целиком. Меньше лишнего
