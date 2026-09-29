@@ -46,15 +46,36 @@ jobs:
         run: |
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
+      - name: Restore permanent keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/vreyse.jks
+
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Build debug APK
+      - name: Build signed APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.TEST_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew assembleDebug
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" sign \
+            --ks app/vreyse.jks \
+            --ks-key-alias test \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEYSTORE_PASSWORD \
+            --out app/build/outputs/apk/debug/v-reyse-signed.apk \
+            app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify APK signature
+        working-directory: android
+        run: |
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/v-reyse-signed.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: v-reyse-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: v-reyse-signed-apk
+          path: android/app/build/outputs/apk/debug/v-reyse-signed.apk
