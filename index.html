@@ -827,6 +827,7 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="searchInput" placeholder="Поиск">
     </div>
+    <div id="syncIcon" style="display:none;width:26px;height:26px;align-items:center;justify-content:center;font-size:15px;color:var(--muted);flex-shrink:0;" title="Не синхронизировано — ждём связи"></div>
     <div class="avatar" id="avatar">Я</div>
   </header>
 
@@ -875,7 +876,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 10:41 (починен тап по фото прямо на главном экране — раньше не открывалось из-за ошибки в коде)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 16:48 (иконка «не синхронизировано» в шапке теперь в том же стиле, что и остальные иконки, а не текстовый символ)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -4535,18 +4536,37 @@ let cloudRetryTimer = null;
 let cloudSaveInFlight = null;
 let cloudSaveAgainNeeded = false;
 const syncBadgeEl = document.getElementById('syncBadge');
-// 'idle'/'synced' — бейдж скрыт, чтобы не мешать в обычной работе. 'pending' —
-// короткая нейтральная пометка. 'error' — ЗАМЕТНАЯ, не исчезает сама, с тапом
-// для ручного повтора: раньше неудачная отправка была видна только в консоли
-// браузера, которую никто не открывает.
+const syncIconEl = document.getElementById('syncIcon');
+// 'idle'/'synced' — не показываем вообще ничего, чтобы не мешать в обычной
+// работе (как в Google Keep: сохранилось — и всё, не важно, что там дальше
+// происходит с облаком). 'pending' — раньше на КАЖДУЮ отправку (даже долю
+// секунды на хорошей связи) через весь экран вылезала полоса «Отправка…»,
+// из-за чего обычная нормальная работа выглядела как зависание или ошибка.
+// Теперь при 'pending' сначала ничего не показываем вообще, и только если
+// отправка реально затянулась дольше SYNC_PENDING_DELAY_MS — появляется
+// маленькая нейтральная иконка ☁ в шапке (между поиском и аватаркой), без
+// перекрытия интерфейса. 'error' — по-прежнему ЗАМЕТНАЯ на всю ширину, не
+// исчезает сама, с тапом для ручного повтора: это уже требует внимания
+// пользователя, а не рутинная фоновая отправка.
+const SYNC_PENDING_DELAY_MS = 10000;
+let syncPendingDelayTimer = null;
 let cloudLastErrorCode = '';
 function renderSyncBadge(){
+  clearTimeout(syncPendingDelayTimer);
   if(cloudSyncStatus === 'pending'){
-    syncBadgeEl.style.display = 'block';
-    syncBadgeEl.style.background = 'var(--concrete)';
-    syncBadgeEl.style.color = 'var(--muted)';
-    syncBadgeEl.textContent = 'Отправка…';
+    syncBadgeEl.style.display = 'none';
+    syncIconEl.style.display = 'none';
+    syncPendingDelayTimer = setTimeout(() => {
+      if(cloudSyncStatus !== 'pending') return; // за это время уже успело отправиться — тишина, как и задумано
+      syncIconEl.style.display = 'flex';
+      // SVG в том же стиле, что и иконки меню/поиска в шапке (обводка,
+      // без заливки) — вместо текстового символа ☁, который не совпадал
+      // по стилю с остальными иконками.
+      syncIconEl.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-1.8A6.5 6.5 0 1 0 6.5 19h11z"/></svg>';
+      syncIconEl.title = 'Не синхронизировано — ждём связи';
+    }, SYNC_PENDING_DELAY_MS);
   } else if(cloudSyncStatus === 'error'){
+    syncIconEl.style.display = 'none';
     syncBadgeEl.style.display = 'block';
     syncBadgeEl.style.background = '#fdecea';
     syncBadgeEl.style.color = '#c0392b';
@@ -4559,6 +4579,7 @@ function renderSyncBadge(){
       + ' — нажмите, чтобы повторить';
   } else {
     syncBadgeEl.style.display = 'none';
+    syncIconEl.style.display = 'none';
   }
 }
 syncBadgeEl.addEventListener('click', () => {
