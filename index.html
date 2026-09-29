@@ -876,7 +876,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 16:48 (иконка «не синхронизировано» в шапке теперь в том же стиле, что и остальные иконки, а не текстовый символ)</div>
+    <div style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;">Версия: 2026-09-29 21:25 (диагностика push-уведомлений на экране + порядок регистрации приведён к шаблону Capacitor — работает только внутри Android-сборки, в браузере ничего не меняется)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -5226,8 +5226,21 @@ try{
   }
 } catch(e){ console.warn('Push-уведомления не поддерживаются в этом браузере:', e); }
 
+// Приложение, собранное через Capacitor (Android из RuStore), работает внутри
+// того же самого index.html, но `window.Capacitor` в нём присутствует — это
+// единственный надёжный способ отличить "настоящее" Android-приложение от
+// обычного сайта/PWA в браузере, не заводя отдельную копию кода.
+function isNativeApp(){
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+
 function registerPushToken(){
-  if(!messaging || !currentUID) return;
+  if(!currentUID) return;
+  if(isNativeApp()){
+    registerNativePushToken();
+    return;
+  }
+  if(!messaging) return;
   Notification.requestPermission().then(permission => {
     if(permission !== 'granted') return;
     // VAPID-ключ берётся из консоли Firebase: Project Settings → Cloud Messaging →
@@ -5237,6 +5250,7 @@ function registerPushToken(){
         if(!token || !currentUID) return;
         db.collection('users').doc(currentUID).collection('devices').doc(token).set({
           token,
+          platform: 'web',
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           userAgent: navigator.userAgent
         }).catch(e => console.warn('Не удалось сохранить push-токен:', e));
@@ -5245,15 +5259,239 @@ function registerPushToken(){
   }).catch(e => console.warn('Не удалось запросить разрешение на уведомления:', e));
 }
 
+// ВРЕМЕННАЯ ДИАГНОСТИКА (убрать после того, как push подтвердятся рабочими).
+// Телефон без компьютера — нет доступа к chrome://inspect и логам устройства,
+// поэтому вместо console.warn выводим ключевые шаги прямо на экран, в углу,
+// маленькой полупрозрачной панелью. Работает только внутри Android-сборки.
+function pushDebugLog(msg){
+  if(!isNativeApp()) return;
+  let panel = document.getElementById('pushDebugPanel');
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'pushDebugPanel';
+    panel.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;max-height:40vh;overflow-y:auto;'
+      + 'background:rgba(0,0,0,.82);color:#8f8;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;'
+      + 'z-index:99999;white-space:pre-wrap;word-break:break-all;';
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '✕ закрыть';
+    closeBtn.style.cssText = 'color:#f88;text-align:right;margin-bottom:4px;';
+    closeBtn.addEventListener('click', () => panel.remove());
+    panel.appendChild(closeBtn);
+    document.body.appendChild(panel);
+  }
+  const line = document.createElement('div');
+  const t = new Date().toTimeString().slice(0, 8);
+  line.textContent = '[' + t + '] ' + msg;
+  panel.appendChild(line);
+}
+
+// Нативный путь (плагин @capacitor/push-notifications, добавляется в
+// Android-проект — см. инструкцию по сборке). Сам плагин запрашивает системное
+// разрешение Android 13+ (POST_NOTIFICATIONS), получает НАСТОЯЩИЙ Android FCM
+// token (не web-токен) и кладём его В ТУ ЖЕ коллекцию users/{uid}/devices —
+// облачной функции, которая рассылает пуши, никакой разницы нет: она просто
+// отправляет на все токены пользователя, откуда бы они ни были.
+//
+// Порядок ниже — по официальному шаблону Capacitor: сначала слушатели
+// (addListener), затем запрос разрешения и сам register(). По механике
+// промисов в JS текущий порядок и раньше не должен был терять события (колбэк
+// .then() не может выполниться раньше синхронного кода ниже), но раз уж
+// разбираемся — приводим к рекомендованному виду заодно.
+function registerNativePushToken(){
+  const PushNotifications = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+  if(!PushNotifications){
+    console.warn('Плагин PushNotifications не найден — проверьте, что @capacitor/push-notifications установлен и cap sync выполнен.');
+    pushDebugLog('ОШИБКА: плагин PushNotifications не найден (не установлен или не выполнен cap sync)');
+    return;
+  }
+
+  // Слушателей вешаем один раз за всё время работы приложения — иначе при
+  // повторном входе/выходе (registerPushToken() вызывается заново) они бы
+  // накапливались и один и тот же пуш обрабатывался бы по нескольку раз.
+  if(!registerNativePushToken._listenersAdded){
+    registerNativePushToken._listenersAdded = true;
+
+    PushNotifications.addListener('registration', (token) => {
+      pushDebugLog('registration: токен получен (' + (token && token.value ? token.value.slice(0, 16) + '…' : 'пусто') + ')');
+      if(!token || !token.value || !currentUID){
+        pushDebugLog('registration: пропущено — нет token.value или currentUID (currentUID=' + currentUID + ')');
+        return;
+      }
+      db.collection('users').doc(currentUID).collection('devices').doc(token.value).set({
+        token: token.value,
+        platform: 'android-native',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        userAgent: navigator.userAgent
+      }).then(() => {
+        pushDebugLog('Firestore: устройство успешно записано в users/' + currentUID + '/devices');
+      }).catch(e => {
+        console.warn('Не удалось сохранить нативный push-токен:', e);
+        pushDebugLog('ОШИБКА записи в Firestore: ' + ((e && (e.code || e.message)) || e));
+      });
+    });
+    PushNotifications.addListener('registrationError', (err) => {
+      console.warn('Ошибка регистрации push (Android):', err);
+      pushDebugLog('ОШИБКА registrationError: ' + JSON.stringify(err));
+    });
+    // Пуш пришёл, пока приложение открыто на экране — как и в веб-версии,
+    // отдельное системное уведомление ни к чему, просто тихо подтягиваем данные.
+    PushNotifications.addListener('pushNotificationReceived', () => {
+      pushDebugLog('pushNotificationReceived: пуш пришёл при открытом приложении');
+      refreshFromCloudOnResume();
+    });
+    // Пользователь нажал на само системное уведомление (приложение было
+    // свёрнуто или полностью закрыто) — открываем именно ту заявку, о которой
+    // пришло уведомление, если её id передан в данных пуша (см. инструкцию —
+    // облачная функция должна класть noteId в data пуша).
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const data = action && action.notification && action.notification.data;
+      const noteId = data && data.noteId;
+      pushDebugLog('pushNotificationActionPerformed: нажатие на уведомление, noteId=' + noteId);
+      if(noteId) openNoteByIdWhenReady(noteId);
+    });
+  }
+
+  pushDebugLog('запрошено разрешение (requestPermissions)…');
+  PushNotifications.requestPermissions().then(res => {
+    pushDebugLog('requestPermissions: результат receive=' + (res && res.receive));
+    if(!res || res.receive !== 'granted'){
+      pushDebugLog('register() НЕ вызван — разрешение не granted');
+      return;
+    }
+    pushDebugLog('вызываю register()…');
+    PushNotifications.register();
+  }).catch(e => {
+    console.warn('Не удалось запросить разрешение на push (Android):', e);
+    pushDebugLog('ОШИБКА requestPermissions: ' + ((e && (e.code || e.message)) || e));
+  });
+}
+
+// Сразу после холодного запуска (приложение было полностью закрыто, и его
+// открыли нажатием на уведомление) список заявок может быть ещё не загружен
+// из облака/локального хранилища в этот самый момент — ждём с повторными
+// попытками, а не пытаемся открыть заявку один раз и молча ничего не делаем.
+function openNoteByIdWhenReady(noteId, attemptsLeft){
+  if(attemptsLeft == null) attemptsLeft = 20;
+  const n = notes.find(x => String(x.id) === String(noteId));
+  if(n){
+    view = 'notes';
+    renderContent();
+    openEditor(n);
+    return;
+  }
+  if(attemptsLeft <= 0) return;
+  setTimeout(() => openNoteByIdWhenReady(noteId, attemptsLeft - 1), 500);
+}
+
 // Пока приложение открыто и на экране, отдельное уведомление ни к чему —
-// просто тихо подтягиваем свежие данные, как при возврате из фона.
-if(messaging){
+// просто тихо подтягиваем свежие данные, как при возврате из фона. Только для
+// веб-версии — у нативного Android свой путь, см. registerNativePushToken.
+if(messaging && !isNativeApp()){
   messaging.onMessage(() => {
     refreshFromCloudOnResume();
   });
 }
 
+// Системная кнопка "Назад" на Android. Без этого обработчика Android по
+// умолчанию просто закрывает (убивает) приложение целиком с любого экрана —
+// непривычно и неприятно, если в этот момент открыт, например, редактор
+// заявки с несохранёнными правками. Логика — как в любом обычном приложении:
+// сначала закрываем то, что открыто поверх (просмотр фото → редактор/шторка
+// расхода → диалог подтверждения), и только на самом верхнем уровне (везде
+// закрыто, список заявок) — сворачиваем приложение, а не закрываем совсем,
+// чтобы не терять место, на котором человек остановился.
+// Требует плагин @capacitor/app — см. инструкцию по сборке.
+function setupNativeBackButton(){
+  const CapacitorApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if(!CapacitorApp){
+    console.warn('Плагин App не найден — проверьте, что @capacitor/app установлен и cap sync выполнен.');
+    return;
+  }
+  CapacitorApp.addListener('backButton', () => {
+    const confirmOverlay = document.getElementById('confirmOverlay');
+    const lightboxEl = document.getElementById('lightbox');
+    const ocrOverlay = document.getElementById('ocrResultOverlay');
+    const drawerEl = document.getElementById('drawer');
+    const backupsEl = document.getElementById('backupsOverlay');
+    const changePassEl = document.getElementById('changePassOverlay');
+    const payChoiceEl = document.getElementById('payChoiceOverlay');
+    const goalEl = document.getElementById('goalOverlay');
+    if(confirmOverlay && confirmOverlay.classList.contains('show')){
+      document.getElementById('confirmNo').click();
+      return;
+    }
+    if(ocrOverlay && ocrOverlay.classList.contains('show')){
+      ocrOverlay.classList.remove('show');
+      return;
+    }
+    if(lightboxEl && lightboxEl.classList.contains('show')){
+      document.getElementById('lbClose').click();
+      return;
+    }
+    // Модальные окна поверх редактора (пароль, резервные копии, выбор
+    // оплаты, цель месяца) — закрываем их раньше, чем сам редактор или
+    // список, иначе "Назад" может провалиться на уровень ниже.
+    if(payChoiceEl && payChoiceEl.classList.contains('show')){
+      document.getElementById('payChoiceCancel').click();
+      return;
+    }
+    if(backupsEl && backupsEl.style.display === 'flex'){
+      document.getElementById('backupsCloseBtn').click();
+      return;
+    }
+    if(changePassEl && changePassEl.style.display === 'flex'){
+      document.getElementById('cpCancelBtn').click();
+      return;
+    }
+    if(goalEl && goalEl.classList.contains('show')){
+      goalEl.classList.remove('show');
+      return;
+    }
+    if(editorOverlay.classList.contains('show')){
+      closeEditor(true);
+      return;
+    }
+    if(expSheetOverlay && expSheetOverlay.classList.contains('show')){
+      closeExpenseSheet();
+      return;
+    }
+    if(drawerEl && drawerEl.classList.contains('show')){
+      drawerEl.classList.remove('show');
+      overlay.classList.remove('show');
+      return;
+    }
+    // Архив/корзина внутри "Заявок" — поднимаемся на один уровень назад к
+    // обычному списку, а не сразу сворачиваем приложение.
+    if(currentSection === 'notes' && view !== 'notes'){
+      view = 'notes';
+      renderContent();
+      return;
+    }
+    // Самый верхний уровень — сворачиваем, а не убиваем приложение (как
+    // делает обычная кнопка "домой"), чтобы не терять состояние и не заново
+    // ждать перезапуска Firebase при следующем открытии.
+    CapacitorApp.minimizeApp();
+  });
+}
+if(isNativeApp()) setupNativeBackButton();
+
 // Переключатель тёмной темы — применяется сразу и запоминается на телефоне.
+// Красит системную строку состояния Android (часы/батарея сверху экрана) в
+// цвет под тему приложения — без этого при тёмной теме приложения строка
+// состояния оставалась бы светлой (или наоборот) и выглядела бы чужеродно.
+// Только для нативного Android — в браузере/PWA такого элемента интерфейса
+// вообще нет, там управляет сама ОС/браузер. Требует плагин
+// @capacitor/status-bar — см. инструкцию по сборке.
+function syncNativeStatusBar(isDark){
+  if(!isNativeApp()) return;
+  const StatusBar = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar;
+  if(!StatusBar) return;
+  StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' }).catch(() => {});
+  // Цвета ниже — ориентировочные (под общую сине-серую палитру приложения).
+  // Точный цвет стоит свести с theme_color в manifest.json, чтобы строка
+  // состояния совпадала с тем, что уже видно при установке как PWA.
+  StatusBar.setBackgroundColor({ color: isDark ? '#17191c' : '#3d5a80' }).catch(() => {});
+}
 document.getElementById('themeToggleBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
   const phoneEl = document.querySelector('.phone');
@@ -5265,7 +5503,9 @@ document.getElementById('themeToggleBtn')?.addEventListener('click', (e) => {
     phoneEl.setAttribute('data-theme', 'dark');
     try{ localStorage.setItem('vreyseTheme', 'dark'); } catch(err){}
   }
+  syncNativeStatusBar(!isDark);
 });
+if(isNativeApp()) syncNativeStatusBar(document.querySelector('.phone').getAttribute('data-theme') === 'dark');
 
 document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   e.stopPropagation();
