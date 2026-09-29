@@ -1,0 +1,19 @@
+{
+  "name": "vreyse-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android-оболочка (Capacitor) для приложения «В рейсе» — сборка идёт в облаке через GitHub Actions, не на устройстве.",
+  "scripts": {
+    "build": "echo \"Готовые файлы уже лежат в www/ — отдельная сборка веб-части не нужна\""
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/status-bar": "^6.0.1",
+    "@capacitor/push-notifications": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

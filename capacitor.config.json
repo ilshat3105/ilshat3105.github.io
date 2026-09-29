@@ -1,0 +1,6 @@
+{
+  "appId": "ru.vreyse.app",
+  "appName": "В рейсе",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
