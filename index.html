@@ -455,6 +455,13 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 @keyframes spin{to{transform:rotate(360deg);}}
 
+  /* Pull-to-refresh — индикатор первым ребёнком внутри #main, растёт по
+     высоте во время жеста и во время самой загрузки, поэтому остальной
+     контент естественно "отъезжает" вниз, как в обычных мобильных списках. */
+  .ptr-indicator{overflow:hidden;height:0;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;}
+  .ptr-indicator .spinner{width:22px;height:22px;border:2.5px solid rgba(0,0,0,.12);
+    border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
 
   /* ===== PRO MARKET UI OVERRIDES ===== */
   :root{
@@ -840,6 +847,7 @@
   </div>
 
   <main id="main">
+    <div class="ptr-indicator" id="ptrIndicator"><div class="spinner"></div></div>
     <div class="compose" id="composeBar">Новая заявка</div>
     <div class="summary-bar" id="summaryBar" style="display:none;"></div>
     <div id="content"></div>
@@ -876,7 +884,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-09-30 19:02 (диагностическая панель push теперь скрыта — открывается долгим нажатием на эту строку)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-09-30 19:56 (вернули pull-to-refresh — свой жест поверх Заявок/Расходов/Доходов, без перезагрузки страницы; долгое нажатие сюда — диагностика push)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -5944,11 +5952,11 @@ if ('serviceWorker' in navigator) {
 // (а не локальный кэш Firestore) — так свежие данные гарантированно подтягиваются
 // сразу, а не только тогда, когда наконец "проснётся" сама живая подписка.
 function refreshFromCloudOnResume(){
-  if(!currentUID) return;
+  if(!currentUID) return Promise.resolve();
   const uid = currentUID;
   const gen = authGeneration;
   const userRef = db.collection('users').doc(currentUID);
-  Promise.all([
+  return Promise.all([
     userRef.get({ source: 'server' }),
     userRef.collection('notes').get({ source: 'server' }),
     userRef.collection('expenses').get({ source: 'server' })
@@ -6041,10 +6049,100 @@ function refreshFromCloudOnResume(){
     });
     if(touched){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
-      renderContent();
+      // Перерисовываем именно тот раздел, который сейчас виден (как при
+      // поиске — см. обработчик searchInput), а не всегда только "Заявки":
+      // иначе pull-to-refresh на вкладках "Расходы"/"Доходы" обновлял бы
+      // данные в памяти, но экран остался бы старым.
+      if(currentSection === 'fuel') renderExpenses();
+      else if(currentSection === 'income') renderIncome();
+      else renderContent();
     }
   }).catch(e => console.warn('Не удалось обновиться с сервера при возврате в приложение:', e));
 }
+
+// Pull-to-refresh — свой жест поверх общего списка #main (общий для всех
+// трёх вкладок: Заявки/Расходы/Доходы, т.к. это один и тот же прокручиваемый
+// контейнер, просто с разным видимым содержимым). Раньше здесь работал
+// стандартный жест браузера "потянуть вниз — перезагрузить страницу", но он
+// пропал вместе с overscroll-behavior-y:contain на #main (это свойство
+// нужно само по себе — оно убирает рывок/резиновый эффект при обычной
+// прокрутке). Поэтому жест реализован здесь вручную, без location.reload():
+// он просто вызывает refreshFromCloudOnResume() — ту же функцию, что уже
+// используется при возврате в приложение и при живых push-уведомлениях.
+(function setupPullToRefresh(){
+  const mainEl = document.getElementById('main');
+  const indicator = document.getElementById('ptrIndicator');
+  if(!mainEl || !indicator) return;
+
+  const THRESHOLD = 64;   // px, на сколько нужно оттянуть, чтобы отпускание запустило обновление
+  const MAX_PULL = 90;    // px, дальше индикатор не растёт, даже если тянут сильнее
+
+  let startX = 0, startY = 0;
+  let pulling = false;     // жест распознан как "тянем список вниз"
+  let refreshing = false;  // сейчас идёт запрос к серверу
+
+  // Те же модальные экраны, что не пропускают системную кнопку "Назад"
+  // (setupNativeBackButton), плюс экран входа — везде здесь жест тянуть
+  // вниз не должен запускать обновление списка под ними.
+  const BLOCKING_OVERLAY_IDS = ['confirmOverlay', 'lightbox', 'ocrResultOverlay', 'drawer',
+    'backupsOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
+    'editorOverlay', 'expSheetOverlay', 'authOverlay'];
+
+  function blockingOverlayOpen(){
+    return BLOCKING_OVERLAY_IDS.some(id => {
+      const el = document.getElementById(id);
+      if(!el) return false;
+      if(el.classList && el.classList.contains('show')) return true;
+      if(el.style && el.style.display === 'flex') return true;
+      return false;
+    });
+  }
+
+  function setPull(px){
+    indicator.style.height = Math.max(0, px) + 'px';
+  }
+
+  mainEl.addEventListener('touchstart', (e) => {
+    if(refreshing || e.touches.length !== 1 || mainEl.scrollTop > 0 || blockingOverlayOpen() || !currentUID){
+      pulling = false;
+      return;
+    }
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    pulling = true;
+  }, { passive: true });
+
+  mainEl.addEventListener('touchmove', (e) => {
+    if(!pulling || refreshing) return;
+    if(mainEl.scrollTop > 0){ pulling = false; setPull(0); return; }
+    const dy = e.touches[0].clientY - startY;
+    const dx = e.touches[0].clientX - startX;
+    if(dy <= 0){ setPull(0); return; }
+    // Жест должен быть преимущественно вертикальным — иначе это, скорее
+    // всего, горизонтальный свайп по карточке заявки (архивировать/удалить),
+    // и его нельзя перехватывать.
+    if(Math.abs(dx) > dy){ pulling = false; setPull(0); return; }
+    e.preventDefault();
+    setPull(dy * 0.5);
+  }, { passive: false });
+
+  function finishPull(){
+    if(!pulling || refreshing){ pulling = false; return; }
+    pulling = false;
+    const height = parseFloat(indicator.style.height) || 0;
+    if(height < THRESHOLD){ setPull(0); return; }
+    refreshing = true;
+    setPull(56);
+    const stop = () => { refreshing = false; setPull(0); };
+    try{
+      const result = refreshFromCloudOnResume();
+      if(result && typeof result.then === 'function') result.then(stop).catch(stop);
+      else stop();
+    } catch(err){ stop(); }
+  }
+  mainEl.addEventListener('touchend', finishPull, { passive: true });
+  mainEl.addEventListener('touchcancel', () => { pulling = false; if(!refreshing) setPull(0); }, { passive: true });
+})();
 </script>
 
 </body>
