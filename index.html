@@ -884,7 +884,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-04 21:45 (в "Расчёте" теперь тоже видно подсказку "= 10 000 ₽" при вводе, как в стоимости перевозки)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-04 23:00 (защита начальной синхронизации — отправка в облако не начинается до подтверждённого сервером baseline)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1157,6 +1157,16 @@ const TRASH_AUTO_DELETE_DAYS = 30;
 // пока пользователь не удалит/восстановит вручную (лучше сохранить лишнее, чем
 // стереть важное по ошибке).
 function purgeOldTrash(){
+  // currentUID ещё не определён (например, самый первый renderContent() при
+  // загрузке страницы — он вызывается раньше, чем успевает сработать
+  // асинхронный auth.onAuthStateChanged). Откладываем окончательное удаление
+  // до момента, когда аккаунт точно известен — иначе queueNoteIdForDeletion()
+  // ниже добавит ID в очередь, которую НЕКУДА сохранить (она обязательно
+  // привязана к UID), и при входе эта запись в очереди потеряется, пока сама
+  // заявка уже безвозвратно удалена локально. Несколько лишних секунд в
+  // корзине до входа ничем не грозят — заявка остаётся на месте и будет
+  // обработана при следующем рендере, уже с известным currentUID.
+  if(!currentUID) return false;
   const cutoff = Date.now() - TRASH_AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000;
   const before = notes.length;
   // Заявка, которую автоматически удаляют из корзины насовсем (прошло 30
@@ -1165,8 +1175,15 @@ function purgeOldTrash(){
   // Без этого фото навсегда оставались бы висеть в хранилище бесполезным
   // мусором, даже когда сама заявка давно и безвозвратно удалена.
   notes.forEach(n => {
-    if(n.trashed && n.trashedAt && n.trashedAt < cutoff && Array.isArray(n.photoIds)){
-      n.photoIds.forEach(pid => deletePhotoFromStorage(pid));
+    if(n.trashed && n.trashedAt && n.trashedAt < cutoff){
+      if(Array.isArray(n.photoIds)) n.photoIds.forEach(pid => deletePhotoFromStorage(pid));
+      // Здесь — и только здесь — заявка по-настоящему (окончательно) удаляется,
+      // а не просто помещается в корзину. Запоминаем её ID как "ожидает
+      // подтверждённого удаления в Firestore", чтобы документ, который сервер
+      // ещё какое-то время может продолжать присылать (DELETE туда мог не
+      // долететь), не вставился обратно — см. subscribeCloud() и
+      // refreshFromCloudOnResume().
+      if(n.id != null) queueNoteIdForDeletion(n.id);
     }
   });
   notes = notes.filter(n => !(n.trashed && n.trashedAt && n.trashedAt < cutoff));
@@ -2229,6 +2246,34 @@ function deletePhotoFromStorage(photoId){
 function retryPendingPhotoDeletes(){
   if(!pendingPhotoDeletePaths.length) return;
   pendingPhotoDeletePaths.slice().forEach(attemptStorageDelete);
+}
+
+// Та же идея, что и у очереди удаления фото выше: ID заявок, окончательное
+// удаление которых ещё не подтверждено сервером (DELETE в Firestore не
+// дошёл или не успел подтвердиться), сохраняются в очередь, привязанную к
+// конкретному UID — переживает офлайн и перезапуск приложения. Пока ID
+// находится в этой очереди, документ, вернувшийся с сервера (потому что сам
+// DELETE туда ещё не долетел), не вставляется обратно в notes — см.
+// использование в subscribeCloud() и refreshFromCloudOnResume(). Единственное
+// место, где заявка по-настоящему (а не просто в корзину) пропадает из notes —
+// purgeOldTrash() (проверено отдельно: других путей нет, "Удалить" в
+// интерфейсе только помечает trashed=true).
+function pendingDeleteNoteKey(uid){ return 'vreyse_pendingDeleteNotes_' + uid; }
+let pendingDeletedNoteIds = [];
+function loadPendingDeletedNoteIdsForUID(uid){
+  try{ pendingDeletedNoteIds = JSON.parse(localStorage.getItem(pendingDeleteNoteKey(uid)) || '[]'); }
+  catch(e){ pendingDeletedNoteIds = []; }
+}
+function savePendingDeletedNoteIds(){
+  if(!currentUID) return;
+  try{ localStorage.setItem(pendingDeleteNoteKey(currentUID), JSON.stringify(pendingDeletedNoteIds)); }catch(e){}
+}
+function queueNoteIdForDeletion(id){
+  id = String(id);
+  if(pendingDeletedNoteIds.indexOf(id) === -1){
+    pendingDeletedNoteIds.push(id);
+    savePendingDeletedNoteIds();
+  }
 }
 function retryPendingPhotoUploads(){
   if(!currentUID) return;
@@ -4500,6 +4545,29 @@ function applyState(s){
 let lastSyncedNotes = new Map();     // id -> editedAt, который точно уже в облаке
 let lastSyncedExpenses = new Map();  // id -> editedAt, который точно уже в облаке
 let lastSyncedMetaJSON = null;       // последняя отправленная/полученная версия служебных полей
+
+// ТОЛЬКО для заявок (lastSyncedNotes). Раньше это была чисто оперативная память:
+// при каждом перезапуске приложения карта обнулялась, и первый же снимок из
+// Firestore не мог отличить "это новая заявка, которую я никогда не видел" от
+// "эту заявку я уже когда-то видел в облаке, а теперь её локально нет, потому
+// что я сам её удалил, но отправить удаление ещё не успел" — оба случая
+// выглядели одинаково ("локально нет — в облаке есть") и заявка вставлялась
+// обратно. Сохраняя эту карту на диске между запусками, мы даём коду настоящую
+// память об этом устройстве, а не только о текущем сеансе — см. использование
+// в subscribeCloud() ниже (одноразовая сверка при первом подтверждённом
+// сервером снимке).
+const SYNCED_NOTES_KEY = 'vreyse_lastSyncedNotes_v1';
+function loadSyncedNotesMap(){
+  try{
+    const raw = localStorage.getItem(SYNCED_NOTES_KEY);
+    if(!raw) return new Map();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Map(arr) : new Map();
+  } catch(e){ return new Map(); }
+}
+function persistSyncedNotesMap(){
+  try{ localStorage.setItem(SYNCED_NOTES_KEY, JSON.stringify(Array.from(lastSyncedNotes.entries()))); } catch(e){}
+}
 function metaSnapshotForSync(){
   return { idSeq, expenseIdSeq, monthKey, monthlyGoal, expenseCategories };
 }
@@ -4525,6 +4593,11 @@ function loadState(){
   }
 }
 loadState();
+// Карта "что раньше точно было в облаке" для заявок — грузится отдельно от
+// основного состояния (не вместе с notes/expenses), чтобы не попасть в
+// резервные копии, экспорт и импорт: это служебная память устройства, а не
+// пользовательские данные.
+lastSyncedNotes = loadSyncedNotesMap();
 
 // ---- Firebase: авторизация и облачная синхронизация между устройствами ----
 let currentUID = null;
@@ -4547,6 +4620,24 @@ let suppressCloudSave = false; // true, пока применяем данные
 // запоминается и выполняется сразу же, как только suppressCloudSave снова
 // станет false.
 let cloudSaveRequestedWhileSuppressed = false;
+// Защита начальной синхронизации (аудит, пункт №1). Два РАЗНЫХ факта, которые
+// раньше были слиты в одно (notesReady/expensesReady сразу после любого
+// снимка, включая fromCache):
+// 1) initialCloudBaselineReady — серверный (подтверждённый) снимок и заявок,
+//    и расходов реально получен хотя бы раз в этой сессии;
+// 2) cloudWritesAllowedThisSession — отправка в облако в этой сессии вообще
+//    разрешена. Это НЕ то же самое: если перенос старых данных в отдельные
+//    документы (migrateToPerRecordDocsIfNeeded) провалился, подписка всё
+//    равно оформляется (чтобы приложение не зависло), baseline снимки всё
+//    равно придут и выставят (1) в true — но (2) должен остаться false до
+//    следующего входа, иначе можно отправить поверх не до конца перенесённых
+//    данных. Отправлять можно только когда ОБА флага true.
+// Запрос на отправку, сделанный до того, как (1) стало true, не теряется —
+// запоминается здесь и выполняется сразу после наступления baseline (но
+// только если на тот момент (2) тоже true — см. flushCloudSave()).
+let initialCloudBaselineReady = false;
+let cloudWritesAllowedThisSession = false;
+let cloudSaveRequestedBeforeBaseline = false;
 
 // Статус последней попытки отправки в облако — раньше при неудаче ничего не
 // происходило видимо: ни значка, ни сообщения, только тихая запись в консоль,
@@ -4641,7 +4732,36 @@ function setCloudSyncStatus(status){
 // локального списка (корзина почищена по сроку, расход удалён), но всё ещё
 // числится синхронизированной — удаляем именно её документ в облаке.
 function flushCloudSave(){
-  if(!currentUID || suppressCloudSave) return Promise.resolve();
+  if(!currentUID) return Promise.resolve();
+  if(suppressCloudSave){
+    // Раньше прямой (не через scheduleCloudSave) вызов flushCloudSave() —
+    // например, из visibilitychange/pagehide, online-слушателя, ручного
+    // повтора по бейджу или восстановления из бэкапа — попавший ровно в это
+    // короткое окно, просто терялся молча: cloudSaveRequestedWhileSuppressed
+    // выставлял только scheduleCloudSave(). Теперь запоминаем запрос и здесь
+    // тоже — он будет выполнен сразу же, как только suppressCloudSave снова
+    // станет false (см. использование cloudSaveRequestedWhileSuppressed).
+    cloudSaveRequestedWhileSuppressed = true;
+    return Promise.resolve();
+  }
+  if(!initialCloudBaselineReady){
+    // Снимки с сервера (заявки и/или расходы) ещё не подтвердились ни разу в
+    // этой сессии — отправлять сейчас нельзя: весь локальный кэш показался бы
+    // "несинхронизированным" и ушёл бы в облако как есть, включая заявки,
+    // уже удалённые тем временем на другом телефоне (они бы "воскресли").
+    // Запрос не теряется — maybeBaselineReady() сам выполнит его, как только
+    // baseline наступит (и если отправка в этой сессии вообще разрешена).
+    cloudSaveRequestedBeforeBaseline = true;
+    return Promise.resolve();
+  }
+  if(!cloudWritesAllowedThisSession){
+    // Baseline пришёл, но отправка в этой сессии осознанно запрещена —
+    // например, перенос старых данных в отдельные документы провалился (см.
+    // subscribeCloud(..., writesAllowed=false) в loadFromCloud()). Это не
+    // временная задержка, а запрет до следующего входа: ничего не запоминаем,
+    // повторной попытки в рамках этой сессии не предусмотрено.
+    return Promise.resolve();
+  }
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
   if(cloudSaveInFlight){
     // Предыдущая отправка ещё летит — не запускаем вторую поверх неё (см.
@@ -4750,10 +4870,22 @@ function flushCloudSave(){
       if(currentUID !== uid || authGeneration !== gen) return; // см. комментарий выше
       cloudLastErrorCode = '';
       setCloudSyncStatus('synced');
+      let notePendingDeleteConfirmed = false;
       ops.forEach(op => {
         const map = op.kind === 'note' ? lastSyncedNotes : lastSyncedExpenses;
         if(op.action === 'set') map.set(op.id, op.et);
-        else map.delete(op.id);
+        else {
+          map.delete(op.id);
+          // batch.commit() выше успешно завершился — значит DELETE этой заявки
+          // ТОЧНО подтверждён сервером (если бы commit() упал, мы бы оказались
+          // в .catch() ниже, а не здесь). Только теперь можно убрать ID из
+          // очереди ожидающих удаления — раньше (при простой отправке,
+          // неудаче или офлайне) она должна там оставаться.
+          if(op.kind === 'note'){
+            const i = pendingDeletedNoteIds.indexOf(op.id);
+            if(i !== -1){ pendingDeletedNoteIds.splice(i, 1); notePendingDeleteConfirmed = true; }
+          }
+        }
         // ВРЕМЕННАЯ диагностика (см. photoUploadStage): эта заявка реально
         // подтвердилась сервером — если в ней есть фото, чья цепочка ещё
         // отслеживается, отмечаем последний шаг.
@@ -4764,6 +4896,8 @@ function flushCloudSave(){
         }
       });
       lastSyncedMetaJSON = metaJSON;
+      persistSyncedNotesMap();
+      if(notePendingDeleteConfirmed) savePendingDeletedNoteIds();
       maybeSaveDailyBackup(stateSnapshot());
     })
     .catch(e => {
@@ -5012,6 +5146,7 @@ function loadFromCloud(){
       lastSyncedNotes = new Map();
       lastSyncedExpenses = new Map();
       lastSyncedMetaJSON = null;
+      persistSyncedNotesMap();
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       suppressCloudSave = false;
       cloudSaveRequestedWhileSuppressed = false; // подписка ниже сама решит, когда безопасно отправлять (см. baseline)
@@ -5020,13 +5155,17 @@ function loadFromCloud(){
       // subscribeCloud сам дождётся первого снимка заявок и расходов с сервера
       // и вызовет его один раз, когда это станет безопасно (см. комментарий
       // внутри subscribeCloud).
-      subscribeCloud(userRef, scheduleCloudSave);
+      // knownNoteIdsAtStart — снимок того, что это устройство знало о заявках
+      // ДО этого запуска (взят именно сейчас, до начала живой подписки, чтобы
+      // заявка, создаваемая локально прямо в эти секунды, никогда в него не
+      // попала — см. подробный комментарий в subscribeCloud).
+      subscribeCloud(userRef, scheduleCloudSave, new Set(lastSyncedNotes.keys()), true);
       return;
     }
     migrateToPerRecordDocsIfNeeded(currentUID, doc.data())
       .then(() => {
         if(stale()) return;
-        subscribeCloud(userRef, scheduleCloudSave);
+        subscribeCloud(userRef, scheduleCloudSave, new Set(lastSyncedNotes.keys()), true);
       })
       .catch(e => {
         if(stale()) return;
@@ -5042,12 +5181,15 @@ function loadFromCloud(){
         // ничего не отправить, чем отправить поверх не до конца перенесённых
         // данных. Сама миграция безопасно повторится при следующем входе.
         console.warn('Перенос старых данных в отдельные документы не завершился — синхронизация ограничена до следующего входа:', e);
-        subscribeCloud(userRef);
+        // writesAllowed=false: baseline (1) всё равно наступит, но отправка
+        // (2) должна остаться запрещённой до следующего входа — см. flag-ы
+        // initialCloudBaselineReady/cloudWritesAllowedThisSession выше.
+        subscribeCloud(userRef, undefined, new Set(lastSyncedNotes.keys()), false);
       });
   }).catch(e => {
     if(stale()) return;
     console.warn('Не удалось проверить облачные данные через сервер, подписываемся как есть:', e);
-    subscribeCloud(userRef, scheduleCloudSave);
+    subscribeCloud(userRef, scheduleCloudSave, new Set(lastSyncedNotes.keys()), true);
   });
 }
 
@@ -5055,7 +5197,19 @@ function loadFromCloud(){
 // поля, на коллекцию заявок и на коллекцию расходов. Каждая обрабатывает
 // только те записи, что реально добавились/изменились/удалились — не может
 // случайно затереть остальные, даже если придёт из ещё не прогретого кэша.
-function subscribeCloud(userRef, onBaselineReady){
+// knownNoteIdsAtStart — набор ID заявок, про которые это устройство уже
+// знало (из постоянной карты lastSyncedNotes), взятый ДО начала этой живой
+// подписки — используется ниже только для заявок, один раз, на первом
+// снимке, подтверждённом сервером.
+function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAllowed){
+  knownNoteIdsAtStart = knownNoteIdsAtStart || new Set();
+  // Сверка выполняется максимум один раз за это подключение, и только по
+  // снимку с metadata.fromCache === false (подтверждён сервером, а не отдан
+  // из локального кэша Firestore на телефоне). Если первый снимок окажется
+  // из кэша — реконсиляция просто подождёт следующего, более позднего
+  // снимка; обычная вставка/обновление заявок (ниже) при этом всё равно
+  // отрабатывает как обычно, это безопасно и из кэша.
+  let notesBaselineReconciled = false;
   // ВАЖНО: пока не пришёл первый снимок заявок и расходов с сервера,
   // lastSyncedNotes/lastSyncedExpenses пусты, а в notes/expenses уже может
   // лежать старый локальный кэш (localStorage). Если разрешить отправку
@@ -5069,7 +5223,22 @@ function subscribeCloud(userRef, onBaselineReady){
   function maybeBaselineReady(){
     if(baselineFired || !notesReady || !expensesReady) return;
     baselineFired = true;
+    // (1) baseline подтверждён сервером — независимо от того, разрешена ли
+    // отправка в этой сессии (см. комментарий у initialCloudBaselineReady).
+    initialCloudBaselineReady = true;
+    // (2) отдельный вопрос "можно ли писать в этой сессии" — приходит
+    // явным параметром из loadFromCloud() (false только при провалившейся
+    // миграции старых данных).
+    cloudWritesAllowedThisSession = writesAllowed;
     if(onBaselineReady) onBaselineReady();
+    // Запрос, накопленный до baseline (см. flushCloudSave()), выполняем
+    // сразу же — но только если отправка в этой сессии разрешена. Если нет —
+    // ничего не делаем: cloudSaveRequestedBeforeBaseline всё равно устареет
+    // при следующем входе (сброс при смене authGeneration).
+    if(writesAllowed && cloudSaveRequestedBeforeBaseline){
+      cloudSaveRequestedBeforeBaseline = false;
+      flushCloudSave();
+    }
     // На случай, если в кэше телефона остались фото, которые ещё не успели
     // долететь до Storage в прошлый раз (например, приложение закрыли сразу
     // после добавления фото без связи).
@@ -5126,7 +5295,15 @@ function subscribeCloud(userRef, onBaselineReady){
       const incoming = change.doc.data();
       const incomingEt = incoming.editedAt || incoming.createdAt || 0;
       const idx = notes.findIndex(n => String(n.id) === id);
-      if(idx === -1){
+      if(idx === -1 && pendingDeletedNoteIds.indexOf(id) !== -1){
+        // Эта заявка окончательно удалена НА ЭТОМ устройстве (см. purgeOldTrash),
+        // но сервер её всё ещё прислал — значит, наш DELETE туда ещё не
+        // долетел/не подтвердился. НЕ вставляем её обратно. lastSyncedNotes
+        // всё равно обновляем ниже — так flushCloudSave() при следующей
+        // отправке снова увидит "ID известен, локально его нет" и сам
+        // повторно пошлёт DELETE, как и для любого другого удаления.
+      }
+      else if(idx === -1){
         // Вставляем по дате создания (новые сверху), а не в конец массива —
         // иначе заявка, созданная на ДРУГОМ телефоне и прилетевшая сюда через
         // облако, оказывалась внизу списка, а не там же, где она видна на
@@ -5146,12 +5323,78 @@ function subscribeCloud(userRef, onBaselineReady){
       }
       lastSyncedNotes.set(id, incomingEt);
     });
+
+    // Снимок подтверждён сервером (не из локального кэша Firestore) И не
+    // содержит ещё неподтверждённых локальных записей — значит, его
+    // отсутствие в нём для конкретного ID можно считать окончательным фактом,
+    // а не догадкой. ВАЖНО: fromCache и hasPendingWrites у Firestore — два
+    // независимых флага. Снимок может быть fromCache:false (контакт с
+    // сервером был) и одновременно hasPendingWrites:true — например, если
+    // наш же batch.commit() для DELETE этой заявки уже летит, но ещё не
+    // подтверждён: локальный кэш Firestore уже оптимистично убирает документ
+    // из cloudIds ДО реального ответа сервера. Без проверки hasPendingWrites
+    // мы бы сочли удаление подтверждённым раньше времени — и если commit()
+    // в итоге провалится (нет сети, запрет и т.п.), очередь уже была бы
+    // очищена зря, и заявка могла бы снова воскреснуть. Используем это в
+    // двух местах ниже.
+    if(!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites){
+      const cloudIds = new Set(snapshot.docs.map(d => d.id));
+
+      // Одноразовая сверка полного списка — только на первом подтверждённом
+      // снимке. Сравниваем все ID, которые СЕЙЧАС прислал Firestore, с тем,
+      // что это устройство знало ДО запуска (knownNoteIdsAtStart). Заявка,
+      // которую сервер не прислал, но которую устройство видело раньше —
+      // удалена (нами офлайн, не успевшей отправиться, или на другом
+      // телефоне, когда это устройство было выключено/офлайн) — убираем и
+      // локально. Заявка, которой нет ни на сервере, ни в knownNoteIdsAtStart —
+      // это новая, ещё не отправленная локальная заявка: её НЕ трогаем ни при
+      // каких условиях.
+      if(!notesBaselineReconciled){
+        notesBaselineReconciled = true;
+        const before = notes.length;
+        notes = notes.filter(n => {
+          if(!n || n.id == null) return true;
+          const id = String(n.id);
+          if(cloudIds.has(id)) return true; // всё ещё есть на сервере
+          if(!knownNoteIdsAtStart.has(id)) return true; // никогда раньше не видели в облаке — новая локальная, не трогаем
+          lastSyncedNotes.delete(id); // была в облаке, теперь нет — удалена
+          return false;
+        });
+        if(notes.length !== before) touched = true;
+      }
+
+      // Очистка "зависших" ID в очереди ожидания удаления (см.
+      // pendingDeletedNoteIds выше): если сервер уже подтверждённо не
+      // содержит документ — удаление фактически случилось, независимо от
+      // того, успел ли именно flushCloudSave() ЭТОГО телефона поймать момент
+      // успешного batch.commit() (например, приложение могли закрыть сразу
+      // после commit(), до того как успел отработать его .then()). Без этой
+      // очистки такой ID остался бы в localStorage навсегда.
+      // Делаем это на КАЖДОМ подтверждённом снимке, а не только на первом —
+      // отдельный, более дешёвый проход по маленькому списку.
+      if(pendingDeletedNoteIds.length){
+        const stillPending = pendingDeletedNoteIds.filter(id => cloudIds.has(id));
+        if(stillPending.length !== pendingDeletedNoteIds.length){
+          pendingDeletedNoteIds = stillPending;
+          savePendingDeletedNoteIds();
+        }
+      }
+    }
+
     if(touched){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       renderContent();
     }
-    notesReady = true;
-    maybeBaselineReady();
+    persistSyncedNotesMap();
+    // Пункт №1 аудита: "готово" должно значить "подтверждено сервером", а не
+    // "пришёл хоть какой-то снимок" — иначе baseline мог наступить по снимку
+    // из локального кэша Firestore (fromCache) или по снимку, содержащему
+    // ещё неподтверждённую локальную запись (hasPendingWrites), и отправка
+    // началась бы раньше, чем на самом деле безопасно.
+    if(!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites){
+      notesReady = true;
+      maybeBaselineReady();
+    }
   }, e => console.warn('Не удалось подписаться на заявки:', e)));
 
   cloudUnsubscribes.push(userRef.collection('expenses').onSnapshot(snapshot => {
@@ -5192,8 +5435,11 @@ function subscribeCloud(userRef, onBaselineReady){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       renderContent();
     }
-    expensesReady = true;
-    maybeBaselineReady();
+    // Та же причина, что и у notesReady выше.
+    if(!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites){
+      expensesReady = true;
+      maybeBaselineReady();
+    }
   }, e => console.warn('Не удалось подписаться на расходы:', e)));
 }
 
@@ -5210,9 +5456,17 @@ function subscribeCloud(userRef, onBaselineReady){
 const CACHE_OWNER_KEY = 'vreyse_cacheOwnerUID';
 auth.onAuthStateChanged(user => {
   authGeneration++;
+  // Единая точка сброса для входа/выхода/смены аккаунта — subscribeCloud()
+  // (единственное место, где эти флаги становятся true) вызывается только
+  // из loadFromCloud(), а она — только из ветки if(user) этого же колбэка,
+  // то есть всегда ПОСЛЕ этого сброса.
+  initialCloudBaselineReady = false;
+  cloudWritesAllowedThisSession = false;
+  cloudSaveRequestedBeforeBaseline = false;
   if(user){
     currentUID = user.uid;
     loadPendingPhotoDeletesForUID(currentUID);
+    loadPendingDeletedNoteIdsForUID(currentUID); // именно СЕЙЧАС, когда currentUID уже точно известен — не раньше (см. комментарий у функции)
     let cacheOwner = null;
     try{ cacheOwner = localStorage.getItem(CACHE_OWNER_KEY); }catch(e){}
     if(cacheOwner && cacheOwner !== currentUID){
@@ -5221,6 +5475,7 @@ auth.onAuthStateChanged(user => {
       lastSyncedNotes = new Map();
       lastSyncedExpenses = new Map();
       lastSyncedMetaJSON = null;
+      persistSyncedNotesMap();
       try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
       suppressCloudSave = false;
       cloudSaveRequestedWhileSuppressed = false; // подписка ниже сама решит, когда безопасно отправлять (см. baseline)
@@ -5240,6 +5495,7 @@ auth.onAuthStateChanged(user => {
     unsubscribeCloud();
     currentUID = null;
     pendingPhotoDeletePaths = []; // сама очередь на диске под прежним UID остаётся нетронутой
+    pendingDeletedNoteIds = []; // очередь удаления заявок на диске под прежним UID тоже остаётся нетронутой
     authOverlay.style.display = 'flex';
   }
 });
@@ -5599,6 +5855,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   lastSyncedNotes = new Map();
   lastSyncedExpenses = new Map();
   lastSyncedMetaJSON = null;
+  persistSyncedNotesMap();
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
   try{ localStorage.removeItem(LAST_EMAIL_KEY); } catch(e){}
@@ -6014,7 +6271,11 @@ function refreshFromCloudOnResume(){
       const incoming = docSnap.data();
       const incomingEt = incoming.editedAt || incoming.createdAt || 0;
       const idx = notes.findIndex(n => String(n.id) === id);
-      if(idx === -1){
+      if(idx === -1 && pendingDeletedNoteIds.indexOf(id) !== -1){
+        // Та же защита, что и в живой подписке: заявка окончательно удалена
+        // на этом устройстве, DELETE ещё не подтверждён — не вставляем обратно.
+      }
+      else if(idx === -1){
         // Та же причина, что и в живой подписке выше: вставляем по дате
         // создания, а не в конец, чтобы порядок совпадал на обоих телефонах.
         const insertAt = notes.findIndex(n => (n.createdAt||0) < (incoming.createdAt||0));
