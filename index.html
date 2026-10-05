@@ -539,6 +539,56 @@
   .top-tab.active{color:var(--ink);}
   .top-tab.active::after{background:var(--accent);height:3px;}
 
+  /* ---- Автосервис: папки ТО, чек-лист, результаты поиска ---- */
+  /* Четвёртая вкладка — на самых узких экранах сжимаем промежутки между вкладками. */
+  @media (max-width:370px){ .top-tabs{gap:14px;} }
+  .svc-card{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;
+    padding:14px 8px 14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:8px;
+    cursor:pointer;position:relative;}
+  .svc-card .svc-main{flex:1;min-width:0;}
+  .svc-card .svc-title{font-size:16px;font-weight:700;color:var(--ink);}
+  .svc-card .svc-km{font-size:14px;font-weight:600;color:var(--muted);}
+  .svc-card .svc-meta{font-size:12.5px;color:var(--faint);margin-top:2px;}
+  .svc-handle{background:none;border:none;color:var(--faint);padding:8px;flex-shrink:0;cursor:grab;
+    touch-action:none;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;}
+  [data-svc-row]{transition:transform .15s ease;}
+  [data-svc-row].svc-dragging{position:relative;z-index:5;transition:none !important;
+    box-shadow:0 14px 30px rgba(0,0,0,.28);filter:brightness(.97);}
+  .svc-head{display:flex;align-items:center;gap:2px;margin:0 0 12px;}
+  .svc-iconbtn{background:none;border:none;color:var(--muted);padding:8px;cursor:pointer;display:flex;
+    align-items:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+  .svc-iconbtn.danger{color:var(--danger);}
+  .svc-htitle{flex:1;min-width:0;font-size:18px;font-weight:700;color:var(--ink);padding:0 4px;}
+  .svc-htitle .svc-km{font-size:14px;font-weight:600;color:var(--muted);}
+  .svc-add{display:flex;gap:8px;margin:0 0 12px;}
+  .svc-add input{flex:1;min-width:0;border:1.5px solid var(--card-line);border-radius:12px;padding:12px 14px;
+    font-size:15px;font-family:'Inter',sans-serif;outline:none;background:var(--surface);color:var(--ink);}
+  .svc-add input:focus{border-color:var(--accent);}
+  .svc-add button{flex:0 0 auto;background:var(--accent);color:#fff;border:none;border-radius:12px;
+    padding:0 18px;font-size:22px;font-weight:700;cursor:pointer;}
+  .svc-row{background:var(--surface);border:1px solid var(--card-line);border-radius:12px;
+    padding:6px 4px 6px 12px;margin-bottom:6px;position:relative;}
+  .svc-row input[type=text]{color:var(--ink);min-width:0;padding:6px 0;}
+  .svc-group{position:relative;}
+  .svc-group-title{font-size:12px;font-weight:700;color:var(--faint);text-transform:uppercase;
+    letter-spacing:.5px;margin:16px 4px 8px;}
+  .svc-flash{animation:svcflash 1.8s ease;}
+  @keyframes svcflash{0%,55%{background:var(--tint-amber-bg);}100%{background:var(--surface);}}
+  .svc-sheet-input{width:100%;box-sizing:border-box;background:var(--surface);color:var(--ink);}
+  .svc-res-head{font-size:12.5px;color:var(--faint);margin:0 4px 10px;}
+  .svc-res-group{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;
+    padding:12px 16px 4px;margin-bottom:10px;}
+  .svc-res-text{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px;}
+  .svc-res-entry{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;
+    border-top:1px solid var(--card-line);cursor:pointer;}
+  .svc-res-where{font-size:14px;font-weight:600;color:var(--ink);}
+  .svc-res-km{font-size:12.5px;color:var(--muted);margin-top:1px;}
+  .svc-res-entry.planned .svc-res-where,.svc-res-entry.planned .svc-res-km{color:var(--faint);}
+  .svc-badge-done{color:var(--success);font-weight:700;font-size:13px;flex-shrink:0;}
+  .svc-badge-plan{color:var(--faint);font-weight:600;font-size:12.5px;flex-shrink:0;}
+  .svc-sync-note{margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#fdecea;color:#c0392b;
+    font-size:12.5px;text-align:center;cursor:pointer;}
+
   main{padding:14px 4px 92px;}
   .compose{
     border:0;
@@ -844,6 +894,7 @@
     <button class="top-tab active" data-section="notes">Заявки</button>
     <button class="top-tab" data-section="fuel">Расходы</button>
     <button class="top-tab" data-section="income">Доходы</button>
+    <button class="top-tab" data-section="service">Автосервис</button>
   </div>
 
   <main id="main">
@@ -876,6 +927,10 @@
         <div id="expGroupsList"></div>
       </div>
     </div>
+    <div id="serviceSection" style="display:none;">
+      <div id="svcSyncNote" class="svc-sync-note" style="display:none;"></div>
+      <div id="svcBody"></div>
+    </div>
   </main>
 
   <button class="global-fab" id="globalFab" type="button" aria-label="Добавить">+</button>
@@ -884,7 +939,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-05 00:55 (исправлена гонка: повторная правка заявки, пока её транзакция ещё летит, больше не теряется)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-05 22:46 (новая вкладка «Автосервис»: папки ТО, чек-лист, поиск по всем ТО, отдельная синхронизация)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1109,6 +1164,19 @@
     <div class="exp-sheet-actions">
       <button class="exp-delete-btn" id="expDeleteBtn" style="display:none;">Удалить</button>
       <button class="exp-save-btn" id="expSaveBtn">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<div class="exp-sheet-overlay" id="svcSheetOverlay">
+  <div class="exp-sheet">
+    <div class="exp-sheet-handle"></div>
+    <div id="svcSheetTitle" style="font-size:16px;font-weight:700;color:var(--ink);">Номер ТО</div>
+    <input class="exp-cat-new-input svc-sheet-input" id="svcNumberInput" placeholder="Например, 6" maxlength="12" autocomplete="off">
+    <input class="exp-cat-new-input svc-sheet-input" id="svcMileageInput" placeholder="Пробег, км" inputmode="numeric" autocomplete="off" style="display:none;">
+    <div class="exp-sheet-actions">
+      <button class="exp-delete-btn" id="svcSkipBtn" type="button" style="display:none;border-color:var(--card-line);color:var(--muted);">Пропустить</button>
+      <button class="exp-save-btn" id="svcSheetOk" type="button">Далее</button>
     </div>
   </div>
 </div>
@@ -1816,6 +1884,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
   searchQuery = e.target.value;
   if(currentSection === 'fuel') renderExpenses();
   else if(currentSection === 'income') renderIncome();
+  else if(currentSection === 'service') renderService();
   else renderContent();
 });
 
@@ -4588,21 +4657,25 @@ let expSelectedCategory = null;
 document.getElementById('topTabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.top-tab');
   if(!btn) return;
+  if(currentSection === 'service') svcFlushLocalSave();
   currentSection = btn.getAttribute('data-section');
   document.querySelectorAll('.top-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const isFuel = currentSection === 'fuel';
   const isIncome = currentSection === 'income';
+  const isService = currentSection === 'service';
   document.getElementById('composeBar').style.display = 'none';
   document.getElementById('summaryBar').style.display = 'none';
-  document.getElementById('content').style.display = (isFuel || isIncome) ? 'none' : 'block';
+  document.getElementById('content').style.display = (isFuel || isIncome || isService) ? 'none' : 'block';
   document.getElementById('fuelSection').style.display = isFuel ? 'block' : 'none';
   document.getElementById('incomeSection').style.display = isIncome ? 'block' : 'none';
+  document.getElementById('serviceSection').style.display = isService ? 'block' : 'none';
   document.getElementById('globalFab').style.display = isIncome ? 'none' : 'flex';
   document.getElementById('searchInput').placeholder =
-    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : 'Поиск';
+    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : isService ? 'Поиск по Автосервису' : 'Поиск';
   if(isFuel) renderExpenses();
   else if(isIncome) renderIncome();
+  else if(isService) renderService();
   else renderContent();
 });
 
@@ -4610,6 +4683,7 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
 // На "Доходы" кнопка скрыта — отдельного добавления там нет (доход считается по заявкам).
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
+  if(currentSection === 'service'){ openSvcSheetCreate(); return; }
   document.getElementById('composeBar').click();
 });
 
@@ -4948,6 +5022,873 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
   showToast('Расход удалён');
 });
 
+// ==================== АВТОСЕРВИС: папки ТО ====================
+// Данные: serviceFolders = [{ id, number, mileage, order, createdAt, editedAt,
+//   items: [{ id, text, done }] }]. Порядок пунктов — порядок массива items:
+// сначала невыполненные (в порядке, который задал пользователь), затем
+// выполненные. Папки показываются по полю order (меньше — выше).
+// Синхронизация — отдельной коллекцией users/{uid}/serviceFolders/{id} и
+// ОТДЕЛЬНОЙ цепочкой от заявок/расходов (см. flushServiceFolders ниже): ошибка
+// правил Firestore для этой коллекции не должна блокировать остальное.
+let serviceFolders = [];
+let svcOpenFolderId = null;     // null — список папок; иначе id открытой папки
+let svcFlashItemId = null;      // пункт, который подсветить при открытии папки из поиска
+let svcSaveTimer = null;        // отложенное сохранение набираемого текста пункта
+let svcFlushTimer = null;       // отложенная отправка в облако
+let svcRenderPending = false;   // экран надо перерисовать, как только закончится ввод/перетаскивание
+let svcPendingDeletedIds = [];  // папки, удалённые на этом телефоне, но удаление ещё не подтверждено облаком
+let lastSyncedServiceFolders = new Map(); // id -> editedAt, который точно уже в облаке
+let serviceBaselineReady = false;   // первый подтверждённый сервером снимок serviceFolders получен
+let serviceWritesAllowed = false;   // в этой сессии отправка вообще разрешена (см. writesAllowed в subscribeCloud)
+let svcFlushInFlight = null, svcFlushAgain = false, svcRetryTimer = null;
+let svcSyncErrorCode = '';
+const SVC_HANDLE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+const SVC_RM_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const SVC_BACK_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+const SVC_EDIT_SVG = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const SVC_TRASH_SVG = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+
+function svcNewId(){ return 'sv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function svcFolderById(id){
+  if(id == null) return null;
+  return serviceFolders.find(f => String(f.id) === String(id)) || null;
+}
+function svcSortedFolders(){
+  return serviceFolders.slice().sort((a, b) => (a.order || 0) - (b.order || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+}
+function svcFormatKm(m){
+  if(m == null || m === '') return '';
+  const n = Number(m);
+  if(!isFinite(n) || n <= 0) return '';
+  return n.toLocaleString('ru-RU').replace(/[  ]/g, ' ') + ' км';
+}
+function svcParseKm(str){
+  const d = String(str || '').replace(/\D/g, '').slice(0, 8);
+  if(!d) return null;
+  const n = parseInt(d, 10);
+  return n > 0 ? n : null;
+}
+function svcFolderTitle(f){ return 'ТО ' + f.number; }
+function svcTouch(f){ f.editedAt = Date.now(); }
+
+// Приводит папку (из локального кэша, из облака, из импорта) к ожидаемому виду:
+// строковые id, булев done, невыполненные пункты раньше выполненных.
+function svcSanitizeFolder(raw){
+  if(!raw || raw.id == null) return null;
+  const seen = new Set();
+  const clean = [];
+  (Array.isArray(raw.items) ? raw.items : []).forEach(it => {
+    if(!it) return;
+    let id = it.id != null ? String(it.id) : svcNewId();
+    if(seen.has(id)) id = svcNewId();
+    seen.add(id);
+    clean.push({ id, text: String(it.text == null ? '' : it.text), done: !!it.done });
+  });
+  const km = Number(raw.mileage);
+  return {
+    id: String(raw.id),
+    number: String(raw.number == null ? '' : raw.number),
+    mileage: (raw.mileage != null && raw.mileage !== '' && isFinite(km) && km > 0) ? km : null,
+    order: isFinite(Number(raw.order)) ? Number(raw.order) : 0,
+    createdAt: raw.createdAt || 0,
+    editedAt: raw.editedAt || raw.createdAt || 0,
+    items: clean.filter(i => !i.done).concat(clean.filter(i => i.done))
+  };
+}
+
+// ---- операции над данными ----
+function svcCreateFolder(number, mileage){
+  const now = Date.now();
+  const minOrder = serviceFolders.length ? Math.min.apply(null, serviceFolders.map(f => f.order || 0)) : 1;
+  const f = { id: svcNewId(), number: String(number), mileage: mileage, order: minOrder - 1, createdAt: now, editedAt: now, items: [] };
+  serviceFolders.push(f);
+  svcSave();
+  return f;
+}
+function svcPendingDeletedKey(uid){ return 'vreyse_pendingSvcDeleted_' + uid; }
+function loadSvcPendingDeletedForUID(uid){
+  svcPendingDeletedIds = [];
+  try{
+    const a = JSON.parse(localStorage.getItem(svcPendingDeletedKey(uid)) || '[]');
+    if(Array.isArray(a)) svcPendingDeletedIds = a.map(String);
+  } catch(e){}
+}
+function svcSavePendingDeleted(){
+  if(!currentUID) return;
+  try{ localStorage.setItem(svcPendingDeletedKey(currentUID), JSON.stringify(svcPendingDeletedIds)); }catch(e){}
+}
+function svcDeleteFolder(id){
+  const sid = String(id);
+  serviceFolders = serviceFolders.filter(f => String(f.id) !== sid);
+  if(svcPendingDeletedIds.indexOf(sid) === -1){ svcPendingDeletedIds.push(sid); svcSavePendingDeleted(); }
+  if(svcOpenFolderId != null && String(svcOpenFolderId) === sid) svcOpenFolderId = null;
+  svcSave();
+}
+function svcAddItem(f, text){
+  const t = String(text || '').trim();
+  if(!t) return null;
+  const it = { id: svcNewId(), text: t, done: false };
+  const firstDone = f.items.findIndex(i => i.done);
+  if(firstDone === -1) f.items.push(it); else f.items.splice(firstDone, 0, it); // в конец невыполненных
+  svcTouch(f);
+  return it;
+}
+// Галочка поставлена — пункт уходит в самый конец (к выполненным); снята —
+// возвращается в конец невыполненных.
+function svcSetItemDone(f, itemId, done){
+  const idx = f.items.findIndex(i => i.id === itemId);
+  if(idx === -1) return;
+  const it = f.items.splice(idx, 1)[0];
+  it.done = !!done;
+  if(done){
+    f.items.push(it);
+  } else {
+    const firstDone = f.items.findIndex(i => i.done);
+    if(firstDone === -1) f.items.push(it); else f.items.splice(firstDone, 0, it);
+  }
+  svcTouch(f);
+}
+function svcRemoveItem(f, itemId){
+  const before = f.items.length;
+  f.items = f.items.filter(i => i.id !== itemId);
+  if(f.items.length !== before) svcTouch(f);
+}
+// Ручной порядок — отдельно внутри невыполненных и отдельно внутри выполненных.
+function svcReorderGroup(f, done, orderedIds){
+  const byId = new Map(f.items.map(i => [i.id, i]));
+  const group = orderedIds.map(id => byId.get(id)).filter(Boolean);
+  const other = f.items.filter(i => !!i.done !== done);
+  if(group.length !== f.items.length - other.length) return false; // экран устарел — не рискуем
+  f.items = done ? other.concat(group) : group.concat(other);
+  svcTouch(f);
+  return true;
+}
+
+// ---- сохранение ----
+function svcSave(){
+  saveState();
+  svcScheduleFlush();
+}
+function svcSaveSoon(){
+  clearTimeout(svcSaveTimer);
+  svcSaveTimer = setTimeout(() => { svcSaveTimer = null; svcSave(); }, 500);
+}
+function svcFlushLocalSave(){
+  if(svcSaveTimer){
+    clearTimeout(svcSaveTimer);
+    svcSaveTimer = null;
+    svcSave();
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){
+    svcFlushLocalSave();
+    flushServiceFolders();
+  }
+});
+window.addEventListener('pagehide', () => { svcFlushLocalSave(); });
+
+// ---- отрисовка ----
+function svcFolderCardHtml(f, withHandle){
+  const total = f.items.length, done = f.items.filter(i => i.done).length;
+  const km = svcFormatKm(f.mileage);
+  const id = escapeHtml(String(f.id));
+  return `<div class="svc-card" data-svc-row data-svc-key="${id}" data-svc-open="${id}">
+    <div class="svc-main">
+      <div class="svc-title">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
+      <div class="svc-meta">${total ? 'пунктов: ' + total + ' · выполнено: ' + done : 'пока пусто'}</div>
+    </div>
+    ${withHandle ? `<button class="svc-handle" data-svc-handle type="button" aria-label="Изменить порядок">${SVC_HANDLE_SVG}</button>` : ''}
+  </div>`;
+}
+function svcListHtml(){
+  const list = svcSortedFolders();
+  if(!list.length) return '<div class="empty">Папок ТО пока нет. Нажмите «+», чтобы создать первую.</div>';
+  return '<div data-svc-container="folders" style="position:relative;">' + list.map(f => svcFolderCardHtml(f, list.length > 1)).join('') + '</div>';
+}
+function svcGroupsHtml(f){
+  if(!f.items.length) return '<div class="empty" style="margin-top:30px;">Пока нет пунктов. Добавьте первый выше.</div>';
+  const active = f.items.filter(i => !i.done), done = f.items.filter(i => i.done);
+  const rowHtml = it => {
+    const id = escapeHtml(it.id);
+    return `<div class="svc-row cl-row ${it.done ? 'done' : ''}" data-svc-row data-svc-key="${id}" data-svc-item="${id}">
+      <input type="checkbox" data-svc-check="${id}" ${it.done ? 'checked' : ''}>
+      <input type="text" data-svc-text="${id}" value="${escapeHtml(it.text)}" placeholder="Пункт" autocomplete="off">
+      <button class="svc-handle" data-svc-handle type="button" aria-label="Изменить порядок">${SVC_HANDLE_SVG}</button>
+      <button class="rm" data-svc-rm="${id}" type="button" aria-label="Удалить пункт">${SVC_RM_SVG}</button>
+    </div>`;
+  };
+  let html = '';
+  if(active.length) html += `<div class="svc-group" data-svc-container="active">${active.map(rowHtml).join('')}</div>`;
+  if(done.length) html += `<div class="svc-group-title">Выполнено · ${done.length}</div><div class="svc-group" data-svc-container="done">${done.map(rowHtml).join('')}</div>`;
+  return html;
+}
+function svcFolderHtml(f){
+  const km = svcFormatKm(f.mileage);
+  return `<div class="svc-head">
+      <button class="svc-iconbtn" data-svc-back type="button" aria-label="Назад к папкам">${SVC_BACK_SVG}</button>
+      <div class="svc-htitle">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
+      <button class="svc-iconbtn" data-svc-editmeta type="button" aria-label="Изменить номер и пробег">${SVC_EDIT_SVG}</button>
+      <button class="svc-iconbtn danger" data-svc-delete type="button" aria-label="Удалить папку">${SVC_TRASH_SVG}</button>
+    </div>
+    <div class="svc-add">
+      <input id="svcNewItem" placeholder="Новый пункт" autocomplete="off" enterkeyhint="done">
+      <button id="svcNewItemBtn" type="button" aria-label="Добавить пункт">+</button>
+    </div>
+    <div id="svcGroups">${svcGroupsHtml(f)}</div>`;
+}
+function svcRerenderGroups(){
+  const f = svcFolderById(svcOpenFolderId);
+  const box = document.getElementById('svcGroups');
+  if(!f || !box){ renderService(); return; }
+  box.innerHTML = svcGroupsHtml(f);
+}
+
+// ---- поиск по содержимому ВСЕХ папок ----
+function svcNorm(s){
+  return String(s == null ? '' : s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, ' ').trim();
+}
+// Лёгкая «основа» слова без падежных окончаний: "замена"/"замены"/"замену" совпадут.
+function svcStem(w){
+  const n = w.length;
+  return n >= 7 ? w.slice(0, n - 2) : (n >= 5 ? w.slice(0, n - 1) : w);
+}
+function svcQueryStems(q){
+  const words = svcNorm(q).split(' ').filter(Boolean);
+  const meaningful = words.filter(w => w.length >= 2 || /\d/.test(w));
+  return (meaningful.length ? meaningful : words).map(svcStem);
+}
+function svcMatchesWords(hayWords, stems){
+  return stems.length > 0 && stems.every(st => hayWords.some(w => w.indexOf(st) === 0));
+}
+function svcSearch(q){
+  const stems = svcQueryStems(q);
+  const folderHits = [];
+  const groups = new Map(); // нормализованный текст пункта -> { text, entries }
+  svcSortedFolders().forEach(f => {
+    const fw = svcNorm('ТО ' + f.number + ' ' + (f.mileage != null ? f.mileage : '')).split(' ').filter(Boolean);
+    if(svcMatchesWords(fw, stems)) folderHits.push(f);
+    f.items.forEach(it => {
+      const key = svcNorm(it.text);
+      if(!key || !svcMatchesWords(key.split(' '), stems)) return;
+      let g = groups.get(key);
+      if(!g){ g = { key, text: it.text.trim(), entries: [] }; groups.set(key, g); }
+      g.entries.push({ folder: f, item: it });
+    });
+  });
+  return { folderHits, groups: Array.from(groups.values()) };
+}
+function svcSearchHtml(q){
+  const res = svcSearch(q);
+  if(!res.folderHits.length && !res.groups.length) return '<div class="empty">Ничего не найдено.</div>';
+  let html = '';
+  if(res.folderHits.length){
+    html += '<div class="svc-res-head">Папки ТО</div>' + res.folderHits.map(f => svcFolderCardHtml(f, false)).join('');
+  }
+  if(res.groups.length){
+    const folderIds = new Set();
+    let entriesCount = 0;
+    res.groups.forEach(g => g.entries.forEach(e => { folderIds.add(String(e.folder.id)); entriesCount++; }));
+    html += `<div class="svc-res-head">Найдено пунктов: ${entriesCount} · в ТО: ${folderIds.size}</div>`;
+    res.groups.forEach(g => {
+      html += `<div class="svc-res-group"><div class="svc-res-text">${escapeHtml(g.text)}</div>`;
+      g.entries.forEach(e => {
+        const f = e.folder, done = !!e.item.done;
+        const km = svcFormatKm(f.mileage);
+        const kmLine = km || (done ? 'пробег не указан' : '');
+        html += `<div class="svc-res-entry ${done ? '' : 'planned'}" data-svc-open="${escapeHtml(String(f.id))}" data-svc-flash="${escapeHtml(e.item.id)}">
+          <div><div class="svc-res-where">${escapeHtml(svcFolderTitle(f))}</div>${kmLine ? `<div class="svc-res-km">${escapeHtml(kmLine)}</div>` : ''}</div>
+          ${done ? '<span class="svc-badge-done">✓ выполнено</span>' : '<span class="svc-badge-plan">в плане</span>'}
+        </div>`;
+      });
+      html += '</div>';
+    });
+  }
+  return html;
+}
+
+function svcUpdateFab(){
+  if(currentSection !== 'service') return;
+  const q = (searchQuery || '').trim();
+  document.getElementById('globalFab').style.display = (svcOpenFolderId == null && !q) ? 'flex' : 'none';
+}
+function svcRenderSyncNote(){
+  const el = document.getElementById('svcSyncNote');
+  if(!el) return;
+  if(!svcSyncErrorCode){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.textContent = 'Автосервис сохранён на этом телефоне, но пока не ушёл в облако (' + svcSyncErrorCode + ')'
+    + (svcSyncErrorCode === 'permission-denied' ? ' — в правилах Firebase нужно разрешить коллекцию serviceFolders' : '')
+    + '. Нажмите, чтобы повторить.';
+}
+function svcSetSyncError(code){
+  svcSyncErrorCode = code || '';
+  if(currentSection === 'service') svcRenderSyncNote();
+}
+function renderService(){
+  const body = document.getElementById('svcBody');
+  if(!body) return;
+  svcRenderSyncNote();
+  const q = (searchQuery || '').trim();
+  if(q){
+    body.innerHTML = svcSearchHtml(q);
+  } else {
+    const f = svcFolderById(svcOpenFolderId);
+    if(svcOpenFolderId != null && f){
+      body.innerHTML = svcFolderHtml(f);
+    } else {
+      svcOpenFolderId = null;
+      body.innerHTML = svcListHtml();
+    }
+  }
+  svcUpdateFab();
+}
+// Перерисовка из-за изменений, пришедших из облака: не рвём ввод текста и
+// перетаскивание — откладываем до их окончания.
+function svcRerenderIfVisible(){
+  if(currentSection !== 'service') return;
+  const ae = document.activeElement;
+  const typing = ae && ae.tagName === 'INPUT' && ae.closest && ae.closest('#serviceSection');
+  if(svcDrag || typing){ svcRenderPending = true; return; }
+  renderService();
+}
+function svcOpenFolder(id, flashItemId){
+  svcFlushLocalSave();
+  svcOpenFolderId = String(id);
+  svcFlashItemId = flashItemId || null;
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  renderService();
+  document.getElementById('main').scrollTop = 0;
+  if(svcFlashItemId){
+    const el = Array.from(document.querySelectorAll('#svcGroups [data-svc-item]'))
+      .find(x => x.getAttribute('data-svc-item') === svcFlashItemId);
+    if(el){
+      el.classList.add('svc-flash');
+      el.scrollIntoView({ block: 'center' });
+    }
+    svcFlashItemId = null;
+  }
+}
+function svcCloseFolder(){
+  svcFlushLocalSave();
+  svcOpenFolderId = null;
+  renderService();
+}
+function svcDoAddItem(){
+  const f = svcFolderById(svcOpenFolderId);
+  const input = document.getElementById('svcNewItem');
+  if(!f || !input) return;
+  if(!svcAddItem(f, input.value)){ input.focus(); return; }
+  input.value = '';
+  svcSave();
+  svcRerenderGroups();
+  input.focus();
+}
+function svcConfirmDeleteFolder(){
+  const f = svcFolderById(svcOpenFolderId);
+  if(!f) return;
+  const id = f.id;
+  showConfirm('Удалить папку «' + svcFolderTitle(f) + '» вместе со всеми пунктами? Это действие нельзя отменить.', () => {
+    svcDeleteFolder(id);
+    renderService();
+    showToast('Папка удалена');
+  });
+}
+
+// ---- события раздела ----
+const svcSectionEl = document.getElementById('serviceSection');
+svcSectionEl.addEventListener('click', (e) => {
+  if(e.target.closest('.svc-handle')) return;
+  if(e.target.closest('#svcSyncNote')){
+    svcSetSyncError('');
+    flushServiceFolders();
+    refreshServiceFoldersOnResume();
+    return;
+  }
+  if(e.target.closest('[data-svc-back]')){ svcCloseFolder(); return; }
+  if(e.target.closest('[data-svc-editmeta]')){
+    const f = svcFolderById(svcOpenFolderId);
+    if(f) openSvcSheetEdit(f);
+    return;
+  }
+  if(e.target.closest('[data-svc-delete]')){ svcConfirmDeleteFolder(); return; }
+  if(e.target.closest('#svcNewItemBtn')){ svcDoAddItem(); return; }
+  const rm = e.target.closest('[data-svc-rm]');
+  if(rm){
+    const f = svcFolderById(svcOpenFolderId);
+    if(!f) return;
+    svcRemoveItem(f, rm.getAttribute('data-svc-rm'));
+    svcSave();
+    svcRerenderGroups();
+    return;
+  }
+  const open = e.target.closest('[data-svc-open]');
+  if(open) svcOpenFolder(open.getAttribute('data-svc-open'), open.getAttribute('data-svc-flash'));
+});
+svcSectionEl.addEventListener('input', (e) => {
+  const t = e.target.closest('[data-svc-text]');
+  if(!t) return;
+  const f = svcFolderById(svcOpenFolderId);
+  if(!f) return;
+  const it = f.items.find(i => i.id === t.getAttribute('data-svc-text'));
+  if(!it) return;
+  it.text = t.value;
+  svcTouch(f);
+  svcSaveSoon();
+});
+svcSectionEl.addEventListener('change', (e) => {
+  const c = e.target.closest('[data-svc-check]');
+  if(!c) return;
+  const f = svcFolderById(svcOpenFolderId);
+  if(!f) return;
+  svcFlushLocalSave();
+  svcSetItemDone(f, c.getAttribute('data-svc-check'), c.checked);
+  svcSave();
+  svcRerenderGroups();
+});
+svcSectionEl.addEventListener('keydown', (e) => {
+  if(e.key !== 'Enter') return;
+  if(e.target.id === 'svcNewItem'){ e.preventDefault(); svcDoAddItem(); return; }
+  if(e.target.closest && e.target.closest('[data-svc-text]')){ e.preventDefault(); e.target.blur(); }
+});
+svcSectionEl.addEventListener('focusout', (e) => {
+  const t = e.target.closest && e.target.closest('[data-svc-text]');
+  if(t){
+    svcFlushLocalSave();
+    // Пункт, из которого стёрли весь текст, не оставляем пустой строкой.
+    const f = svcFolderById(svcOpenFolderId);
+    const it = f && f.items.find(i => i.id === t.getAttribute('data-svc-text'));
+    if(it && !it.text.trim()){
+      svcRemoveItem(f, it.id);
+      svcSave();
+      svcRerenderGroups();
+    }
+  }
+  if(svcRenderPending){
+    setTimeout(() => {
+      const ae = document.activeElement;
+      const typing = ae && ae.tagName === 'INPUT' && ae.closest && ae.closest('#serviceSection');
+      if(svcRenderPending && !svcDrag && !typing){ svcRenderPending = false; renderService(); }
+    }, 0);
+  }
+});
+
+// ---- перетаскивание за ручку (общее для пунктов и для папок) ----
+let svcDrag = null;
+function svcStartDrag(e, handle){
+  const row = handle.closest('[data-svc-row]');
+  if(!row) return;
+  const container = row.parentElement;
+  const rows = Array.from(container.children).filter(el => el.hasAttribute('data-svc-row'));
+  if(rows.length < 2) return;
+  try{ handle.setPointerCapture(e.pointerId); }catch(_){}
+  const cRect = container.getBoundingClientRect();
+  const geom = rows.map(el => ({ top: el.offsetTop, h: el.offsetHeight }));
+  const from = rows.indexOf(row);
+  svcDrag = {
+    pointerId: e.pointerId, handle, row, container, rows, geom,
+    fromIdx: from, hoverIdx: from,
+    pitch: from < rows.length - 1 ? geom[from + 1].top - geom[from].top : geom[from].top - geom[from - 1].top,
+    startY: e.clientY - cRect.top,
+    lastClientY: e.clientY,
+    mainEl: document.getElementById('main'),
+    raf: 0
+  };
+  row.classList.add('svc-dragging');
+  svcDrag.raf = requestAnimationFrame(svcDragTick);
+  e.preventDefault();
+}
+function svcDragUpdate(){
+  const d = svcDrag;
+  if(!d) return;
+  const cRect = d.container.getBoundingClientRect();
+  const dy = (d.lastClientY - cRect.top) - d.startY;
+  d.row.style.transform = 'translateY(' + dy + 'px)';
+  const center = d.geom[d.fromIdx].top + d.geom[d.fromIdx].h / 2 + dy;
+  let hover = 0;
+  d.geom.forEach((g, i) => { if(i !== d.fromIdx && g.top + g.h / 2 < center) hover++; });
+  d.hoverIdx = hover;
+  d.rows.forEach((el, i) => {
+    if(i === d.fromIdx) return;
+    let shift = 0;
+    if(d.fromIdx < hover && i > d.fromIdx && i <= hover) shift = -d.pitch;
+    else if(hover < d.fromIdx && i >= hover && i < d.fromIdx) shift = d.pitch;
+    el.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+  });
+}
+// Если палец у верхнего/нижнего края экрана — прокручиваем список сами.
+function svcDragTick(){
+  const d = svcDrag;
+  if(!d) return;
+  const r = d.mainEl.getBoundingClientRect();
+  let v = 0;
+  if(d.lastClientY < r.top + 70) v = -Math.ceil((r.top + 70 - d.lastClientY) / 6);
+  else if(d.lastClientY > r.bottom - 70) v = Math.ceil((d.lastClientY - (r.bottom - 70)) / 6);
+  if(v){ d.mainEl.scrollTop += v; svcDragUpdate(); }
+  d.raf = requestAnimationFrame(svcDragTick);
+}
+function svcFinishDrag(e){
+  const d = svcDrag;
+  if(!d || (e && e.pointerId !== d.pointerId)) return;
+  cancelAnimationFrame(d.raf);
+  svcDragUpdate();
+  const hover = d.hoverIdx;
+  d.rows.forEach(el => { el.style.transform = ''; });
+  d.row.classList.remove('svc-dragging');
+  svcDrag = null;
+  try{ d.handle.releasePointerCapture(d.pointerId); }catch(_){}
+  if(hover !== d.fromIdx){
+    const keys = d.rows.map(el => el.getAttribute('data-svc-key'));
+    const moved = keys.splice(d.fromIdx, 1)[0];
+    keys.splice(hover, 0, moved);
+    svcOnReorder(d.container.getAttribute('data-svc-container'), keys);
+  } else if(svcRenderPending){
+    svcRenderPending = false;
+    renderService();
+  }
+}
+function svcOnReorder(kind, keys){
+  svcRenderPending = false;
+  if(kind === 'folders'){
+    const sorted = svcSortedFolders();
+    if(keys.length !== sorted.length){ renderService(); return; }
+    const byId = new Map(sorted.map(f => [String(f.id), f]));
+    keys.forEach((k, i) => {
+      const f = byId.get(k);
+      if(f && f.order !== i + 1){ f.order = i + 1; svcTouch(f); }
+    });
+    svcSave();
+    renderService();
+    return;
+  }
+  const f = svcFolderById(svcOpenFolderId);
+  if(f && svcReorderGroup(f, kind === 'done', keys)) svcSave();
+  svcRerenderGroups();
+}
+svcSectionEl.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('.svc-handle');
+  if(h) svcStartDrag(e, h);
+});
+document.addEventListener('pointermove', (e) => {
+  if(!svcDrag || e.pointerId !== svcDrag.pointerId) return;
+  svcDrag.lastClientY = e.clientY;
+  svcDragUpdate();
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener('pointerup', svcFinishDrag);
+document.addEventListener('pointercancel', svcFinishDrag);
+// Касание ручки не должно запускать pull-to-refresh, который слушает весь #main.
+['touchstart', 'touchmove'].forEach(t => svcSectionEl.addEventListener(t, (e) => {
+  if(e.target.closest && e.target.closest('.svc-handle')) e.stopPropagation();
+}, { passive: true }));
+svcSectionEl.addEventListener('contextmenu', (e) => {
+  if(e.target.closest && e.target.closest('.svc-handle')) e.preventDefault();
+});
+
+// ---- окно: номер ТО → пробег (можно пропустить); потом оба поля можно править ----
+const svcSheetOverlay = document.getElementById('svcSheetOverlay');
+const svcNumberInput = document.getElementById('svcNumberInput');
+const svcMileageInput = document.getElementById('svcMileageInput');
+const svcSheetOk = document.getElementById('svcSheetOk');
+const svcSkipBtn = document.getElementById('svcSkipBtn');
+const svcSheetTitle = document.getElementById('svcSheetTitle');
+let svcSheetState = null; // { mode:'create'|'edit', step:1|2, folderId, number }
+function svcSheetRender(){
+  const s = svcSheetState;
+  if(!s) return;
+  if(s.mode === 'create' && s.step === 1){
+    svcSheetTitle.textContent = 'Номер ТО';
+    svcNumberInput.style.display = 'block'; svcMileageInput.style.display = 'none';
+    svcNumberInput.placeholder = 'Например, 6';
+    svcSkipBtn.style.display = 'none';
+    svcSheetOk.textContent = 'Далее';
+    svcSheetOk.disabled = !svcNumberInput.value.trim();
+    setTimeout(() => svcNumberInput.focus(), 150);
+  } else if(s.mode === 'create'){
+    svcSheetTitle.textContent = 'ТО ' + s.number + ' — пробег, км (можно пропустить)';
+    svcNumberInput.style.display = 'none'; svcMileageInput.style.display = 'block';
+    svcMileageInput.placeholder = 'Например, 245000';
+    svcSkipBtn.style.display = 'block';
+    svcSheetOk.textContent = 'Создать';
+    svcSheetOk.disabled = false;
+    setTimeout(() => svcMileageInput.focus(), 150);
+  } else {
+    svcSheetTitle.textContent = 'Номер ТО и пробег';
+    svcNumberInput.style.display = 'block'; svcMileageInput.style.display = 'block';
+    svcNumberInput.placeholder = 'Номер ТО';
+    svcMileageInput.placeholder = 'Пробег, км (необязательно)';
+    svcSkipBtn.style.display = 'none';
+    svcSheetOk.textContent = 'Сохранить';
+    svcSheetOk.disabled = !svcNumberInput.value.trim();
+  }
+}
+function openSvcSheetCreate(){
+  svcSheetState = { mode: 'create', step: 1, folderId: null, number: '' };
+  svcNumberInput.value = ''; svcMileageInput.value = '';
+  svcSheetRender();
+  svcSheetOverlay.classList.add('show');
+}
+function openSvcSheetEdit(f){
+  svcSheetState = { mode: 'edit', step: 0, folderId: f.id, number: f.number };
+  svcNumberInput.value = f.number;
+  svcMileageInput.value = f.mileage != null ? String(f.mileage) : '';
+  svcSheetRender();
+  svcSheetOverlay.classList.add('show');
+}
+function closeSvcSheet(){
+  svcSheetOverlay.classList.remove('show');
+  svcSheetState = null;
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+function svcDuplicateNumber(number, exceptId){
+  const n = svcNorm(number);
+  return serviceFolders.some(f => (exceptId == null || String(f.id) !== String(exceptId)) && svcNorm(f.number) === n);
+}
+function svcFinishCreate(number, km){
+  const go = () => {
+    const f = svcCreateFolder(number, km);
+    closeSvcSheet();
+    searchQuery = '';
+    document.getElementById('searchInput').value = '';
+    svcOpenFolderId = f.id;
+    renderService();
+    showToast('Папка создана');
+    setTimeout(() => { const i = document.getElementById('svcNewItem'); if(i) i.focus(); }, 200);
+  };
+  if(svcDuplicateNumber(number, null)){
+    showConfirm('ТО ' + number + ' уже есть. Создать ещё одну папку с таким номером?', go);
+  } else go();
+}
+function svcFinishEdit(folderId, number, km){
+  const go = () => {
+    const f = svcFolderById(folderId);
+    if(f){
+      f.number = number;
+      f.mileage = km;
+      svcTouch(f);
+      svcSave();
+    }
+    closeSvcSheet();
+    renderService();
+  };
+  if(svcDuplicateNumber(number, folderId)){
+    showConfirm('ТО ' + number + ' уже есть. Сохранить такой же номер у этой папки?', go);
+  } else go();
+}
+svcNumberInput.addEventListener('input', () => {
+  if(svcSheetState && !(svcSheetState.mode === 'create' && svcSheetState.step === 2)) svcSheetOk.disabled = !svcNumberInput.value.trim();
+});
+svcMileageInput.addEventListener('input', () => {
+  const clean = svcMileageInput.value.replace(/[^\d\s]/g, '');
+  if(clean !== svcMileageInput.value) svcMileageInput.value = clean;
+});
+[svcNumberInput, svcMileageInput].forEach(inp => inp.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); if(!svcSheetOk.disabled) svcSheetOk.click(); }
+}));
+svcSheetOk.addEventListener('click', () => {
+  const s = svcSheetState;
+  if(!s) return;
+  const num = svcNumberInput.value.trim();
+  if(s.mode === 'create'){
+    if(s.step === 1){
+      if(!num) return;
+      s.number = num;
+      s.step = 2;
+      svcSheetRender();
+      return;
+    }
+    svcFinishCreate(s.number, svcParseKm(svcMileageInput.value));
+    return;
+  }
+  if(!num) return;
+  svcFinishEdit(s.folderId, num, svcParseKm(svcMileageInput.value));
+});
+svcSkipBtn.addEventListener('click', () => {
+  const s = svcSheetState;
+  if(s && s.mode === 'create' && s.step === 2) svcFinishCreate(s.number, null);
+});
+svcSheetOverlay.addEventListener('click', (e) => {
+  if(e.target === svcSheetOverlay) closeSvcSheet();
+});
+
+// ---- синхронизация: ОТДЕЛЬНАЯ цепочка, не связанная с заявками и расходами ----
+// Ошибка правил Firestore (permission-denied) для этой коллекции не может
+// сломать отправку заявок и расходов: у служебных папок свой батч, свой флаг
+// готовности (первый подтверждённый сервером снимок) и своё сообщение об ошибке.
+function svcScheduleFlush(){
+  clearTimeout(svcFlushTimer);
+  svcFlushTimer = setTimeout(flushServiceFolders, 800);
+}
+function flushServiceFolders(){
+  if(!currentUID || !serviceBaselineReady || !serviceWritesAllowed || suppressCloudSave) return Promise.resolve();
+  if(svcFlushInFlight){ svcFlushAgain = true; return svcFlushInFlight; }
+  if(svcRetryTimer){ clearTimeout(svcRetryTimer); svcRetryTimer = null; }
+  const uid = currentUID, gen = authGeneration;
+  const colRef = db.collection('users').doc(uid).collection('serviceFolders');
+  const ops = [];
+  const localIds = new Set();
+  serviceFolders.forEach(f => {
+    if(!f || f.id == null) return;
+    const id = String(f.id);
+    localIds.add(id);
+    if(svcPendingDeletedIds.indexOf(id) !== -1) return;
+    const et = f.editedAt || f.createdAt || 0;
+    if(lastSyncedServiceFolders.get(id) !== et){
+      ops.push({ ref: colRef.doc(id), action: 'set', data: JSON.parse(JSON.stringify(f)), id, et });
+    }
+  });
+  const deleteIds = new Set(svcPendingDeletedIds);
+  lastSyncedServiceFolders.forEach((et, id) => { if(!localIds.has(id)) deleteIds.add(id); });
+  deleteIds.forEach(id => { if(!localIds.has(id)) ops.push({ ref: colRef.doc(id), action: 'delete', id }); });
+  if(!ops.length){ svcSetSyncError(''); return Promise.resolve(); }
+
+  const chunks = [];
+  for(let i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
+  let chain = Promise.resolve();
+  chunks.forEach(chunk => {
+    chain = chain.then(() => {
+      if(currentUID !== uid || authGeneration !== gen) return;
+      const batch = db.batch();
+      chunk.forEach(op => { if(op.action === 'set') batch.set(op.ref, op.data); else batch.delete(op.ref); });
+      return batch.commit();
+    });
+  });
+  const run = chain.then(() => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    let pendingChanged = false;
+    ops.forEach(op => {
+      if(op.action === 'set') lastSyncedServiceFolders.set(op.id, op.et);
+      else {
+        lastSyncedServiceFolders.delete(op.id);
+        const i = svcPendingDeletedIds.indexOf(op.id);
+        if(i !== -1){ svcPendingDeletedIds.splice(i, 1); pendingChanged = true; }
+      }
+    });
+    if(pendingChanged) svcSavePendingDeleted();
+    svcSetSyncError('');
+  }).catch(e => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    console.warn('Не удалось отправить Автосервис в облако:', e);
+    const code = e && e.code ? e.code : (e && e.message ? e.message : 'ошибка');
+    svcSetSyncError(code);
+    if(code !== 'permission-denied'){
+      svcRetryTimer = setTimeout(() => { svcRetryTimer = null; flushServiceFolders(); }, 15000);
+    }
+  }).then(() => {
+    const same = currentUID === uid && authGeneration === gen;
+    svcFlushInFlight = null;
+    if(svcFlushAgain){ svcFlushAgain = false; if(same) flushServiceFolders(); }
+  });
+  svcFlushInFlight = run;
+  return run;
+}
+// Применение записи, пришедшей с сервера. Возвращает true, если локальные данные изменились.
+function svcApplyIncoming(id, rawData){
+  const incoming = svcSanitizeFolder(Object.assign({}, rawData, { id }));
+  if(!incoming) return false;
+  const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+  if(svcPendingDeletedIds.indexOf(id) !== -1){
+    // Удалена на этом телефоне, сервер ещё присылает — не вставляем обратно.
+    lastSyncedServiceFolders.set(id, incomingEt);
+    return false;
+  }
+  const idx = serviceFolders.findIndex(f => String(f.id) === id);
+  let touched = false;
+  if(idx === -1){
+    serviceFolders.push(incoming);
+    touched = true;
+  } else {
+    const localEt = serviceFolders[idx].editedAt || serviceFolders[idx].createdAt || 0;
+    // Локальная версия новее — оставляем, её отправит flushServiceFolders().
+    if(incomingEt > localEt){ serviceFolders[idx] = incoming; touched = true; }
+  }
+  lastSyncedServiceFolders.set(id, incomingEt);
+  return touched;
+}
+function svcApplyRemoval(id){
+  const idx = serviceFolders.findIndex(f => String(f.id) === id);
+  if(idx !== -1){
+    const localEt = serviceFolders[idx].editedAt || serviceFolders[idx].createdAt || 0;
+    const knownEt = lastSyncedServiceFolders.get(id);
+    // Есть локальная правка новее того, что мы видели в облаке, — не стираем,
+    // она вернётся в облако при следующей отправке.
+    if(knownEt != null && localEt > knownEt){ lastSyncedServiceFolders.delete(id); return true; }
+    serviceFolders.splice(idx, 1);
+    if(svcOpenFolderId != null && String(svcOpenFolderId) === id) svcOpenFolderId = null;
+    lastSyncedServiceFolders.delete(id);
+    return true;
+  }
+  lastSyncedServiceFolders.delete(id);
+  return false;
+}
+function svcSweepPendingDeleted(cloudIds){
+  const still = svcPendingDeletedIds.filter(id => cloudIds.has(id));
+  if(still.length !== svcPendingDeletedIds.length){
+    svcPendingDeletedIds = still;
+    svcSavePendingDeleted();
+  }
+}
+// Третья живая подписка (вызывается из subscribeCloud). Своя готовность
+// (serviceBaselineReady) — НЕ входит в maybeBaselineReady() заявок/расходов:
+// иначе ошибка прав на новую коллекцию навсегда заблокировала бы их отправку.
+function svcSubscribe(userRef, writesAllowed){
+  const uid = currentUID, gen = authGeneration;
+  let ready = false;
+  return userRef.collection('serviceFolders').onSnapshot(snapshot => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    let touched = false;
+    snapshot.docChanges().forEach(change => {
+      if(change.doc.metadata.hasPendingWrites) return; // наша же ещё не подтверждённая запись
+      const id = change.doc.id;
+      if(change.type === 'removed'){ if(svcApplyRemoval(id)) touched = true; return; }
+      if(svcApplyIncoming(id, change.doc.data())) touched = true;
+    });
+    if(!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites){
+      svcSweepPendingDeleted(new Set(snapshot.docs.map(d => d.id)));
+      if(!ready){
+        ready = true;
+        serviceBaselineReady = true;
+        serviceWritesAllowed = !!writesAllowed;
+        svcSetSyncError('');
+        flushServiceFolders(); // накопленные до готовности локальные правки
+      }
+    }
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+      svcRerenderIfVisible();
+    }
+  }, e => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    console.warn('Не удалось подписаться на Автосервис:', e);
+    svcSetSyncError(e && e.code ? e.code : 'subscribe-error');
+  });
+}
+// Прямой запрос к серверу при возврате в приложение (как refreshFromCloudOnResume
+// для заявок) — отдельно, чтобы его ошибка не ломала обновление заявок.
+function refreshServiceFoldersOnResume(){
+  if(!currentUID || !serviceBaselineReady) return;
+  const uid = currentUID, gen = authGeneration;
+  db.collection('users').doc(uid).collection('serviceFolders').get({ source: 'server' }).then(snap => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    let touched = false;
+    const serverIds = new Set();
+    snap.forEach(d => {
+      serverIds.add(d.id);
+      if(svcApplyIncoming(d.id, d.data())) touched = true;
+    });
+    Array.from(lastSyncedServiceFolders.keys()).forEach(id => {
+      if(!serverIds.has(id) && svcApplyRemoval(id)) touched = true;
+    });
+    svcSweepPendingDeleted(serverIds);
+    svcSetSyncError('');
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+      svcRerenderIfVisible();
+    }
+  }).catch(e => console.warn('Не удалось обновить Автосервис с сервера:', e));
+}
+
 // ---- persistence (localStorage — быстрый локальный кэш) ----
 const STORAGE_KEY = 'moyreys_notes_v1';
 let localUpdatedAt = 0; // метка времени последней правки на этом телефоне — чтобы облако
@@ -4962,9 +5903,13 @@ function toMillis(v){
   return v || 0;
 }
 function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, updatedAt: localUpdatedAt };
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, serviceFolders, updatedAt: localUpdatedAt };
 }
 function applyState(s){
+  // Автосервис: массив в состоянии — применяем; пустой объект (сброс при
+  // входе/выходе) — очищаем; иначе (старая копия без этого ключа) — оставляем как есть.
+  if(Array.isArray(s.serviceFolders)) serviceFolders = s.serviceFolders.map(svcSanitizeFolder).filter(Boolean);
+  else if(!Object.keys(s).length) serviceFolders = [];
   notes = s.notes || [];
   idSeq = s.idSeq || 1;
   monthKey = s.monthKey || null;
@@ -5212,6 +6157,9 @@ function flushCloudSave(){
     // повторной попытки в рамках этой сессии не предусмотрено.
     return Promise.resolve();
   }
+  // Автосервис отправляется отдельной цепочкой (своя блокировка и свои флаги),
+  // чтобы ошибка правил Firestore для новой коллекции не ломала заявки/расходы.
+  flushServiceFolders();
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
   if(cloudSaveInFlight){
     // Предыдущая отправка ещё летит — не запускаем вторую поверх неё (см.
@@ -5927,6 +6875,11 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
       maybeBaselineReady();
     }
   }, e => console.warn('Не удалось подписаться на расходы:', e)));
+
+  // Автосервис — отдельная подписка и отдельный baseline (serviceBaselineReady),
+  // не входит в maybeBaselineReady(): иначе ошибка правил новой коллекции
+  // навсегда заблокировала бы отправку заявок и расходов.
+  cloudUnsubscribes.push(svcSubscribe(userRef, writesAllowed));
 }
 
 // Локальный кэш (STORAGE_KEY) — общий на весь телефон, один на все аккаунты.
@@ -5949,8 +6902,13 @@ auth.onAuthStateChanged(user => {
   initialCloudBaselineReady = false;
   cloudWritesAllowedThisSession = false;
   cloudSaveRequestedBeforeBaseline = false;
+  serviceBaselineReady = false;
+  serviceWritesAllowed = false;
+  lastSyncedServiceFolders = new Map();
+  svcOpenFolderId = null;
   if(user){
     currentUID = user.uid;
+    loadSvcPendingDeletedForUID(currentUID);
     loadPendingPhotoDeletesForUID(currentUID);
     loadPendingDeletedNoteIdsForUID(currentUID); // именно СЕЙЧАС, когда currentUID уже точно известен — не раньше (см. комментарий у функции)
     let cacheOwner = null;
@@ -6005,6 +6963,7 @@ auth.onAuthStateChanged(user => {
     notesUnderTransaction = new Map();
     pendingPhotoDeletePaths = []; // сама очередь на диске под прежним UID остаётся нетронутой
     pendingDeletedNoteIds = []; // очередь удаления заявок на диске под прежним UID тоже остаётся нетронутой
+    svcPendingDeletedIds = []; // то же для папок Автосервиса (на диске остаётся)
     authOverlay.style.display = 'flex';
   }
 });
@@ -6302,9 +7261,17 @@ function setupNativeBackButton(){
       closeExpenseSheet();
       return;
     }
+    if(svcSheetOverlay && svcSheetOverlay.classList.contains('show')){
+      closeSvcSheet();
+      return;
+    }
     if(drawerEl && drawerEl.classList.contains('show')){
       drawerEl.classList.remove('show');
       overlay.classList.remove('show');
+      return;
+    }
+    if(currentSection === 'service' && svcOpenFolderId){
+      svcCloseFolder();
       return;
     }
     // Архив/корзина внутри "Заявок" — поднимаемся на один уровень назад к
@@ -6364,6 +7331,8 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   lastSyncedNotes = new Map();
   lastSyncedExpenses = new Map();
   lastSyncedMetaJSON = null;
+  lastSyncedServiceFolders = new Map();
+  svcOpenFolderId = null;
   persistSyncedNotesMap();
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
@@ -6507,6 +7476,7 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
                 .then(() => cleanupOldBackups(backupsRef))
                 .finally(() => {
                   renderContent();
+                  svcRerenderIfVisible();
                   backupsOverlay.style.display = 'none';
                 });
             }
@@ -6563,7 +7533,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
 // новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
 // позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
 function exportData(){
-  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories };
+  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, serviceFolders };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -6596,8 +7566,11 @@ function importDataFromFile(file){
           expenses = s.expenses || [];
           expenseIdSeq = s.expenseIdSeq || 1;
           expenseCategories = s.expenseCategories || [];
+          if(Array.isArray(s.serviceFolders)) serviceFolders = s.serviceFolders.map(svcSanitizeFolder).filter(Boolean);
           saveState();
+          svcScheduleFlush();
           renderContent();
+          svcRerenderIfVisible();
           showToast('Данные загружены');
         }
       );
@@ -6752,6 +7725,7 @@ function refreshFromCloudOnResume(){
   const uid = currentUID;
   const gen = authGeneration;
   const userRef = db.collection('users').doc(currentUID);
+  refreshServiceFoldersOnResume();
   return Promise.all([
     userRef.get({ source: 'server' }),
     userRef.collection('notes').get({ source: 'server' }),
@@ -6917,7 +7891,7 @@ function refreshFromCloudOnResume(){
   // вниз не должен запускать обновление списка под ними.
   const BLOCKING_OVERLAY_IDS = ['confirmOverlay', 'lightbox', 'ocrResultOverlay', 'drawer',
     'backupsOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
-    'editorOverlay', 'expSheetOverlay', 'authOverlay'];
+    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'authOverlay'];
 
   function blockingOverlayOpen(){
     return BLOCKING_OVERLAY_IDS.some(id => {
