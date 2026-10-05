@@ -588,6 +588,50 @@
   .svc-badge-plan{color:var(--faint);font-weight:600;font-size:12.5px;flex-shrink:0;}
   .svc-sync-note{margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#fdecea;color:#c0392b;
     font-size:12.5px;text-align:center;cursor:pointer;}
+  /* ---- Автосервис: строка пункта и панель деталей ---- */
+  .svc-rowtext{flex:1;min-width:0;padding:6px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .svc-rt{display:block;font-size:14.5px;color:var(--ink);word-break:break-word;}
+  .cl-row.done .svc-rt{color:var(--faint);text-decoration:line-through;}
+  .svc-ind{display:block;font-size:12px;color:var(--faint);margin-top:2px;}
+  .svc-res-snip{font-size:12.5px;color:var(--muted);margin-top:3px;word-break:break-word;}
+  .svc-res-ind{font-size:12.5px;color:var(--muted);margin-left:6px;white-space:nowrap;}
+  .svc-res-entry.planned .svc-res-snip,.svc-res-entry.planned .svc-res-ind{color:var(--faint);}
+  .svc-res-body{min-width:0;flex:1;}
+  .svc-detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:45;display:none;}
+  .svc-detail-overlay.show{display:block;}
+  .svc-detail{background:var(--bg);width:100%;max-width:520px;margin:0 auto;height:100%;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  .svc-dhead{position:sticky;top:0;z-index:2;background:var(--bg);display:flex;align-items:center;gap:2px;
+    padding:8px 8px 8px 4px;border-bottom:1px solid var(--card-line);}
+  .svc-dtitle{flex:1;min-width:0;font-size:17px;font-weight:700;color:var(--ink);padding:0 4px;}
+  .svc-dtitle .svc-km{font-size:13.5px;font-weight:600;color:var(--muted);}
+  .svc-dbody{padding:14px 16px 40px;}
+  .svc-dlabel{display:block;font-size:12px;font-weight:700;color:var(--faint);text-transform:uppercase;
+    letter-spacing:.5px;margin:18px 2px 6px;}
+  .svc-dlabel:first-child{margin-top:0;}
+  .svc-dfield{width:100%;box-sizing:border-box;border:1.5px solid var(--card-line);border-radius:12px;
+    padding:11px 13px;font-size:15px;font-family:'Inter',sans-serif;outline:none;background:var(--surface);
+    color:var(--ink);resize:vertical;}
+  .svc-dfield:focus{border-color:var(--accent);}
+  .svc-dcheck{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:15px;color:var(--ink);cursor:pointer;}
+  .svc-dcheck input{width:20px;height:20px;accent-color:#5f6368;}
+  .svc-photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;}
+  .svc-ph{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:var(--surface-alt);
+    border:1px solid var(--card-line);}
+  .svc-ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}
+  .svc-ph-rm{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:13px;border:none;
+    background:rgba(0,0,0,.6);color:#fff;font-size:16px;line-height:1;cursor:pointer;padding:0;}
+  .svc-ph-st{position:absolute;left:0;right:0;bottom:0;font-size:11px;text-align:center;padding:3px 2px;
+    background:rgba(0,0,0,.55);color:#fff;}
+  .svc-ph-st.err{background:rgba(176,42,55,.9);}
+  .svc-dbtn{background:var(--surface);color:var(--ink);border:1.5px dashed var(--card-line);border-radius:12px;
+    padding:11px 14px;font-size:14.5px;font-weight:600;cursor:pointer;width:100%;}
+  .svc-link{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--card-line);
+    border-radius:12px;padding:8px 6px 8px 12px;margin-bottom:6px;}
+  .svc-link-main{flex:1;min-width:0;}
+  .svc-link-main a{display:block;font-size:14.5px;font-weight:600;color:var(--accent);text-decoration:none;word-break:break-word;}
+  .svc-link-main span{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
+  .svc-linkadd{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
 
   main{padding:14px 4px 92px;}
   .compose{
@@ -939,7 +983,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-05 22:46 (новая вкладка «Автосервис»: папки ТО, чек-лист, поиск по всем ТО, отдельная синхронизация)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-06 00:23 (резервная копия теперь создаётся и после отправки одного только Автосервиса)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1167,6 +1211,9 @@
     </div>
   </div>
 </div>
+
+<div class="svc-detail-overlay" id="svcDetailOverlay"><div class="svc-detail" id="svcDetail"></div></div>
+<input type="file" id="svcPhotoInput" accept="image/*" multiple style="display:none;">
 
 <div class="exp-sheet-overlay" id="svcSheetOverlay">
   <div class="exp-sheet">
@@ -2459,6 +2506,7 @@ function flagSyncConflict(id){
 }
 function retryPendingPhotoUploads(){
   if(!currentUID) return;
+  svcRetryPendingUploads(); // фото Автосервиса — отдельная, независимая от заявок цепочка
   notes.forEach(n => {
     if(!n || !n.photos || !n.photoIds) return;
     n.photos.forEach((p, i) => {
@@ -3273,13 +3321,13 @@ function detectCropRect(img){
     h: Math.min(1, (cropH + padY*2) / sh)
   };
 }
-function compressImage(file, maxDim=1800, quality=0.8){
+function compressImage(file, maxDim=1800, quality=0.8, noCrop=false){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        const crop = detectCropRect(img);
+        const crop = noCrop ? null : detectCropRect(img); // noCrop — для фото Автосервиса (автообрезка нужна только документам)
         const sx = crop ? Math.round(crop.x * img.width) : 0;
         const sy = crop ? Math.round(crop.y * img.height) : 0;
         const sWidth = crop ? Math.round(crop.w * img.width) : img.width;
@@ -5071,6 +5119,64 @@ function svcParseKm(str){
 function svcFolderTitle(f){ return 'ТО ' + f.number; }
 function svcTouch(f){ f.editedAt = Date.now(); }
 
+// ---- детали пункта: фото и ссылки ----
+// photos: [{ id, url, local? }]. url — постоянная ссылка Firebase Storage (в
+// облако уходит ТОЛЬКО она и id). local — временный base64 до окончания загрузки,
+// живёт только на этом телефоне (в localStorage), в Firestore не попадает.
+const SVC_MAX_PHOTOS = 10, SVC_MAX_LINKS = 10;
+function svcSanitizePhotos(raw){
+  const out = [], seen = new Set();
+  (Array.isArray(raw) ? raw : []).forEach(p => {
+    if(!p || p.id == null) return;
+    const id = String(p.id);
+    if(seen.has(id) || out.length >= SVC_MAX_PHOTOS) return;
+    const url = (typeof p.url === 'string' && p.url.indexOf('https://') === 0) ? p.url : null;
+    const local = (!url && typeof p.local === 'string' && p.local.indexOf('data:image') === 0) ? p.local : null;
+    if(!url && !local) return; // ни ссылки, ни локального файла — показывать нечего
+    seen.add(id);
+    const ph = { id, url };
+    if(local) ph.local = local;
+    out.push(ph);
+  });
+  return out;
+}
+// Только http/https — иначе (javascript:, data: и т.п.) ссылка отбрасывается.
+function svcNormalizeUrl(s){
+  let u = String(s == null ? '' : s).trim();
+  if(!u || /\s/.test(u)) return null;
+  if(!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+  try{
+    const p = new URL(u);
+    if((p.protocol !== 'http:' && p.protocol !== 'https:') || !p.hostname || p.hostname.indexOf('.') === -1) return null;
+    return u;
+  } catch(e){ return null; }
+}
+function svcLinkHost(u){
+  try{ return new URL(u).hostname.replace(/^www\./, ''); } catch(e){ return u; }
+}
+function svcSanitizeLinks(raw){
+  const out = [], seen = new Set();
+  (Array.isArray(raw) ? raw : []).forEach(l => {
+    if(!l || out.length >= SVC_MAX_LINKS) return;
+    const url = svcNormalizeUrl(l.url);
+    if(!url) return;
+    let id = l.id != null ? String(l.id) : svcNewId();
+    if(seen.has(id)) id = svcNewId();
+    seen.add(id);
+    out.push({ id, url, title: typeof l.title === 'string' ? l.title.trim().slice(0, 120) : '' });
+  });
+  return out;
+}
+// Копия папки для Firestore: никакого base64 и никаких ещё не загруженных фото.
+function svcFolderForCloud(f){
+  const c = JSON.parse(JSON.stringify(f));
+  (c.items || []).forEach(it => {
+    it.photos = (it.photos || []).filter(p => p && p.url).map(p => ({ id: p.id, url: p.url }));
+  });
+  return c;
+}
+function svcPhotoPath(uid, photoId){ return 'users/' + uid + '/photos/svc_' + photoId + '.jpg'; }
+
 // Приводит папку (из локального кэша, из облака, из импорта) к ожидаемому виду:
 // строковые id, булев done, невыполненные пункты раньше выполненных.
 function svcSanitizeFolder(raw){
@@ -5082,7 +5188,14 @@ function svcSanitizeFolder(raw){
     let id = it.id != null ? String(it.id) : svcNewId();
     if(seen.has(id)) id = svcNewId();
     seen.add(id);
-    clean.push({ id, text: String(it.text == null ? '' : it.text), done: !!it.done });
+    const pk = Number(it.planKm);
+    clean.push({
+      id, text: String(it.text == null ? '' : it.text), done: !!it.done,
+      note: typeof it.note === 'string' ? it.note : '',
+      planKm: (it.planKm != null && it.planKm !== '' && isFinite(pk) && pk > 0) ? pk : null,
+      photos: svcSanitizePhotos(it.photos),
+      links: svcSanitizeLinks(it.links)
+    });
   });
   const km = Number(raw.mileage);
   return {
@@ -5119,6 +5232,8 @@ function svcSavePendingDeleted(){
 }
 function svcDeleteFolder(id){
   const sid = String(id);
+  const gone = svcFolderById(sid);
+  if(gone) gone.items.forEach(it => (it.photos || []).forEach(svcQueuePhotoDelete));
   serviceFolders = serviceFolders.filter(f => String(f.id) !== sid);
   if(svcPendingDeletedIds.indexOf(sid) === -1){ svcPendingDeletedIds.push(sid); svcSavePendingDeleted(); }
   if(svcOpenFolderId != null && String(svcOpenFolderId) === sid) svcOpenFolderId = null;
@@ -5127,7 +5242,7 @@ function svcDeleteFolder(id){
 function svcAddItem(f, text){
   const t = String(text || '').trim();
   if(!t) return null;
-  const it = { id: svcNewId(), text: t, done: false };
+  const it = { id: svcNewId(), text: t, done: false, note: '', planKm: null, photos: [], links: [] };
   const firstDone = f.items.findIndex(i => i.done);
   if(firstDone === -1) f.items.push(it); else f.items.splice(firstDone, 0, it); // в конец невыполненных
   svcTouch(f);
@@ -5148,7 +5263,12 @@ function svcSetItemDone(f, itemId, done){
   }
   svcTouch(f);
 }
+function svcItemHasDetails(it){
+  return !!(it && ((it.note && it.note.trim()) || (it.photos && it.photos.length) || (it.links && it.links.length)));
+}
 function svcRemoveItem(f, itemId){
+  const gone = f.items.find(i => i.id === itemId);
+  if(gone) (gone.photos || []).forEach(svcQueuePhotoDelete); // файлы фото убираем из Storage через общую очередь удаления
   const before = f.items.length;
   f.items = f.items.filter(i => i.id !== itemId);
   if(f.items.length !== before) svcTouch(f);
@@ -5211,9 +5331,14 @@ function svcGroupsHtml(f){
   const active = f.items.filter(i => !i.done), done = f.items.filter(i => i.done);
   const rowHtml = it => {
     const id = escapeHtml(it.id);
+    const ind = [];
+    if(it.photos && it.photos.length) ind.push('📷' + it.photos.length);
+    if(it.links && it.links.length) ind.push('🔗' + it.links.length);
+    if(it.note && it.note.trim()) ind.push('📝');
+    if(it.planKm) ind.push('на ' + svcFormatKm(it.planKm));
     return `<div class="svc-row cl-row ${it.done ? 'done' : ''}" data-svc-row data-svc-key="${id}" data-svc-item="${id}">
       <input type="checkbox" data-svc-check="${id}" ${it.done ? 'checked' : ''}>
-      <input type="text" data-svc-text="${id}" value="${escapeHtml(it.text)}" placeholder="Пункт" autocomplete="off">
+      <div class="svc-rowtext" data-svc-detail="${id}"><span class="svc-rt">${escapeHtml(it.text) || '&nbsp;'}</span>${ind.length ? `<span class="svc-ind">${escapeHtml(ind.join(' · '))}</span>` : ''}</div>
       <button class="svc-handle" data-svc-handle type="button" aria-label="Изменить порядок">${SVC_HANDLE_SVG}</button>
       <button class="rm" data-svc-rm="${id}" type="button" aria-label="Удалить пункт">${SVC_RM_SVG}</button>
     </div>`;
@@ -5261,19 +5386,50 @@ function svcQueryStems(q){
 function svcMatchesWords(hayWords, stems){
   return stems.length > 0 && stems.every(st => hayWords.some(w => w.indexOf(st) === 0));
 }
+function svcWords(s){ return svcNorm(s).split(' ').filter(Boolean); }
+// Короткий фрагмент заметки вокруг первого совпавшего слова.
+function svcNoteSnippet(note, stems){
+  const s = String(note || '');
+  const re = /[A-Za-zА-Яа-яЁё0-9]+/g;
+  let m, pos = -1;
+  while((m = re.exec(s)) !== null){
+    const w = svcNorm(m[0]);
+    if(w && stems.some(st => w.indexOf(st) === 0)){ pos = m.index; break; }
+  }
+  if(pos === -1) return s.length > 70 ? s.slice(0, 70).trim() + '…' : s.trim();
+  const start = Math.max(0, pos - 25), end = Math.min(s.length, pos + 45);
+  return (start > 0 ? '…' : '') + s.slice(start, end).replace(/\s+/g, ' ').trim() + (end < s.length ? '…' : '');
+}
 function svcSearch(q){
   const stems = svcQueryStems(q);
   const folderHits = [];
-  const groups = new Map(); // нормализованный текст пункта -> { text, entries }
+  const groups = new Map(); // нормализованное название пункта -> { text, entries }
   svcSortedFolders().forEach(f => {
-    const fw = svcNorm('ТО ' + f.number + ' ' + (f.mileage != null ? f.mileage : '')).split(' ').filter(Boolean);
+    const fw = svcWords('ТО ' + f.number + ' ' + (f.mileage != null ? f.mileage : ''));
     if(svcMatchesWords(fw, stems)) folderHits.push(f);
     f.items.forEach(it => {
+      // Ищем сразу по названию, заметке и подписям ссылок: слова запроса могут
+      // быть разбросаны между ними («замена масла» в названии, «КПП» в подписи).
       const key = svcNorm(it.text);
-      if(!key || !svcMatchesWords(key.split(' '), stems)) return;
-      let g = groups.get(key);
-      if(!g){ g = { key, text: it.text.trim(), entries: [] }; groups.set(key, g); }
-      g.entries.push({ folder: f, item: it });
+      const noteWords = svcWords(it.note);
+      const linkTitles = (it.links || []).map(l => l.title || '').filter(Boolean);
+      const titleWords = key ? key.split(' ') : [];
+      const linkWords = [].concat.apply([], linkTitles.map(svcWords));
+      if(!svcMatchesWords(titleWords.concat(noteWords, linkWords), stems)) return;
+      let snippet = '';
+      if(!svcMatchesWords(titleWords, stems)){
+        // Название само по себе не совпало — покажем, ЧЕМ пункт нашёлся.
+        const noteHit = noteWords.length && stems.some(st => noteWords.some(w => w.indexOf(st) === 0));
+        if(noteHit) snippet = '📝 ' + svcNoteSnippet(it.note, stems);
+        else {
+          const lt = linkTitles.filter(t => stems.some(st => svcWords(t).some(w => w.indexOf(st) === 0)));
+          if(lt.length) snippet = '🔗 ' + lt.join(', ');
+        }
+      }
+      const gkey = key || ('#' + it.id);
+      let g = groups.get(gkey);
+      if(!g){ g = { key: gkey, text: it.text.trim(), entries: [] }; groups.set(gkey, g); }
+      g.entries.push({ folder: f, item: it, snippet });
     });
   });
   return { folderHits, groups: Array.from(groups.values()) };
@@ -5295,9 +5451,12 @@ function svcSearchHtml(q){
       g.entries.forEach(e => {
         const f = e.folder, done = !!e.item.done;
         const km = svcFormatKm(f.mileage);
-        const kmLine = km || (done ? 'пробег не указан' : '');
+        let kmLine = km || (done ? 'пробег не указан' : '');
+        if(!done && e.item.planKm) kmLine += (kmLine ? ' · ' : '') + 'план: на ' + svcFormatKm(e.item.planKm);
+        const ph = (e.item.photos || []).length, ln = (e.item.links || []).length;
+        const ind = (ph ? `<span class="svc-res-ind">📷${ph}</span>` : '') + (ln ? `<span class="svc-res-ind">🔗${ln}</span>` : '');
         html += `<div class="svc-res-entry ${done ? '' : 'planned'}" data-svc-open="${escapeHtml(String(f.id))}" data-svc-flash="${escapeHtml(e.item.id)}">
-          <div><div class="svc-res-where">${escapeHtml(svcFolderTitle(f))}</div>${kmLine ? `<div class="svc-res-km">${escapeHtml(kmLine)}</div>` : ''}</div>
+          <div class="svc-res-body"><div class="svc-res-where">${escapeHtml(svcFolderTitle(f))}${ind}</div>${kmLine ? `<div class="svc-res-km">${escapeHtml(kmLine)}</div>` : ''}${e.snippet ? `<div class="svc-res-snip">${escapeHtml(e.snippet)}</div>` : ''}</div>
           ${done ? '<span class="svc-badge-done">✓ выполнено</span>' : '<span class="svc-badge-plan">в плане</span>'}
         </div>`;
       });
@@ -5347,6 +5506,7 @@ function renderService(){
 // перетаскивание — откладываем до их окончания.
 function svcRerenderIfVisible(){
   if(currentSection !== 'service') return;
+  svcDetailOnRemote();
   const ae = document.activeElement;
   const typing = ae && ae.tagName === 'INPUT' && ae.closest && ae.closest('#serviceSection');
   if(svcDrag || typing){ svcRenderPending = true; return; }
@@ -5418,24 +5578,25 @@ svcSectionEl.addEventListener('click', (e) => {
   if(rm){
     const f = svcFolderById(svcOpenFolderId);
     if(!f) return;
-    svcRemoveItem(f, rm.getAttribute('data-svc-rm'));
-    svcSave();
-    svcRerenderGroups();
+    const rid = rm.getAttribute('data-svc-rm');
+    const rit = f.items.find(i => i.id === rid);
+    const doRemove = () => {
+      const ff = svcFolderById(f.id);
+      if(!ff) return;
+      svcRemoveItem(ff, rid);
+      svcSave();
+      svcRerenderGroups();
+    };
+    // Пустой обычный пункт удаляем сразу; с фото/заметкой/ссылками — только после подтверждения.
+    if(rit && svcItemHasDetails(rit)){
+      showConfirm('Удалить пункт «' + (rit.text.trim() || 'без названия') + '» вместе с фото, заметкой и ссылками? Это действие нельзя отменить.', doRemove);
+    } else doRemove();
     return;
   }
+  const det = e.target.closest('[data-svc-detail]');
+  if(det){ openSvcDetail(det.getAttribute('data-svc-detail')); return; }
   const open = e.target.closest('[data-svc-open]');
   if(open) svcOpenFolder(open.getAttribute('data-svc-open'), open.getAttribute('data-svc-flash'));
-});
-svcSectionEl.addEventListener('input', (e) => {
-  const t = e.target.closest('[data-svc-text]');
-  if(!t) return;
-  const f = svcFolderById(svcOpenFolderId);
-  if(!f) return;
-  const it = f.items.find(i => i.id === t.getAttribute('data-svc-text'));
-  if(!it) return;
-  it.text = t.value;
-  svcTouch(f);
-  svcSaveSoon();
 });
 svcSectionEl.addEventListener('change', (e) => {
   const c = e.target.closest('[data-svc-check]');
@@ -5449,22 +5610,9 @@ svcSectionEl.addEventListener('change', (e) => {
 });
 svcSectionEl.addEventListener('keydown', (e) => {
   if(e.key !== 'Enter') return;
-  if(e.target.id === 'svcNewItem'){ e.preventDefault(); svcDoAddItem(); return; }
-  if(e.target.closest && e.target.closest('[data-svc-text]')){ e.preventDefault(); e.target.blur(); }
+  if(e.target.id === 'svcNewItem'){ e.preventDefault(); svcDoAddItem(); }
 });
 svcSectionEl.addEventListener('focusout', (e) => {
-  const t = e.target.closest && e.target.closest('[data-svc-text]');
-  if(t){
-    svcFlushLocalSave();
-    // Пункт, из которого стёрли весь текст, не оставляем пустой строкой.
-    const f = svcFolderById(svcOpenFolderId);
-    const it = f && f.items.find(i => i.id === t.getAttribute('data-svc-text'));
-    if(it && !it.text.trim()){
-      svcRemoveItem(f, it.id);
-      svcSave();
-      svcRerenderGroups();
-    }
-  }
   if(svcRenderPending){
     setTimeout(() => {
       const ae = document.activeElement;
@@ -5712,6 +5860,377 @@ svcSheetOverlay.addEventListener('click', (e) => {
   if(e.target === svcSheetOverlay) closeSvcSheet();
 });
 
+// ---- фото пунктов: загрузка в Firebase Storage ----
+// Путь: users/{uid}/photos/svc_{photoId}.jpg — та же папка и те же права Storage,
+// что у фото заявок (префикс svc_ отличает файлы Автосервиса). В Firestore
+// попадают только id и ссылка. Пока фото грузится, оно лежит локально как base64
+// ВНУТРИ serviceFolders в localStorage — поэтому переживает закрытие панели и
+// приложения: при следующем запуске svcRetryPendingUploads() догрузит его.
+// Код загрузки заявок (uploadPhotoAndReplace) здесь НЕ используется и не менялся.
+const svcPhotoPending = new Set();      // id фото, которые грузятся прямо сейчас
+const svcPhotoError = new Map();        // id фото -> текст последней ошибки
+const svcPhotoAttempts = new Map();     // id фото -> число неудачных попыток подряд
+function svcQueuePhotoDelete(photo){
+  if(!currentUID || !photo || photo.id == null) return;
+  // Через общую постоянную очередь удаления: не потеряется при обрыве связи.
+  // Если файла ещё нет (не успел загрузиться) — "not found" тихо снимает запись из очереди.
+  queueStorageDeletePath(svcPhotoPath(currentUID, photo.id));
+}
+function svcFindPhoto(photoId){
+  for(const f of serviceFolders){
+    for(const it of f.items){
+      const p = (it.photos || []).find(x => x.id === photoId);
+      if(p) return { f, it, p };
+    }
+  }
+  return null;
+}
+// Фото, лежащие только на этом телефоне (нет url), при замене папки версией из
+// облака переносим в неё — иначе ответ сервера (в нём таких фото нет) их стёр бы.
+function svcCarryPendingPhotos(incoming, local){
+  if(!incoming || !local) return;
+  local.items.forEach(lit => {
+    const pend = (lit.photos || []).filter(p => !p.url && p.local);
+    if(!pend.length) return;
+    const iit = incoming.items.find(i => i.id === lit.id);
+    if(!iit) return; // пункт удалён на другом устройстве — фото тоже не нужно
+    pend.forEach(p => {
+      if(iit.photos.some(x => x.id === p.id)) return;
+      if(iit.photos.length < SVC_MAX_PHOTOS) iit.photos.push({ id: p.id, url: null, local: p.local });
+    });
+  });
+}
+function svcPutWithTimeout(path, bytes, type){
+  return new Promise((resolve, reject) => {
+    let timedOut = false;
+    const task = storage.ref(path).put(bytes, { contentType: type });
+    // У put() нет своего таймаута — без этого зависший запрос не завершился бы ни успехом, ни ошибкой.
+    const timer = setTimeout(() => { timedOut = true; try{ task.cancel(); }catch(_){} }, 30000);
+    task.then(snap => { clearTimeout(timer); return snap.ref.getDownloadURL(); })
+      .then(resolve)
+      .catch(err => { clearTimeout(timer); reject({ timedOut, code: (err && (err.code || err.message)) || 'ошибка' }); });
+  });
+}
+function svcScheduleUploadRetry(photoId, uid){
+  const n = (svcPhotoAttempts.get(photoId) || 0) + 1;
+  svcPhotoAttempts.set(photoId, n);
+  const delay = Math.min(10000 * Math.pow(2, n - 1), 300000);
+  setTimeout(() => { if(currentUID === uid) svcUploadPhoto(photoId); }, delay);
+}
+function svcApplyUploadedUrl(photoId, uid, gen, path, url){
+  if(currentUID !== uid || authGeneration !== gen) return; // сменился аккаунт — ничего не трогаем
+  const found = svcFindPhoto(photoId);
+  if(!found){
+    // Фото (или пункт/папку) успели удалить, пока файл грузился — теперь он никому не нужен.
+    queueStorageDeletePath(path);
+    return;
+  }
+  if(found.p.url) return;
+  found.p.url = url;
+  delete found.p.local;
+  svcPhotoError.delete(photoId);
+  svcPhotoAttempts.delete(photoId);
+  svcTouch(found.f);
+  svcSave();
+  svcDetailRefreshMedia();
+}
+async function svcUploadPhoto(photoId){
+  if(!currentUID || svcPhotoPending.has(photoId)) return;
+  const found = svcFindPhoto(photoId);
+  if(!found || found.p.url || !found.p.local) return;
+  svcPhotoPending.add(photoId);
+  svcPhotoError.delete(photoId);
+  const uid = currentUID, gen = authGeneration;
+  const path = svcPhotoPath(uid, photoId);
+  let bytes, type;
+  try{
+    const blob = dataURItoBlob(found.p.local);
+    type = blob.type || 'image/jpeg';
+    bytes = new Uint8Array(await blob.arrayBuffer());
+  } catch(e){
+    svcPhotoPending.delete(photoId);
+    svcPhotoError.set(photoId, 'не удалось подготовить файл');
+    svcDetailRefreshMedia();
+    return;
+  }
+  let url = null;
+  try{
+    try{
+      url = await svcPutWithTimeout(path, bytes, type);
+    } catch(e1){
+      if(!(e1 && e1.timedOut)) throw e1;
+      url = await uploadBytesViaRest(path, bytes, type); // тот же запасной путь, что и у заявок
+    }
+  } catch(err){
+    svcPhotoPending.delete(photoId);
+    svcPhotoError.set(photoId, String((err && (err.code || err.message)) || 'ошибка'));
+    console.warn('Не удалось загрузить фото Автосервиса (осталось на этом телефоне):', err);
+    svcDetailRefreshMedia();
+    if(currentUID === uid && authGeneration === gen) svcScheduleUploadRetry(photoId, uid);
+    return;
+  }
+  svcPhotoPending.delete(photoId);
+  svcApplyUploadedUrl(photoId, uid, gen, path, url);
+}
+function svcRetryPendingUploads(){
+  if(!currentUID) return;
+  serviceFolders.forEach(f => f.items.forEach(it => (it.photos || []).forEach(p => {
+    if(!p.url && p.local) svcUploadPhoto(p.id);
+  })));
+}
+
+// ---- панель деталей пункта (по нажатию на текст пункта) ----
+const svcDetailOverlay = document.getElementById('svcDetailOverlay');
+const svcDetailEl = document.getElementById('svcDetail');
+const svcPhotoInput = document.getElementById('svcPhotoInput');
+let svcDetail = null; // { folderId, itemId, origText }
+function svcDetailTarget(){
+  if(!svcDetail) return null;
+  const f = svcFolderById(svcDetail.folderId);
+  const it = f && f.items.find(i => i.id === svcDetail.itemId);
+  return it ? { f, it } : null;
+}
+function svcPhotosHtml(it){
+  const ps = it.photos || [];
+  if(!ps.length) return '';
+  return '<div class="svc-photos">' + ps.map(p => {
+    const id = escapeHtml(p.id);
+    const src = p.url || p.local || '';
+    const st = p.url ? '' : (svcPhotoError.has(p.id)
+      ? `<div class="svc-ph-st err" title="${escapeHtml(svcPhotoError.get(p.id))}">ошибка загрузки</div>`
+      : '<div class="svc-ph-st">загружается…</div>');
+    return `<div class="svc-ph"><img src="${escapeHtml(src)}" data-det-photo="${id}" alt=""><button class="svc-ph-rm" type="button" data-det-phrm="${id}" aria-label="Удалить фото">×</button>${st}</div>`;
+  }).join('') + '</div>';
+}
+function svcLinksHtml(it){
+  return (it.links || []).map(l => `<div class="svc-link"><div class="svc-link-main"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.title || svcLinkHost(l.url))}</a><span>${escapeHtml(l.url)}</span></div><button class="svc-iconbtn danger" type="button" data-det-lnrm="${escapeHtml(l.id)}" aria-label="Удалить ссылку">${SVC_RM_SVG}</button></div>`).join('');
+}
+function svcDetailHtml(f, it){
+  const km = svcFormatKm(f.mileage);
+  return `<div class="svc-dhead">
+      <button class="svc-iconbtn" data-det-close type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
+      <div class="svc-dtitle">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
+      <button class="svc-iconbtn danger" data-det-delete type="button" aria-label="Удалить пункт">${SVC_TRASH_SVG}</button>
+    </div>
+    <div class="svc-dbody">
+      <label class="svc-dlabel" for="svcDetText">Работа</label>
+      <textarea id="svcDetText" class="svc-dfield" rows="2" maxlength="300" placeholder="Название работы">${escapeHtml(it.text)}</textarea>
+      <label class="svc-dcheck"><input type="checkbox" id="svcDetDone" ${it.done ? 'checked' : ''}> Выполнено</label>
+      <label class="svc-dlabel" for="svcDetPlan">Сделать на, км (необязательно)</label>
+      <input id="svcDetPlan" class="svc-dfield" inputmode="numeric" autocomplete="off" placeholder="Например, 250000" value="${it.planKm ? escapeHtml(String(it.planKm)) : ''}">
+      <label class="svc-dlabel" for="svcDetNote">Заметка</label>
+      <textarea id="svcDetNote" class="svc-dfield" rows="4" maxlength="2000" placeholder="Заметка (необязательно)">${escapeHtml(it.note || '')}</textarea>
+      <div class="svc-dlabel" id="svcDetPhotosLabel"></div>
+      <div id="svcDetPhotos"></div>
+      <button class="svc-dbtn" type="button" data-det-addphoto>+ Добавить фото</button>
+      <div class="svc-dlabel" id="svcDetLinksLabel"></div>
+      <div id="svcDetLinks"></div>
+      <div class="svc-linkadd">
+        <input id="svcDetLinkTitle" class="svc-dfield" maxlength="120" autocomplete="off" placeholder="Подпись, например «Масло КПП»">
+        <input id="svcDetLinkUrl" class="svc-dfield" inputmode="url" autocomplete="off" placeholder="Адрес ссылки">
+        <button class="svc-dbtn" type="button" data-det-addlink>+ Добавить ссылку</button>
+      </div>
+    </div>`;
+}
+// Перерисовывает ТОЛЬКО блоки фото и ссылок — поля ввода не трогаем, чтобы не сбить набор текста.
+function svcDetailRefreshMedia(){
+  if(!svcDetail) return;
+  const tg = svcDetailTarget();
+  const ph = document.getElementById('svcDetPhotos');
+  if(!tg || !ph) return;
+  ph.innerHTML = svcPhotosHtml(tg.it);
+  document.getElementById('svcDetPhotosLabel').textContent = 'Фото · ' + (tg.it.photos || []).length + '/' + SVC_MAX_PHOTOS;
+  document.getElementById('svcDetLinks').innerHTML = svcLinksHtml(tg.it);
+  document.getElementById('svcDetLinksLabel').textContent = 'Ссылки · ' + (tg.it.links || []).length + '/' + SVC_MAX_LINKS;
+}
+function openSvcDetail(itemId){
+  const f = svcFolderById(svcOpenFolderId);
+  const it = f && f.items.find(i => i.id === itemId);
+  if(!it) return;
+  svcFlushLocalSave();
+  svcDetail = { folderId: f.id, itemId: it.id, origText: it.text };
+  svcDetailEl.innerHTML = svcDetailHtml(f, it);
+  svcDetailRefreshMedia();
+  svcDetailEl.scrollTop = 0;
+  svcDetailOverlay.classList.add('show');
+}
+function svcResetDetail(){
+  svcDetail = null;
+  svcDetailOverlay.classList.remove('show');
+}
+function closeSvcDetail(){
+  const tg = svcDetailTarget();
+  if(tg && !tg.it.text.trim()){
+    // Название стёрли целиком — возвращаем прежнее, пункт с пустым названием не оставляем.
+    tg.it.text = (svcDetail && svcDetail.origText) || 'Пункт';
+    svcTouch(tg.f);
+    svcSaveSoon();
+  }
+  svcFlushLocalSave();
+  svcResetDetail();
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  if(currentSection === 'service') renderService();
+}
+// Изменение пришло из облака, пока панель открыта.
+function svcDetailOnRemote(){
+  if(!svcDetail) return;
+  if(!svcDetailTarget()){
+    svcResetDetail();
+    showToast('Этот пункт удалён на другом устройстве');
+    return;
+  }
+  svcDetailRefreshMedia();
+}
+async function svcAddPhotosFromFiles(files){
+  const tg0 = svcDetailTarget();
+  if(!tg0) return;
+  const fid = tg0.f.id, iid = tg0.it.id;
+  for(const file of files){
+    const f = svcFolderById(fid);
+    const it = f && f.items.find(i => i.id === iid);
+    if(!it) return;
+    if((it.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото на пункт'); return; }
+    let dataUrl;
+    try{ dataUrl = await compressImage(file, 1600, 0.75, true); }
+    catch(e){ showToast('Не удалось обработать фото'); continue; }
+    // Пока сжималось, пункт могли удалить/заменить — ищем заново.
+    const f2 = svcFolderById(fid);
+    const it2 = f2 && f2.items.find(i => i.id === iid);
+    if(!it2) return;
+    if(!it2.photos) it2.photos = [];
+    if(it2.photos.length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото на пункт'); return; }
+    const photo = { id: newPhotoId(), url: null, local: dataUrl };
+    it2.photos.push(photo);
+    svcTouch(f2);
+    // Фото должно оказаться на диске ДО начала загрузки — иначе закрытие приложения его потеряет.
+    let stored = true;
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){ stored = false; }
+    if(!stored){
+      it2.photos.pop();
+      showToast('Не хватает памяти телефона для фото — дождитесь загрузки предыдущих или удалите лишнее');
+      continue;
+    }
+    svcSave();
+    svcDetailRefreshMedia();
+    svcUploadPhoto(photo.id);
+  }
+}
+function svcRemovePhotoFromItem(it, f, photoId){
+  const idx = (it.photos || []).findIndex(p => p.id === photoId);
+  if(idx === -1) return;
+  const p = it.photos.splice(idx, 1)[0];
+  svcQueuePhotoDelete(p);
+  svcPhotoError.delete(photoId);
+  svcTouch(f);
+  svcSave();
+  svcDetailRefreshMedia();
+}
+function svcOpenPhotoViewer(it, photoId){
+  const ps = it.photos || [];
+  const idx = ps.findIndex(p => p.id === photoId);
+  if(idx === -1) return;
+  openLightbox(idx, ps.map(p => p.url || p.local || ''), ps.map(p => p.id));
+  // Распознавание текста и выделение области — для документов заявок, здесь не нужны.
+  ['lbOcrBtn', 'lbSelectBtn'].forEach(id => { const b = document.getElementById(id); if(b) b.style.display = 'none'; });
+  document.getElementById('lbLensHint').classList.remove('show');
+}
+document.getElementById('lbClose').addEventListener('click', () => {
+  ['lbOcrBtn', 'lbSelectBtn'].forEach(id => { const b = document.getElementById(id); if(b) b.style.display = ''; });
+});
+function svcDetailAddLink(){
+  const tg = svcDetailTarget();
+  if(!tg) return;
+  const tIn = document.getElementById('svcDetLinkTitle'), uIn = document.getElementById('svcDetLinkUrl');
+  const url = svcNormalizeUrl(uIn.value);
+  if(!url){ showToast('Введите корректный адрес ссылки'); uIn.focus(); return; }
+  if((tg.it.links || []).length >= SVC_MAX_LINKS){ showToast('Не больше ' + SVC_MAX_LINKS + ' ссылок на пункт'); return; }
+  if(!tg.it.links) tg.it.links = [];
+  tg.it.links.push({ id: svcNewId(), url, title: tIn.value.trim().slice(0, 120) });
+  svcTouch(tg.f);
+  svcSave();
+  tIn.value = ''; uIn.value = '';
+  svcDetailRefreshMedia();
+}
+svcDetailEl.addEventListener('click', (e) => {
+  const t = e.target;
+  if(t.closest('[data-det-close]')){ closeSvcDetail(); return; }
+  const tg = svcDetailTarget();
+  if(!tg) return;
+  if(t.closest('[data-det-delete]')){
+    const { f, it } = tg;
+    showConfirm('Удалить пункт «' + (it.text.trim() || 'без названия') + '»' + (svcItemHasDetails(it) ? ' вместе с фото, заметкой и ссылками' : '') + '? Это действие нельзя отменить.', () => {
+      const ff = svcFolderById(f.id);
+      if(!ff) return;
+      svcRemoveItem(ff, it.id);
+      svcSave();
+      svcResetDetail();
+      if(currentSection === 'service') renderService();
+    });
+    return;
+  }
+  if(t.closest('[data-det-addphoto]')){
+    if((tg.it.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото на пункт'); return; }
+    svcPhotoInput.click();
+    return;
+  }
+  const rmPh = t.closest('[data-det-phrm]');
+  if(rmPh){
+    const pid = rmPh.getAttribute('data-det-phrm');
+    showConfirm('Удалить это фото?', () => {
+      const cur = svcDetailTarget();
+      if(cur) svcRemovePhotoFromItem(cur.it, cur.f, pid);
+    });
+    return;
+  }
+  const img = t.closest('[data-det-photo]');
+  if(img){ svcOpenPhotoViewer(tg.it, img.getAttribute('data-det-photo')); return; }
+  if(t.closest('[data-det-addlink]')){ svcDetailAddLink(); return; }
+  const rmLn = t.closest('[data-det-lnrm]');
+  if(rmLn){
+    const lid = rmLn.getAttribute('data-det-lnrm');
+    tg.it.links = (tg.it.links || []).filter(l => l.id !== lid);
+    svcTouch(tg.f);
+    svcSave();
+    svcDetailRefreshMedia();
+  }
+});
+svcDetailEl.addEventListener('input', (e) => {
+  const tg = svcDetailTarget();
+  if(!tg) return;
+  const id = e.target.id;
+  if(id === 'svcDetText') tg.it.text = e.target.value;
+  else if(id === 'svcDetNote') tg.it.note = e.target.value;
+  else if(id === 'svcDetPlan'){
+    const clean = e.target.value.replace(/[^\d]/g, '');
+    if(clean !== e.target.value) e.target.value = clean;
+    tg.it.planKm = svcParseKm(clean);
+  } else return;
+  svcTouch(tg.f);
+  svcSaveSoon();
+});
+svcDetailEl.addEventListener('change', (e) => {
+  if(e.target.id !== 'svcDetDone') return;
+  const tg = svcDetailTarget();
+  if(!tg) return;
+  svcFlushLocalSave();
+  svcSetItemDone(tg.f, tg.it.id, e.target.checked);
+  svcSave();
+});
+svcDetailEl.addEventListener('keydown', (e) => {
+  if(e.key !== 'Enter') return;
+  const id = e.target.id;
+  if(id === 'svcDetText'){ e.preventDefault(); e.target.blur(); }
+  else if(id === 'svcDetLinkUrl' || id === 'svcDetLinkTitle'){ e.preventDefault(); svcDetailAddLink(); }
+});
+svcDetailEl.addEventListener('focusout', (e) => {
+  if(e.target.id === 'svcDetText') svcFlushLocalSave();
+});
+svcPhotoInput.addEventListener('change', () => {
+  const files = Array.from(svcPhotoInput.files || []);
+  svcPhotoInput.value = '';
+  if(files.length) svcAddPhotosFromFiles(files);
+});
+
 // ---- синхронизация: ОТДЕЛЬНАЯ цепочка, не связанная с заявками и расходами ----
 // Ошибка правил Firestore (permission-denied) для этой коллекции не может
 // сломать отправку заявок и расходов: у служебных папок свой батч, свой флаг
@@ -5735,7 +6254,7 @@ function flushServiceFolders(){
     if(svcPendingDeletedIds.indexOf(id) !== -1) return;
     const et = f.editedAt || f.createdAt || 0;
     if(lastSyncedServiceFolders.get(id) !== et){
-      ops.push({ ref: colRef.doc(id), action: 'set', data: JSON.parse(JSON.stringify(f)), id, et });
+      ops.push({ ref: colRef.doc(id), action: 'set', data: svcFolderForCloud(f), id, et });
     }
   });
   const deleteIds = new Set(svcPendingDeletedIds);
@@ -5767,6 +6286,10 @@ function flushServiceFolders(){
     });
     if(pendingChanged) svcSavePendingDeleted();
     svcSetSyncError('');
+    // Обычный flushCloudSave() при правках одного только Автосервиса выходит рано
+    // и копию не делает — поэтому после подтверждённой сервером отправки папок
+    // запускаем её здесь (интервал в 3 часа проверяется внутри; base64-фото вырезаны).
+    maybeSaveDailyBackup(stateSnapshot(true));
   }).catch(e => {
     if(currentUID !== uid || authGeneration !== gen) return;
     console.warn('Не удалось отправить Автосервис в облако:', e);
@@ -5801,7 +6324,13 @@ function svcApplyIncoming(id, rawData){
   } else {
     const localEt = serviceFolders[idx].editedAt || serviceFolders[idx].createdAt || 0;
     // Локальная версия новее — оставляем, её отправит flushServiceFolders().
-    if(incomingEt > localEt){ serviceFolders[idx] = incoming; touched = true; }
+    if(incomingEt > localEt){
+      // В облаке ещё не загруженных фото нет (уходят только ссылки) — возвращаем
+      // в приходящую версию те, что лежат только на этом телефоне, иначе они бы исчезли.
+      svcCarryPendingPhotos(incoming, serviceFolders[idx]);
+      serviceFolders[idx] = incoming;
+      touched = true;
+    }
   }
   lastSyncedServiceFolders.set(id, incomingEt);
   return touched;
@@ -5852,6 +6381,7 @@ function svcSubscribe(userRef, writesAllowed){
         serviceWritesAllowed = !!writesAllowed;
         svcSetSyncError('');
         flushServiceFolders(); // накопленные до готовности локальные правки
+        svcRetryPendingUploads(); // фото, не успевшие загрузиться до закрытия приложения
       }
     }
     if(touched){
@@ -5902,8 +6432,10 @@ function toMillis(v){
   if(v && typeof v.toMillis === 'function') return v.toMillis();
   return v || 0;
 }
-function stateSnapshot(){
-  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, serviceFolders, updatedAt: localUpdatedAt };
+// forCloud=true — для резервных копий в Firestore: у Автосервиса без временных base64-фото.
+function stateSnapshot(forCloud){
+  return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories,
+    serviceFolders: forCloud ? serviceFolders.map(svcFolderForCloud) : serviceFolders, updatedAt: localUpdatedAt };
 }
 function applyState(s){
   // Автосервис: массив в состоянии — применяем; пустой объект (сброс при
@@ -6309,7 +6841,7 @@ function flushCloudSave(){
       lastSyncedMetaJSON = metaJSON;
       persistSyncedNotesMap();
       if(notePendingDeleteConfirmed) savePendingDeletedNoteIds();
-      maybeSaveDailyBackup(stateSnapshot());
+      maybeSaveDailyBackup(stateSnapshot(true));
     })
     .catch(e => {
       if(currentUID !== uid || authGeneration !== gen) return;
@@ -6906,6 +7438,7 @@ auth.onAuthStateChanged(user => {
   serviceWritesAllowed = false;
   lastSyncedServiceFolders = new Map();
   svcOpenFolderId = null;
+  svcResetDetail();
   if(user){
     currentUID = user.uid;
     loadSvcPendingDeletedForUID(currentUID);
@@ -7265,6 +7798,10 @@ function setupNativeBackButton(){
       closeSvcSheet();
       return;
     }
+    if(svcDetailOverlay && svcDetailOverlay.classList.contains('show')){
+      closeSvcDetail();
+      return;
+    }
     if(drawerEl && drawerEl.classList.contains('show')){
       drawerEl.classList.remove('show');
       overlay.classList.remove('show');
@@ -7333,6 +7870,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   lastSyncedMetaJSON = null;
   lastSyncedServiceFolders = new Map();
   svcOpenFolderId = null;
+  svcResetDetail();
   persistSyncedNotesMap();
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
@@ -7453,7 +7991,7 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
               // Сначала сохраняем текущее состояние отдельной "аварийной" копией —
               // если восстановили не ту дату, можно откатиться на момент прямо
               // перед этим действием, а не потерять недавние правки навсегда.
-              const currentSnap = stateSnapshot();
+              const currentSnap = stateSnapshot(true);
               const preRestoreKey = 'preRestore-' + Date.now();
               const backupsRef = db.collection('users').doc(currentUID).collection('backups');
               backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
@@ -7891,7 +8429,7 @@ function refreshFromCloudOnResume(){
   // вниз не должен запускать обновление списка под ними.
   const BLOCKING_OVERLAY_IDS = ['confirmOverlay', 'lightbox', 'ocrResultOverlay', 'drawer',
     'backupsOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
-    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'authOverlay'];
+    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcDetailOverlay', 'authOverlay'];
 
   function blockingOverlayOpen(){
     return BLOCKING_OVERLAY_IDS.some(id => {
