@@ -884,7 +884,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-04 23:00 (защита начальной синхронизации — отправка в облако не начинается до подтверждённого сервером baseline)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-05 00:55 (исправлена гонка: повторная правка заявки, пока её транзакция ещё летит, больше не теряется)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1184,6 +1184,12 @@ function purgeOldTrash(){
       // долететь), не вставился обратно — см. subscribeCloud() и
       // refreshFromCloudOnResume().
       if(n.id != null) queueNoteIdForDeletion(n.id);
+      // Удаление побеждает: если эта же заявка ещё и ждала подтверждения
+      // версии транзакцией (notesPendingVersionCheck — см. commitNoteWithServerCheck),
+      // снимаем её оттуда — защищать версию правки, которую сам пользователь
+      // только что решил удалить, больше не нужно. Без этого запись могла бы
+      // зависнуть сразу в обеих очередях одновременно.
+      if(n.id != null) clearPendingVersionCheck(n.id);
     }
   });
   notes = notes.filter(n => !(n.trashed && n.trashedAt && n.trashedAt < cutoff));
@@ -1266,6 +1272,11 @@ let view = 'notes'; // notes | archive | trash
 let searchQuery = '';
 let editingNote = null; // draft object being edited, or null
 let isNewNote = false;
+// Версия заявки на момент открытия редактора (аудит, пункт №3) — используется
+// в closeEditor(), чтобы понять, успела ли прийти чужая правка, пока эта
+// заявка была открыта здесь. Для новой заявки (isNewNote) версии ещё нет —
+// id остаётся null, конфликтовать не с чем.
+let editorBaseVersion = null;
 
 function filtered(){
   let list = notes.filter(n => {
@@ -1394,6 +1405,7 @@ function noteCardHtml(n, favInfo){
     ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
     ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? `top:${(n.noNds || n.cash) ? '60px' : '38px'};` : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
     ${numberBlockHtml}
+    ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
     ${n.title ? `<h4>${escapeHtml(n.title)}</h4>` : ''}
     ${body}
     ${photosHtml}
@@ -2275,6 +2287,107 @@ function queueNoteIdForDeletion(id){
     savePendingDeletedNoteIds();
   }
 }
+
+// Защита открытого редактора от гонки с синхронизацией (аудит, пункт №3,
+// серверная часть). Пока ID заявки находится в этой очереди:
+//  - обычный flushCloudSave() его не трогает (ни SET, ни DELETE) — иначе
+//    можно отправить/затереть ещё не прошедшую проверку версии (см.
+//    flushCloudSave());
+//  - обычная подписка (subscribeCloud()/refreshFromCloudOnResume()) не
+//    применяет входящую версию к notes[idx] и не обновляет lastSyncedNotes —
+//    только запоминает, что видела с сервера (serverSeen), для диалога
+//    выбора;
+//  - запись содержит ПОЛНЫЙ черновик (draft), а не только id — если
+//    локальная notes[]/STORAGE_KEY не успеет записаться до закрытия
+//    приложения, черновик всё равно восстановится из этой очереди при
+//    следующем входе (см. реконсиляцию в auth.onAuthStateChanged).
+// expectedServerEditedAt выставляется только при первом попадании записи в
+// очередь и не меняется последующими правками той же заявки, пока цепочка
+// не подтвердится — иначе транзакция будет сверяться с версией, которую
+// сервер никогда не подтверждал.
+function pendingVersionCheckKey(uid){ return 'vreyse_pendingVersionCheck_' + uid; }
+let notesPendingVersionCheck = new Map(); // id -> {expectedServerEditedAt, draft, serverSeen}
+function loadPendingVersionCheckForUID(uid){
+  notesPendingVersionCheck = new Map();
+  try{
+    const arr = JSON.parse(localStorage.getItem(pendingVersionCheckKey(uid)) || '[]');
+    if(Array.isArray(arr)){
+      arr.forEach(e => {
+        if(e && e.id != null){
+          notesPendingVersionCheck.set(String(e.id), {
+            expectedServerEditedAt: e.expectedServerEditedAt != null ? e.expectedServerEditedAt : null,
+            draft: e.draft,
+            serverSeen: e.serverSeen || null
+          });
+        }
+      });
+    }
+  } catch(e){}
+}
+function savePendingVersionCheck(){
+  if(!currentUID) return;
+  try{
+    const arr = Array.from(notesPendingVersionCheck.entries()).map(([id, v]) => ({
+      id, expectedServerEditedAt: v.expectedServerEditedAt, draft: v.draft, serverSeen: v.serverSeen || null
+    }));
+    localStorage.setItem(pendingVersionCheckKey(currentUID), JSON.stringify(arr));
+  } catch(e){}
+}
+// Запоминает заявку как "ждёт подтверждения версии транзакцией", когда сама
+// транзакция не смогла выполниться (не только офлайн — permission-denied,
+// aborted после исчерпания повторов и любая другая серверная ошибка тоже
+// сюда, а не в обычный batch — см. commitNoteWithServerCheck()). ВАЖНО:
+// сначала пишем очередь (с полным draft), только потом notes[]/STORAGE_KEY —
+// если приложение закроют между этими двумя записями, может потеряться
+// именно правка (придётся ввести её снова), но НЕ может потеряться защита
+// версии: очередь уже на диске и восстановит черновик сама при следующем
+// входе (см. реконсиляцию в auth.onAuthStateChanged). Обратный порядок был
+// бы хуже — выглядело бы обычной локальной правкой, и обычный
+// flushCloudSave() отправил бы её без проверки версии.
+function enqueuePendingVersionCheck(note, expectedServerEditedAt){
+  const id = String(note.id);
+  note = Object.assign({}, note, { editedAt: Date.now() });
+  let entry = notesPendingVersionCheck.get(id);
+  if(entry){
+    entry.draft = note;
+    // Всегда берём expectedServerEditedAt именно из текущего вызова, а не
+    // храним старое значение "навечно": при обычном повторном редактировании
+    // уже стоящей в очереди заявки это значение приходит сюда через
+    // editorBaseVersion, который openEditor() сам взял из entry.expectedServerEditedAt
+    // (см. openEditor()) — то есть совпадает с уже сохранённым, и перезапись
+    // ничего не меняет. А при осознанном разрешении конфликта
+    // (handleVersionConflict → "сохранить мою версию поверх серверной X")
+    // сюда приходит НОВОЕ, только что подтверждённое пользователем значение —
+    // и очередь обязана продвинуться на него, иначе фоновый retry после
+    // перезапуска станет сверяться со старой, уже неактуальной версией и
+    // покажет конфликт там, где пользователь его только что осознанно решил.
+    entry.expectedServerEditedAt = expectedServerEditedAt;
+  } else {
+    entry = { expectedServerEditedAt, draft: note, serverSeen: null };
+  }
+  notesPendingVersionCheck.set(id, entry);
+  savePendingVersionCheck();
+  const liveIdx = notes.findIndex(n => String(n.id) === id);
+  if(liveIdx === -1) notes.unshift(note); else notes[liveIdx] = note;
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+  renderContent();
+}
+function clearPendingVersionCheck(id){
+  id = String(id);
+  if(notesPendingVersionCheck.has(id)){
+    notesPendingVersionCheck.delete(id);
+    savePendingVersionCheck();
+  }
+}
+function flagSyncConflict(id){
+  id = String(id);
+  const idx = notes.findIndex(n => String(n.id) === id);
+  if(idx !== -1 && !notes[idx].syncConflict){
+    notes[idx].syncConflict = true;
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+    renderContent();
+  }
+}
 function retryPendingPhotoUploads(){
   if(!currentUID) return;
   notes.forEach(n => {
@@ -2337,13 +2450,31 @@ function fillMissingPhotosFromLocal(incoming, local){
 // текст, суммы, расчёт). Сами файлы note.photos на этом телефоне не трогаем —
 // только то, что уходит по сети.
 function sanitizeNoteForCloud(n){
-  if(!n || !n.photos || !n.photos.some(isDataUrlPhoto)) return n;
+  if(!n) return n;
+  // syncConflict — служебное поле только для локального UI (см. noteCardHtml
+  // и notesPendingVersionCheck), в облако никогда не отправляется ни отсюда,
+  // ни из любого другого места, где заявка уходит на сервер.
+  if('syncConflict' in n){
+    const copy = Object.assign({}, n);
+    delete copy.syncConflict;
+    if(copy.photos && copy.photos.some(isDataUrlPhoto)) copy.photos = copy.photos.map(p => isDataUrlPhoto(p) ? null : p);
+    return copy;
+  }
+  if(!n.photos || !n.photos.some(isDataUrlPhoto)) return n;
   const copy = Object.assign({}, n);
   copy.photos = n.photos.map(p => isDataUrlPhoto(p) ? null : p);
   return copy;
 }
 
 function openEditor(note, isNew){
+  if(!isNew && note.syncConflict){
+    // Эта заявка ждёт явного решения пользователя (см. handleVersionConflict()
+    // и presentSyncConflictChoice()) — показываем выбор вместо обычного
+    // редактора, а не открываем его как ни в чём не бывало поверх черновика
+    // с неизвестным статусом.
+    presentSyncConflictChoice(note);
+    return;
+  }
   isNewNote = !!isNew;
   bodyLastTapTime = 0; // сбрасываем счётчик двойного тапа — новое открытие редактора не должно
                         // засчитываться как продолжение тапов из предыдущей сессии
@@ -2353,8 +2484,26 @@ function openEditor(note, isNew){
     photoAmounts: (note.photoAmounts || []).slice(),
     photoDates: (note.photoDates || []).slice(),
     photoIds: (note.photoIds || []).slice(),
-    photoNumbers: (note.photoNumbers || []).slice()
+    photoNumbers: (note.photoNumbers || []).slice(),
+    // Раньше payments не копировался — editingNote.payments был тем же самым
+    // массивом, что и у живой заявки в notes[]. addPayment()/removePayment()
+    // мутировали его напрямую, пока редактор ещё открыт, даже если пользователь
+    // в итоге не нажмёт "Готово". Теперь независимая копия, как у остальных
+    // изменяемых полей выше.
+    payments: (note.payments || []).map(p => ({...p}))
   });
+  // Версия заявки, от которой началось редактирование — используется в
+  // closeEditor() (аудит, пункт №3), чтобы понять, не пришла ли чужая правка
+  // с другого телефона, пока редактор был открыт. Для новой заявки версии
+  // ещё нет — сравнивать не с чем, конфликт для неё невозможен.
+  // Если заявка уже стоит в notesPendingVersionCheck (предыдущее сохранение
+  // не подтверждено сервером), берём её исходный expectedServerEditedAt, а
+  // не editedAt локального черновика — он был искусственно обновлён до
+  // Date.now() при постановке в очередь (см. enqueuePendingVersionCheck) и
+  // никогда не подтверждался сервером. Иначе повторное редактирование само
+  // создало бы ложный конфликт там, где его на сервере нет.
+  const pendingEntryForOpen = isNew ? null : notesPendingVersionCheck.get(String(note.id));
+  editorBaseVersion = isNew ? { id: null, editedAt: null } : { id: note.id, editedAt: pendingEntryForOpen ? pendingEntryForOpen.expectedServerEditedAt : (note.editedAt || note.createdAt || 0) };
   // на случай старых заметок, где ID фото ещё не было — достраиваем недостающие
   if(!editingNote.photos) editingNote.photos = [];
   if(!editingNote.photoIds) editingNote.photoIds = [];
@@ -4018,39 +4167,339 @@ function isEmptyNote(n){
     && !(n.photos && n.photos.length);
 }
 
+// Применяет editingNote к notes[] и сохраняет — безопасный путь, когда точно
+// известно, что перезаписывать нечего (новая заявка) или версия, от которой
+// началось редактирование, до сих пор актуальна. Вынесено отдельной функцией,
+// чтобы тот же код мог вызваться и сразу из closeEditor(), и из обработчика
+// выбора "Сохранить мою версию" в диалоге конфликта — без дублирования.
+function commitEditingNoteLocally(note, idxHint){
+  note.editedAt = Date.now();
+  const idx = idxHint != null ? idxHint : notes.findIndex(n => n.id === note.id);
+  if(idx === -1){
+    notes.unshift(note);
+  } else {
+    absorbKnownPhotoUrls(note, notes[idx]);
+    notes[idx] = note;
+  }
+  // ВАЖНО: раньше здесь не было saveState() — заявка попадала в массив notes
+  // и на экране всё выглядело нормально, но ни в localStorage, ни в облако
+  // (Firestore) ничего не отправлялось, потому что saveState() запускает
+  // scheduleCloudSave()/flushCloudSave(). Из-за этого новая заявка не
+  // долетала до второго телефона. Вызываем saveState() именно здесь —
+  // точечно, только когда заявка реально изменена, — а не безусловно внутри
+  // renderContent() (это уже один раз ломало синхронизацию по другой причине).
+  saveState();
+  renderContent();
+}
+
+let notesUnderTransaction = new Map(); // id -> promise, только в памяти (переживать перезапуск не должен)
+// Проверенная запись существующей заявки: читает текущую версию на сервере
+// внутри транзакции и пишет только если она совпадает с ожидаемой — это и
+// закрывает окно между локальной проверкой в closeEditor() и фактической
+// записью в Firestore (аудит, пункт №3, серверная часть). liveUI=true —
+// вызвано напрямую действием пользователя прямо сейчас (при конфликте можно
+// сразу показать диалог выбора); false — вызвано фоновым повтором для уже
+// закрытого редактора (конфликт только помечается статусом на заявке, без
+// всплывающего диалога — см. handleVersionConflict()).
+function commitNoteWithServerCheck(note, expectedServerEditedAt, liveUI, retriesLeft){
+  if(liveUI == null) liveUI = true;
+  if(retriesLeft == null) retriesLeft = 3;
+  const id = String(note.id);
+  if(notesUnderTransaction.has(id)){
+    // Транзакция для этой заявки уже летит — вторую параллельную не
+    // запускаем (дедупликация), но и не теряем более свежую правку, которую
+    // пользователь успел сделать, пока первая ещё выполняется: обновляем
+    // persistent draft прямо сейчас. Уже летящая транзакция сама обнаружит
+    // на своём завершении (см. submittedDraft ниже), что в очереди лежит уже
+    // не то содержимое, которое она отправляла, и не зачтёт себя финальным
+    // синком этой заявки — вместо этого запустит новый защищённый commit уже
+    // для этого более свежего черновика.
+    enqueuePendingVersionCheck(note, expectedServerEditedAt);
+    return notesUnderTransaction.get(id);
+  }
+  // Пишем черновик (и expectedServerEditedAt) в постоянную очередь СИНХРОННО,
+  // первым делом — ещё до какого-либо await и до возврата в closeEditor(),
+  // который сразу следующей строкой закрывает редактор. Если приложение
+  // будет убито прямо во время runTransaction() (сеть летит, ответа ещё
+  // нет), черновик всё равно уже на диске и восстановится при следующем
+  // входе (см. реконсиляцию в auth.onAuthStateChanged) — раньше он писался
+  // в очередь только в catch, и это самое опасное окно не было защищено.
+  // При успешной транзакции запись снимается ниже через clearPendingVersionCheck().
+  enqueuePendingVersionCheck(note, expectedServerEditedAt);
+  // Снимок того, какой именно объект сейчас лежит в очереди как draft этой
+  // заявки — именно его мы собираемся отправить. Если к моменту завершения
+  // транзакции в очереди окажется уже ДРУГОЙ объект (см. ветку выше — туда
+  // попадают через повторное открытие/правку заявки, пока эта транзакция ещё
+  // не закончилась), значит отправленное содержимое устарело.
+  const submittedDraft = notesPendingVersionCheck.has(id) ? notesPendingVersionCheck.get(id).draft : null;
+  const uid = currentUID, gen = authGeneration;
+  if(!uid) return Promise.resolve();
+  // Ждём уже летящий обычный batch (flushCloudSave), если он есть — иначе он
+  // может дойти до сервера ПОСЛЕ нашей транзакции и затереть её результат
+  // своим обычным set() без всякой проверки версии (у batch-записи нет
+  // precondition). А новый batch, построенный уже СЕЙЧАС (после регистрации
+  // в notesUnderTransaction чуть ниже — она синхронна, без await до этого
+  // момента), эту заявку в себя не возьмёт — см. flushCloudSave().
+  const waitFor = cloudSaveInFlight || Promise.resolve();
+  const run = waitFor.then(() => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    const ref = db.collection('users').doc(uid).collection('notes').doc(id);
+    return db.runTransaction(tx => tx.get(ref).then(snap => {
+      const serverEt = snap.exists ? (snap.data().editedAt || snap.data().createdAt || 0) : null;
+      if(serverEt !== expectedServerEditedAt){
+        const err = new Error('version-conflict');
+        err.versionConflict = true;
+        err.serverEt = serverEt;
+        err.serverExists = snap.exists;
+        err.serverData = snap.exists ? snap.data() : null;
+        throw err;
+      }
+      const newEt = Date.now();
+      // syncConflict — служебное поле только для локального UI (см.
+      // noteCardHtml), в облако его не отправляем.
+      const toSend = Object.assign({}, note, { editedAt: newEt });
+      delete toSend.syncConflict;
+      tx.set(ref, sanitizeNoteForCloud(toSend));
+      return newEt;
+    })).then(newEt => {
+      if(currentUID !== uid || authGeneration !== gen) return;
+      // Пока транзакция выполнялась, заявку могли открыть и изменить ещё раз
+      // (см. ветку notesUnderTransaction.has(id) выше) — тогда в очереди уже
+      // лежит объект, отличный от того, что мы отправляли. То, что мы сейчас
+      // записали на сервер, устарело: нельзя зачесть его как финальный синк
+      // (это сотрёт более свежую правку локально через liveIdx ниже и
+      // неправильно очистит очередь). Вместо этого запускаем новый защищённый
+      // commit уже для актуального черновика — expectedServerEditedAt для
+      // него это newEt, потому что сервер только что подтверждённо получил
+      // именно эту версию.
+      const entryNow = notesPendingVersionCheck.get(id);
+      if(entryNow && entryNow.draft !== submittedDraft){
+        notesUnderTransaction.delete(id);
+        return commitNoteWithServerCheck(entryNow.draft, newEt, liveUI);
+      }
+      // Индекс пересчитываем только сейчас, уже ПОСЛЕ await — пока транзакция
+      // летала, notes[] мог измениться (например, подоспел несвязанный рендер).
+      const liveIdx = notes.findIndex(n => String(n.id) === id);
+      const finalNote = Object.assign({}, note, { editedAt: newEt, syncConflict: false });
+      if(liveIdx === -1) notes.unshift(finalNote); else notes[liveIdx] = finalNote;
+      lastSyncedNotes.set(id, newEt);
+      persistSyncedNotesMap();
+      clearPendingVersionCheck(id);
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+      renderContent();
+    }).catch(err => {
+      if(currentUID !== uid || authGeneration !== gen) return;
+      // Та же проверка, что и в успешном пути выше: если за время выполнения
+      // транзакции в очереди появился более свежий черновик, разбираемся
+      // именно с ним, а не с уже устаревшим содержимым, которое пробовали
+      // отправить только что.
+      const entryNow = notesPendingVersionCheck.get(id);
+      const supersededNote = (entryNow && entryNow.draft !== submittedDraft) ? entryNow.draft : note;
+      if(err && err.versionConflict){
+        handleVersionConflict(supersededNote, expectedServerEditedAt, err, liveUI);
+        return;
+      }
+      if(err && err.code === 'aborted' && retriesLeft > 0){
+        // Настоящая конкуренция на уровне самой транзакции (внутренние повторы
+        // Firestore уже исчерпаны) — не угадываем версию и не уходим в обычный
+        // batch, просто пробуем всю проверку заново с нуля.
+        notesUnderTransaction.delete(id);
+        return commitNoteWithServerCheck(supersededNote, expectedServerEditedAt, liveUI, retriesLeft - 1);
+      }
+      // Любая другая причина (сеть недоступна, permission-denied,
+      // unavailable/deadline-exceeded, исчерпанные повторы aborted и т.п.) —
+      // НИКОГДА не откатываемся на обычный незащищённый batch. Сохраняем
+      // черновик локально и ставим в постоянную очередь — транзакция
+      // повторится в фоне (см. retryPendingVersionChecks()), а не через
+      // flushCloudSave(), который эту заявку теперь всегда пропускает.
+      enqueuePendingVersionCheck(supersededNote, expectedServerEditedAt);
+    });
+  });
+  notesUnderTransaction.set(id, run);
+  const cleanup = () => notesUnderTransaction.delete(id);
+  run.then(cleanup, cleanup);
+  return run;
+}
+// Реальный, подтверждённый сервером конфликт версии — не решаем молча.
+function handleVersionConflict(note, expectedServerEditedAt, err, liveUI){
+  const id = String(note.id);
+  const serverEt = err.serverEt, serverExists = err.serverExists, serverData = err.serverData;
+  if(!liveUI){
+    // Фоновый повтор, редактор уже закрыт — никакого всплывающего диалога,
+    // только статус на заявке (см. noteCardHtml). Выбор пользователь сделает
+    // явно, открыв именно эту заявку (см. presentSyncConflictChoice()).
+    enqueuePendingVersionCheck(note, expectedServerEditedAt);
+    const entry = notesPendingVersionCheck.get(id);
+    if(entry){
+      entry.serverSeen = { exists: serverExists, editedAt: serverEt, data: serverData };
+      savePendingVersionCheck();
+    }
+    flagSyncConflict(id);
+    return;
+  }
+  const msg = serverExists === false
+    ? 'Эта заявка была удалена на другом телефоне, пока сохранялась ваша правка. Сохранить вашу версию как новую заявку?'
+    : 'Эта заявка изменилась на другом телефоне, пока сохранялась ваша правка. Сохранить вашу версию поверх свежей? Свежие данные будут потеряны.';
+  showConfirm(msg, () => {
+    if(serverExists === false){
+      note.id = idSeq++ + '_' + Math.random().toString(36).slice(2, 8);
+      note.createdAt = Date.now();
+      clearPendingVersionCheck(id);
+      commitEditingNoteLocally(note, -1);
+    } else {
+      commitNoteWithServerCheck(note, serverEt, true);
+    }
+  }, () => {
+    // Взять свежую — применяем то, что реально вернул сервер, а не оставляем
+    // устаревший локальный черновик висеть без дела.
+    const idx = notes.findIndex(n => String(n.id) === id);
+    if(serverExists === false){
+      if(idx !== -1) notes.splice(idx, 1);
+      lastSyncedNotes.delete(id);
+    } else {
+      if(idx === -1) notes.unshift(serverData); else notes[idx] = serverData;
+      lastSyncedNotes.set(id, serverEt);
+    }
+    clearPendingVersionCheck(id);
+    persistSyncedNotesMap();
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+    renderContent();
+  });
+}
+// Вызывается при появлении сети/возврате в приложение (см. online-слушатель
+// и maybeBaselineReady()) — пытается довести до конца все заявки, которые
+// ждут подтверждения версии, тем же защищённым путём, а не через обычный
+// flushCloudSave().
+function retryPendingVersionChecks(){
+  if(!currentUID || !cloudWritesAllowedThisSession || !notesPendingVersionCheck.size) return;
+  Array.from(notesPendingVersionCheck.keys()).forEach(id => {
+    const entry = notesPendingVersionCheck.get(id);
+    if(!entry) return;
+    const liveIdx = notes.findIndex(n => String(n.id) === id);
+    const currentDraft = liveIdx !== -1 ? notes[liveIdx] : entry.draft;
+    commitNoteWithServerCheck(currentDraft, entry.expectedServerEditedAt, false);
+  });
+}
+// Заявка, помеченная syncConflict (см. noteCardHtml), требует явного решения
+// пользователя — показывается при открытии именно этой заявки, а не само по
+// себе всплывающим диалогом (см. handleVersionConflict()).
+function presentSyncConflictChoice(note){
+  const id = String(note.id);
+  const entry = notesPendingVersionCheck.get(id);
+  const seen = entry && entry.serverSeen;
+  const serverExists = seen ? seen.exists !== false : true;
+  const serverEt = seen && seen.editedAt != null ? seen.editedAt : (entry ? entry.expectedServerEditedAt : (note.editedAt || note.createdAt || 0));
+  const serverData = seen ? seen.data : null;
+  const msg = !serverExists
+    ? 'Эта заявка была удалена на другом телефоне, пока ждала подтверждения. Сохранить вашу версию как новую заявку?'
+    : 'Эта заявка изменилась на другом телефоне, пока ждала подтверждения. Сохранить вашу версию поверх свежей? Свежие данные будут потеряны.';
+  showConfirm(msg, () => {
+    if(!serverExists){
+      note.id = idSeq++ + '_' + Math.random().toString(36).slice(2, 8);
+      note.createdAt = Date.now();
+      clearPendingVersionCheck(id);
+      commitEditingNoteLocally(note, -1);
+    } else {
+      commitNoteWithServerCheck(note, serverEt, true);
+    }
+  }, () => {
+    const idx = notes.findIndex(n => String(n.id) === id);
+    if(!serverExists){
+      if(idx !== -1) notes.splice(idx, 1);
+      lastSyncedNotes.delete(id);
+    } else if(serverData){
+      if(idx === -1) notes.unshift(serverData); else notes[idx] = serverData;
+      lastSyncedNotes.set(id, serverEt);
+    } else if(idx !== -1){
+      notes[idx].syncConflict = false;
+    }
+    clearPendingVersionCheck(id);
+    persistSyncedNotesMap();
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+    renderContent();
+  });
+}
 function closeEditor(commit){
   if(!editingNote.checklist) editingNote.text = bodyInput.value;
-  if(commit && !isEmptyNote(editingNote)){
+  // "Реально изменил" — сравнение текущего содержимого со снимком, снятым
+  // сразу при открытии редактора (history[0] — он не трогается undo/redo,
+  // которые только дописывают/обрезают историю ПОСЛЕ него). Если пользователь
+  // открыл заявку, ничего не поменял (или поменял и откатил назад тем же
+  // undo) и нажал "Готово"/Назад — не должно происходить вообще ничего:
+  // ни editedAt, ни saveState(), ни тем более перезапись чужой свежей правки.
+  const changed = commit && !isEmptyNote(editingNote)
+    && JSON.stringify(snapshotNote()) !== JSON.stringify(history[0]);
+  if(changed){
     if(editingNote.checklist) editingNote.checklist = editingNote.checklist.filter(i => i.text.trim());
     if(isNewNote){
       editingNote.id = idSeq++ + '_' + Math.random().toString(36).slice(2, 8);
-      editingNote.editedAt = Date.now();
       editingNote.createdAt = Date.now();
-      notes.unshift(editingNote);
+      commitEditingNoteLocally(editingNote, -1);
     } else {
-      const idx = notes.findIndex(n => n.id === editingNote.id);
-      editingNote.editedAt = Date.now();
-      if(idx === -1){
-        // Заявку успели удалить на ДРУГОМ телефоне, пока она была открыта
-        // здесь в редакторе. Раньше notes[-1] = editingNote просто создавало
-        // фантомное свойство "-1" на массиве — заявка нигде не появлялась и
-        // не сохранялась, правка молча терялась. Теперь считаем это намерением
-        // пользователя восстановить заявку с его правкой — добавляем её обратно
-        // в список, а не теряем молча.
-        notes.unshift(editingNote);
-      } else {
-        absorbKnownPhotoUrls(editingNote, notes[idx]);
-        notes[idx] = editingNote;
+      const idx = notes.findIndex(n => n.id === editorBaseVersion.id);
+      const deletedElsewhere = idx === -1;
+      const liveEt = deletedElsewhere ? null : (notes[idx].editedAt || notes[idx].createdAt || 0);
+      // Если заявка уже в notesPendingVersionCheck, notes[idx].editedAt — это
+      // editedAt НАШЕГО собственного неподтверждённого черновика (его туда
+      // проставил enqueuePendingVersionCheck), а не чужая правка с другого
+      // телефона. Входящая синхронизация такой note[idx] не трогает (см.
+      // subscribeCloud()/refreshFromCloudOnResume()), поэтому сравнивать его
+      // с editorBaseVersion.editedAt (который теперь равен исходному
+      // expectedServerEditedAt — см. openEditor()) здесь бессмысленно и даёт
+      // ложный конфликт. Настоящую проверку всё равно сделает транзакция в
+      // commitNoteWithServerCheck() — ей и оставляем.
+      const isPendingDraft = !deletedElsewhere && notesPendingVersionCheck.has(String(editorBaseVersion.id));
+      const externallyChanged = !deletedElsewhere && !isPendingDraft && liveEt !== editorBaseVersion.editedAt;
+      if(deletedElsewhere || externallyChanged){
+        // Чужая правка (или удаление) пришла с другого телефона, пока эта
+        // заявка была открыта здесь, и пользователь СВОЮ заявку тоже
+        // поменял. Раньше оба случая просто перезаписывались/восстанавливались
+        // молча (idx===-1 безусловно делал notes.unshift, а обычное
+        // обновление — notes[idx]=editingNote без всякой проверки). Теперь —
+        // понятный выбор, без тихого победителя. Черновик (pendingNote) не
+        // теряется ни в одной из веток диалога.
+        const pendingNote = editingNote;
+        const msg = deletedElsewhere
+          ? 'Эта заявка была удалена на другом телефоне, пока вы её редактировали. Сохранить вашу версию как новую заявку?'
+          : 'Эта заявка была изменена на другом телефоне, пока вы её редактировали. Сохранить вашу версию поверх свежей? Свежие данные с другого телефона будут потеряны.';
+        showConfirm(msg, () => {
+          if(deletedElsewhere){
+            // Диалог выше явно обещает "как новую заявку" — старый ID уже
+            // подтверждённо удалён (подтверждение пришло с сервера, иначе
+            // deletedElsewhere не стал бы true), и его переиспользование
+            // было бы тихим воскрешением удалённой записи под тем же ID, а
+            // не новой заявкой. Выдаём новые id/createdAt тем же способом,
+            // что и в обычном пути новой заявки (isNewNote) выше. Это
+            // создание нового документа — проверять версию здесь нечего.
+            pendingNote.id = idSeq++ + '_' + Math.random().toString(36).slice(2, 8);
+            pendingNote.createdAt = Date.now();
+            commitEditingNoteLocally(pendingNote, -1);
+          } else {
+            // Пользователь только что явно согласился перезаписать именно
+            // ту версию, которую видел (liveEt) — не исходную
+            // editorBaseVersion.editedAt, иначе транзакция ниже гарантированно
+            // снова увидела бы "конфликт" с версией, от которой начали
+            // редактировать. commitNoteWithServerCheck() всё равно сам
+            // атомарно перепроверит её на сервере прямо перед записью —
+            // здесь закрываем именно то окно гонки, которое локальная
+            // проверка выше не может закрыть одна.
+            commitNoteWithServerCheck(pendingNote, liveEt, true);
+          }
+        }, () => {
+          // Отмена — оставляем свежую версию как есть, черновик отбрасывается.
+        });
+        editorOverlay.classList.remove('show');
+        palette.classList.remove('show');
+        editingNote = null;
+        renderContent();
+        return;
       }
+      // Локально конфликта не видно — но это не доказывает его отсутствие на
+      // сервере прямо в момент записи (гонка между этой проверкой и самим
+      // commit()), поэтому финальную проверку версии всегда делает
+      // commitNoteWithServerCheck(), а не прямой commitEditingNoteLocally().
+      commitNoteWithServerCheck(editingNote, editorBaseVersion.editedAt, true);
     }
-    // ВАЖНО: раньше здесь не было saveState() — заявка попадала в массив notes
-    // и на экране всё выглядело нормально, но ни в localStorage, ни в облако
-    // (Firestore) ничего не отправлялось, потому что saveState() запускает
-    // scheduleCloudSave()/flushCloudSave(). Из-за этого новая заявка не
-    // долетала до второго телефона. Вызываем saveState() именно здесь —
-    // точечно, только когда заявка реально изменена, — а не безусловно внутри
-    // renderContent() (это уже один раз ломало синхронизацию по другой причине).
-    saveState();
   }
   editorOverlay.classList.remove('show');
   palette.classList.remove('show');
@@ -4718,6 +5167,7 @@ window.addEventListener('online', () => {
   }
   retryPendingPhotoUploads();
   retryPendingPhotoDeletes();
+  retryPendingVersionChecks();
 });
 function setCloudSyncStatus(status){
   cloudSyncStatus = status;
@@ -4794,6 +5244,17 @@ function flushCloudSave(){
   notes.forEach(n => {
     if(!n || n.id == null) return;
     const id = String(n.id);
+    // Эта заявка ждёт подтверждения версии отдельной транзакцией
+    // (commitNoteWithServerCheck) — обычный batch не отправляет её ни при
+    // каких условиях, иначе он может прийти на сервер позже транзакции и
+    // затереть её результат (у обычного set() нет проверки версии). См.
+    // notesPendingVersionCheck. notesUnderTransaction проверяем отдельно —
+    // это окно МЕЖДУ синхронным запуском commitNoteWithServerCheck() и
+    // моментом, когда она (всегда синхронно, первым делом) успевает
+    // поставить запись в notesPendingVersionCheck; оба набора id нужно
+    // исключать, иначе именно в этом окне обычный batch ещё может захватить
+    // заявку.
+    if(notesPendingVersionCheck.has(id) || notesUnderTransaction.has(id)) return;
     const et = n.editedAt || n.createdAt || 0;
     if(lastSyncedNotes.get(id) !== et){
       ops.push({ ref: notesRef.doc(id), action: 'set', data: sanitizeNoteForCloud(n), id, et, kind: 'note' });
@@ -4801,6 +5262,8 @@ function flushCloudSave(){
   });
   const localNoteIds = new Set(notes.filter(n => n && n.id != null).map(n => String(n.id)));
   lastSyncedNotes.forEach((et, id) => {
+    // та же причина, что и выше — не трогаем, пока не подтверждено
+    if(notesPendingVersionCheck.has(id) || notesUnderTransaction.has(id)) return;
     if(!localNoteIds.has(id)) ops.push({ ref: notesRef.doc(id), action: 'delete', id, kind: 'note' });
   });
 
@@ -5244,6 +5707,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
     // после добавления фото без связи).
     retryPendingPhotoUploads();
     retryPendingPhotoDeletes();
+    retryPendingVersionChecks();
   }
   cloudUnsubscribes.push(userRef.onSnapshot(doc => {
     if(doc.metadata.hasPendingWrites) return; // эхо нашей же ещё не подтверждённой записи
@@ -5268,6 +5732,28 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
     snapshot.docChanges().forEach(change => {
       if(change.doc.metadata.hasPendingWrites) return; // это наша же ещё не подтверждённая запись
       const id = change.doc.id;
+      if(notesPendingVersionCheck.has(id)){
+        // Эта заявка ждёт подтверждения версии отдельной транзакцией
+        // (commitNoteWithServerCheck) — обычная подписка НЕ применяет
+        // входящую версию к notes[idx] и не трогает lastSyncedNotes, иначе
+        // можно молча подменить/подтвердить как синхронизированный ещё не
+        // защищённый локальный черновик. Только запоминаем, что видели на
+        // сервере — сам конфликт решит транзакция или явный выбор
+        // пользователя (см. presentSyncConflictChoice()).
+        const entry = notesPendingVersionCheck.get(id);
+        const incomingData = change.type === 'removed' ? null : change.doc.data();
+        entry.serverSeen = change.type === 'removed'
+          ? { exists: false, editedAt: null, data: null }
+          : { exists: true, editedAt: (incomingData.editedAt || incomingData.createdAt || 0), data: incomingData };
+        savePendingVersionCheck();
+        const idxLocal = notes.findIndex(n => String(n.id) === id);
+        if(idxLocal !== -1 && !notes[idxLocal].syncConflict &&
+           (!entry.serverSeen.exists || entry.serverSeen.editedAt !== entry.expectedServerEditedAt)){
+          notes[idxLocal].syncConflict = true;
+          touched = true;
+        }
+        return;
+      }
       if(change.type === 'removed'){
         const idxDel = notes.findIndex(n => String(n.id) === id);
         if(idxDel !== -1){
@@ -5489,11 +5975,34 @@ auth.onAuthStateChanged(user => {
     const drawerEmailEl = document.getElementById('drawerEmail');
     if(drawerEmailEl) drawerEmailEl.textContent = emailStr;
     try{ if(emailStr) localStorage.setItem(LAST_EMAIL_KEY, emailStr); }catch(e){}
+    loadPendingVersionCheckForUID(currentUID);
+    // Если приложение закрыли между записью этой очереди и записью
+    // notes[]/STORAGE_KEY (см. enqueuePendingVersionCheck() — порядок
+    // специально такой, чтобы в этом окне терялась правка, а не защита),
+    // восстанавливаем черновик отсюда — он не должен пропасть безвозвратно.
+    let versionCheckReconciled = false;
+    notesPendingVersionCheck.forEach((entry, pid) => {
+      if(!entry || !entry.draft) return;
+      const idx = notes.findIndex(n => String(n.id) === pid);
+      const draftEt = entry.draft.editedAt || entry.draft.createdAt || 0;
+      if(idx === -1){
+        notes.unshift(entry.draft);
+        versionCheckReconciled = true;
+      } else {
+        const localEt = notes[idx].editedAt || notes[idx].createdAt || 0;
+        if(draftEt > localEt){ notes[idx] = entry.draft; versionCheckReconciled = true; }
+      }
+    });
+    if(versionCheckReconciled){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+    }
     loadFromCloud();
     registerPushToken();
   } else {
     unsubscribeCloud();
     currentUID = null;
+    notesPendingVersionCheck = new Map(); // очередь на диске под прежним UID остаётся нетронутой
+    notesUnderTransaction = new Map();
     pendingPhotoDeletePaths = []; // сама очередь на диске под прежним UID остаётся нетронутой
     pendingDeletedNoteIds = []; // очередь удаления заявок на диске под прежним UID тоже остаётся нетронутой
     authOverlay.style.display = 'flex';
@@ -6270,6 +6779,20 @@ function refreshFromCloudOnResume(){
       const id = docSnap.id;
       const incoming = docSnap.data();
       const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+      if(notesPendingVersionCheck.has(id)){
+        // Та же защита, что и в живой подписке (subscribeCloud()) — не
+        // применяем входящую версию, пока заявка ждёт подтверждения через
+        // commitNoteWithServerCheck(), только запоминаем, что видели.
+        const entry = notesPendingVersionCheck.get(id);
+        entry.serverSeen = { exists: true, editedAt: incomingEt, data: incoming };
+        savePendingVersionCheck();
+        const idxLocal = notes.findIndex(n => String(n.id) === id);
+        if(idxLocal !== -1 && !notes[idxLocal].syncConflict && incomingEt !== entry.expectedServerEditedAt){
+          notes[idxLocal].syncConflict = true;
+          touched = true;
+        }
+        return;
+      }
       const idx = notes.findIndex(n => String(n.id) === id);
       if(idx === -1 && pendingDeletedNoteIds.indexOf(id) !== -1){
         // Та же защита, что и в живой подписке: заявка окончательно удалена
@@ -6294,6 +6817,19 @@ function refreshFromCloudOnResume(){
     // телефон был свёрнут.
     const serverNoteIds = new Set(notesSnap.docs.map(d => d.id));
     Array.from(lastSyncedNotes.keys()).forEach(id => {
+      if(notesPendingVersionCheck.has(id)){
+        if(!serverNoteIds.has(id)){
+          const entry = notesPendingVersionCheck.get(id);
+          entry.serverSeen = { exists: false, editedAt: null, data: null };
+          savePendingVersionCheck();
+          const idxLocal = notes.findIndex(n => String(n.id) === id);
+          if(idxLocal !== -1 && !notes[idxLocal].syncConflict){
+            notes[idxLocal].syncConflict = true;
+            touched = true;
+          }
+        }
+        return;
+      }
       if(!serverNoteIds.has(id)){
         const idxDel = notes.findIndex(n => String(n.id) === id);
         // Та же защита, что и в живой подписке: не стираем локальную правку,
