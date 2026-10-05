@@ -26,7 +26,7 @@ messaging.onBackgroundMessage(() => {
   });
 });
 
-const CACHE_NAME = 'vreyse-v5';
+const CACHE_NAME = 'vreyse-v6';
 
 // Установка: скачиваем и сохраняем нужные файлы.
 //
