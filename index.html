@@ -984,7 +984,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-06 21:38 (Мой автомобиль: сохранённая запись не удаляется сама при очистке; защита кнопки «Обновить» для её панели)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-06 22:49 (Мой автомобиль: отдельная локальная копия записей, статус «не синхронизировано»; защита от отката на старый index.html)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -5105,6 +5105,9 @@ let lastSyncedCarNotes = new Map();
 let carBaselineReady = false, carWritesAllowed = false;
 let carFlushInFlight = null, carFlushAgain = false, carRetryTimer = null;
 let carSyncErrorCode = '';
+let carLocalSaveFailed = false;   // отдельный локальный ключ не записался (quota и т.п.)
+let carLocalReadyUID = null;      // для какого UID отдельный ключ уже прочитан и слит — до этого в него не пишем
+let carSlowFlag = false, carSlowTimer = null; // отправка зависла (нет связи) — показываем «не синхронизировано»
 const SVC_HANDLE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 const SVC_RM_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const SVC_BACK_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
@@ -5522,7 +5525,21 @@ function svcRenderSyncNote(){
   const el = document.getElementById('svcSyncNote');
   if(!el) return;
   const code = svcSyncErrorCode || carSyncErrorCode;
-  if(!code){ el.style.display = 'none'; return; }
+  if(!svcSyncErrorCode && carLocalSaveFailed){
+    // Отдельная локальная копия «Мой автомобиль» не записалась — страховки от потери нет.
+    el.style.display = 'block';
+    el.textContent = 'Мой автомобиль: не удалось сохранить запись на этом телефоне (не хватает памяти?). Освободите место — иначе записи могут пропасть.';
+    return;
+  }
+  if(!code){
+    if(!svcSyncErrorCode && carShowPendingStatus()){
+      el.style.display = 'block';
+      el.textContent = 'Мой автомобиль: изменения ещё не синхронизированы (сохранены на этом телефоне). Нажмите, чтобы повторить.';
+      return;
+    }
+    el.style.display = 'none';
+    return;
+  }
   const isTo = !!svcSyncErrorCode;
   el.style.display = 'block';
   el.textContent = (isTo ? 'Автосервис' : 'Мой автомобиль') + ' сохранён на этом телефоне, но пока не ушёл в облако (' + code + ')'
@@ -6571,11 +6588,104 @@ function carDeleteEntry(id){
 }
 
 // ---- сохранение ----
+// ---- ОТДЕЛЬНАЯ локальная копия: vreyse_serviceCarNotes_<uid> ----
+// Страховка от старой сборки, которая не знает про serviceCarNotes и при любом
+// saveState() перезаписывает общий STORAGE_KEY без этого поля. Это копия, а не замена Firestore.
+function carLocalKey(uid){ return 'vreyse_serviceCarNotes_' + uid; }
+function carSetLocalFail(failed){
+  const was = carLocalSaveFailed;
+  carLocalSaveFailed = !!failed;
+  if(failed && !was) showToast('Мой автомобиль: не удалось сохранить на телефоне — не хватает памяти');
+  if(was !== carLocalSaveFailed && currentSection === 'service') svcRenderSyncNote();
+}
+function carWriteLocalRaw(uid){
+  try{
+    localStorage.setItem(carLocalKey(uid), JSON.stringify({ v: 1, savedAt: Date.now(), entries: serviceCarNotes }));
+    carSetLocalFail(false);
+    return true;
+  } catch(e){
+    console.warn('Не удалось записать отдельную копию «Мой автомобиль»:', e);
+    carSetLocalFail(true);
+    return false;
+  }
+}
+// Синхронная запись текущих записей в отдельный ключ. До слияния после входа и
+// во время служебного сброса не пишет (иначе пустой список мог бы затереть копию).
+function carPersistLocal(){
+  if(!currentUID || carLocalReadyUID !== currentUID || suppressCloudSave) return true;
+  return carWriteLocalRaw(currentUID);
+}
+// После определения UID (и после любого служебного applyState({})): слияние памяти
+// (то, что пришло из общего STORAGE_KEY) с отдельным ключом; новее editedAt побеждает;
+// id из очереди удалений исключаются; результат СРАЗУ пишется обратно в отдельный ключ.
+function carLoadLocalForUID(uid){
+  if(!uid) return;
+  let stored = [];
+  let rawStr = null;
+  try{ rawStr = localStorage.getItem(carLocalKey(uid)); }catch(e){}
+  if(rawStr){
+    try{
+      const parsed = JSON.parse(rawStr);
+      const arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.entries) ? parsed.entries : []);
+      stored = arr.map(carSanitizeEntry).filter(Boolean);
+    } catch(e){
+      console.warn('Отдельная копия «Мой автомобиль» повреждена — сохраняю как есть и продолжаю:', e);
+      try{ localStorage.setItem(carLocalKey(uid) + '_corrupt', rawStr); }catch(e2){}
+    }
+  }
+  let changed = false;
+  stored.forEach(inc => {
+    const id = String(inc.id);
+    if(carPendingDeletedIds.indexOf(id) !== -1) return;
+    const idx = serviceCarNotes.findIndex(e => String(e.id) === id);
+    if(idx === -1){ serviceCarNotes.push(inc); changed = true; return; }
+    const cur = serviceCarNotes[idx];
+    const curEt = cur.editedAt || cur.createdAt || 0;
+    const incEt = inc.editedAt || inc.createdAt || 0;
+    if(incEt > curEt){
+      carCarryPendingPhotos(inc, cur);
+      serviceCarNotes[idx] = inc;
+      changed = true;
+    } else if(incEt === curEt){
+      // то же время правки: добавляем только фото, которые лежат лишь в копии (ещё не загружены)
+      const before = (cur.photos || []).length;
+      carCarryPendingPhotos(cur, inc);
+      if((cur.photos || []).length !== before) changed = true;
+    }
+  });
+  // Записи, которые пользователь удалил на этом телефоне, не должны вернуться из памяти/копии.
+  const beforeLen = serviceCarNotes.length;
+  serviceCarNotes = serviceCarNotes.filter(e => carPendingDeletedIds.indexOf(String(e.id)) === -1);
+  if(serviceCarNotes.length !== beforeLen) changed = true;
+  carLocalReadyUID = uid;
+  carWriteLocalRaw(uid); // защита появляется сразу, даже если ничего не редактировали
+  if(changed){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+    if(typeof svcRerenderIfVisible === 'function') svcRerenderIfVisible();
+  }
+}
+// Есть ли то, что не подтверждено облаком (запись без совпадающего lastSynced или незавершённое удаление).
+function carHasUnsynced(){
+  if(carPendingDeletedIds.length) return true;
+  return serviceCarNotes.some(e => e && e.id != null &&
+    lastSyncedCarNotes.get(String(e.id)) !== (e.editedAt || e.createdAt || 0));
+}
+function carShowPendingStatus(){
+  if(!currentUID || !carHasUnsynced()) return false;
+  return !carBaselineReady || !carWritesAllowed || carSlowFlag;
+}
+function carRefreshPendingStatus(){
+  if(currentSection === 'service') svcRenderSyncNote();
+}
+
 function carSave(){
+  carPersistLocal(); // сначала отдельный ключ, потом общее состояние и облако
   saveState();
   carScheduleFlush();
+  carRefreshPendingStatus();
 }
 function carSaveSoon(){
+  carPersistLocal(); // ввод текста попадает на диск сразу; общий saveState и облако — с задержкой
   clearTimeout(carSaveTimer);
   carSaveTimer = setTimeout(() => { carSaveTimer = null; carSave(); }, 500);
 }
@@ -6781,10 +6891,12 @@ async function carAddPhotosFromFiles(files){
     e.photos.push(photo);
     carTouch(e);
     // Фото должно оказаться на диске ДО начала загрузки — иначе закрытие приложения его потеряет.
-    let stored = true;
+    // Сначала отдельный ключ «Мой автомобиль», потом общий.
+    let stored = carPersistLocal();
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(err){ stored = false; }
     if(!stored){
       e.photos.pop();
+      carPersistLocal(); // откатываем и отдельную копию
       showToast('Не хватает памяти телефона для фото — дождитесь загрузки предыдущих или удалите лишнее');
       continue;
     }
@@ -6894,7 +7006,12 @@ function carScheduleFlush(){
   carFlushTimer = setTimeout(flushCarNotes, 800);
 }
 function flushCarNotes(){
-  if(!currentUID || !carBaselineReady || !carWritesAllowed || suppressCloudSave) return Promise.resolve();
+  if(currentUID && (!carBaselineReady || !carWritesAllowed) && !suppressCloudSave){
+    // Не молчим: правки остались только на телефоне (отдельный ключ), отправка пойдёт сама после готовности baseline.
+    carRefreshPendingStatus();
+    return Promise.resolve();
+  }
+  if(!currentUID || suppressCloudSave) return Promise.resolve();
   if(carFlushInFlight){ carFlushAgain = true; return carFlushInFlight; }
   if(carRetryTimer){ clearTimeout(carRetryTimer); carRetryTimer = null; }
   const uid = currentUID, gen = authGeneration;
@@ -6914,8 +7031,11 @@ function flushCarNotes(){
   const deleteIds = new Set(carPendingDeletedIds);
   lastSyncedCarNotes.forEach((et, id) => { if(!localIds.has(id)) deleteIds.add(id); });
   deleteIds.forEach(id => { if(!localIds.has(id)) ops.push({ ref: colRef.doc(id), action: 'delete', id }); });
-  if(!ops.length){ carSetSyncError(''); return Promise.resolve(); }
+  if(!ops.length){ carSlowFlag = false; carSetSyncError(''); carRefreshPendingStatus(); return Promise.resolve(); }
 
+  // Если commit не подтверждается сервером (нет связи) — через 8 с показываем «не синхронизировано».
+  clearTimeout(carSlowTimer);
+  carSlowTimer = setTimeout(() => { carSlowTimer = null; if(carFlushInFlight){ carSlowFlag = true; carRefreshPendingStatus(); } }, 8000);
   const chunks = [];
   for(let i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
   let chain = Promise.resolve();
@@ -6929,6 +7049,7 @@ function flushCarNotes(){
   });
   const run = chain.then(() => {
     if(currentUID !== uid || authGeneration !== gen) return;
+    // lastSyncedCarNotes обновляется ТОЛЬКО здесь — после успешного batch.commit().
     let pendingChanged = false;
     ops.forEach(op => {
       if(op.action === 'set') lastSyncedCarNotes.set(op.id, op.et);
@@ -6939,7 +7060,9 @@ function flushCarNotes(){
       }
     });
     if(pendingChanged) carSavePendingDeleted();
+    carSlowFlag = false;
     carSetSyncError('');
+    carRefreshPendingStatus();
     // Копия не должна зависеть от того, менялись ли при этом обычные ТО/заявки
     // (интервал 3 часа проверяется внутри; base64-фото вырезаны).
     maybeSaveDailyBackup(stateSnapshot(true));
@@ -6954,6 +7077,7 @@ function flushCarNotes(){
   }).then(() => {
     const same = currentUID === uid && authGeneration === gen;
     carFlushInFlight = null;
+    clearTimeout(carSlowTimer); carSlowTimer = null;
     if(carFlushAgain){ carFlushAgain = false; if(same) flushCarNotes(); }
   });
   carFlushInFlight = run;
@@ -6999,8 +7123,10 @@ function carApplyRemoval(id){
   if(idx !== -1){
     const localEt = serviceCarNotes[idx].editedAt || serviceCarNotes[idx].createdAt || 0;
     const knownEt = lastSyncedCarNotes.get(id);
+    // Запись, которую мы ни разу не синхронизировали (knownEt == null), — чисто локальная: не стираем.
+    if(knownEt == null) return false;
     // Локальная правка новее того, что мы видели в облаке, — не стираем, она вернётся при отправке.
-    if(knownEt != null && localEt > knownEt){ lastSyncedCarNotes.delete(id); return true; }
+    if(localEt > knownEt){ lastSyncedCarNotes.delete(id); return true; }
     serviceCarNotes.splice(idx, 1);
     lastSyncedCarNotes.delete(id);
     return true;
@@ -7041,9 +7167,11 @@ function carSubscribe(userRef, writesAllowed){
       }
     }
     if(touched){
+      carPersistLocal();
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
       svcRerenderIfVisible();
     }
+    carRefreshPendingStatus();
   }, err => {
     if(currentUID !== uid || authGeneration !== gen) return;
     console.warn('Не удалось подписаться на «Мой автомобиль»:', err);
@@ -7067,6 +7195,7 @@ function refreshCarNotesOnResume(){
     carSweepPendingDeleted(serverIds);
     carSetSyncError('');
     if(touched){
+      carPersistLocal();
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
       svcRerenderIfVisible();
     }
@@ -7745,6 +7874,7 @@ function loadFromCloud(){
       // в памяти телефона от предыдущего входа под другим аккаунтом
       suppressCloudSave = true;
       applyState({});
+      carLoadLocalForUID(currentUID); // сброс не должен стирать отдельную копию «Мой автомобиль» этого UID
       lastSyncedNotes = new Map();
       lastSyncedExpenses = new Map();
       lastSyncedMetaJSON = null;
@@ -8102,6 +8232,8 @@ auth.onAuthStateChanged(user => {
   svcResetDetail();
   carBaselineReady = false;
   carWritesAllowed = false;
+  carLocalReadyUID = null; // отдельный ключ снова можно писать только после слияния для нового UID
+  carSlowFlag = false;
   lastSyncedCarNotes = new Map();
   carOpen = false;
   carResetDetail();
@@ -8126,6 +8258,8 @@ auth.onAuthStateChanged(user => {
       renderContent();
     }
     try{ localStorage.setItem(CACHE_OWNER_KEY, currentUID); }catch(e){}
+    // «Мой автомобиль»: слияние общего кэша с отдельным ключом этого UID и немедленная запись обратно.
+    carLoadLocalForUID(currentUID);
     authOverlay.style.display = 'none';
     const emailStr = user.email || '';
     const avatarEl = document.getElementById('avatar');
@@ -8548,6 +8682,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   svcOpenFolderId = null;
   svcResetDetail();
   lastSyncedCarNotes = new Map();
+  carLocalReadyUID = null; // отдельная копия на диске остаётся (как очереди удалений), но писать в неё до нового входа нельзя
   carOpen = false;
   carResetDetail();
   persistSyncedNotesMap();
@@ -8677,6 +8812,7 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
                 .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
                 .then(() => {
                   applyState(data);
+                  carPersistLocal();
                   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
                   localUpdatedAt = Date.now();
                   // Прямая (не отложенная) отправка: flushCloudSave() сам сравнит
@@ -8785,6 +8921,7 @@ function importDataFromFile(file){
           expenseCategories = s.expenseCategories || [];
           if(Array.isArray(s.serviceFolders)) serviceFolders = s.serviceFolders.map(svcSanitizeFolder).filter(Boolean);
           if(Array.isArray(s.serviceCarNotes)) serviceCarNotes = s.serviceCarNotes.map(carSanitizeEntry).filter(Boolean);
+          carPersistLocal();
           saveState();
           svcScheduleFlush();
           carScheduleFlush();
