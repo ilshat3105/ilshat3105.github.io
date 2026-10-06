@@ -6598,7 +6598,7 @@ window.addEventListener('pagehide', () => { carFlushLocalSave(); });
 function carCardHtml(){
   return `<div class="svc-card svc-carcard" data-car-open>
     <div class="svc-main">
-      <div class="svc-title">🚘 Мой автомобиль</div>
+      <div class="svc-title">🚛 Мой автомобиль</div>
       <div class="svc-meta">Заметки · фото · ссылки</div>
     </div>
   </div>`;
@@ -6607,7 +6607,7 @@ function carListHtml(){
   const list = carSortedEntries();
   let html = `<div class="svc-head">
       <button class="svc-iconbtn" data-car-back type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
-      <div class="svc-htitle">🚘 Мой автомобиль</div>
+      <div class="svc-htitle">🚛 Мой автомобиль</div>
     </div>`;
   if(!list.length) return html + '<div class="empty" style="margin-top:30px;">Записей пока нет. Нажмите «+», чтобы добавить первую.</div>';
   list.forEach(e => {
@@ -6676,7 +6676,7 @@ function carTarget(){ return carDetail ? carEntryAny(carDetail.id) : null; }
 function carDetailHtml(e){
   return `<div class="svc-dhead">
       <button class="svc-iconbtn" data-det-close type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
-      <div class="svc-dtitle">🚘 Мой автомобиль</div>
+      <div class="svc-dtitle">🚛 Мой автомобиль</div>
       <button class="svc-iconbtn danger" data-cdet-delete type="button" aria-label="Удалить запись">${SVC_TRASH_SVG}</button>
     </div>
     <div class="svc-dbody">
