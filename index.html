@@ -632,6 +632,7 @@
   .svc-link-main a{display:block;font-size:14.5px;font-weight:600;color:var(--accent);text-decoration:none;word-break:break-word;}
   .svc-link-main span{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
   .svc-linkadd{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+  .svc-carcard{margin-bottom:14px;border-color:var(--accent);}
 
   main{padding:14px 4px 92px;}
   .compose{
@@ -983,7 +984,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-06 15:32 (поиск Автосервиса: мягкое совпадение слов, служебные слова игнорируются)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-06 21:38 (Мой автомобиль: сохранённая запись не удаляется сама при очистке; защита кнопки «Обновить» для её панели)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1214,6 +1215,8 @@
 
 <div class="svc-detail-overlay" id="svcDetailOverlay"><div class="svc-detail" id="svcDetail"></div></div>
 <input type="file" id="svcPhotoInput" accept="image/*" multiple style="display:none;">
+<div class="svc-detail-overlay" id="svcCarDetailOverlay"><div class="svc-detail" id="svcCarDetail"></div></div>
+<input type="file" id="svcCarPhotoInput" accept="image/*" multiple style="display:none;">
 
 <div class="exp-sheet-overlay" id="svcSheetOverlay">
   <div class="exp-sheet">
@@ -4705,7 +4708,7 @@ let expSelectedCategory = null;
 document.getElementById('topTabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.top-tab');
   if(!btn) return;
-  if(currentSection === 'service') svcFlushLocalSave();
+  if(currentSection === 'service'){ svcFlushLocalSave(); carFlushLocalSave(); }
   currentSection = btn.getAttribute('data-section');
   document.querySelectorAll('.top-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -4731,7 +4734,7 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
 // На "Доходы" кнопка скрыта — отдельного добавления там нет (доход считается по заявкам).
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
-  if(currentSection === 'service'){ openSvcSheetCreate(); return; }
+  if(currentSection === 'service'){ if(carOpen) carStartNew(); else openSvcSheetCreate(); return; }
   document.getElementById('composeBar').click();
 });
 
@@ -5090,6 +5093,18 @@ let serviceBaselineReady = false;   // первый подтверждённый
 let serviceWritesAllowed = false;   // в этой сессии отправка вообще разрешена (см. writesAllowed в subscribeCloud)
 let svcFlushInFlight = null, svcFlushAgain = false, svcRetryTimer = null;
 let svcSyncErrorCode = '';
+// «Мой автомобиль»: отдельный список записей (НЕ папка ТО и не часть serviceFolders),
+// своя коллекция users/{uid}/serviceCarNotes/{id} и своя цепочка синхронизации (см. модуль ниже).
+let serviceCarNotes = [];        // [{ id, title, note, photos:[{id,url,local?}], links:[{id,url,title}], createdAt, editedAt }]
+let carOpen = false;             // открыт список записей автомобиля
+let carDraft = null;             // новая запись, пока в ней ничего не введено — в список/облако не попадает
+let carDetail = null;            // { id } — открыта панель записи
+let carSaveTimer = null, carFlushTimer = null;
+let carPendingDeletedIds = [];   // удалённые на этом телефоне записи, удаление ещё не подтверждено облаком
+let lastSyncedCarNotes = new Map();
+let carBaselineReady = false, carWritesAllowed = false;
+let carFlushInFlight = null, carFlushAgain = false, carRetryTimer = null;
+let carSyncErrorCode = '';
 const SVC_HANDLE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 const SVC_RM_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const SVC_BACK_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
@@ -5323,8 +5338,10 @@ function svcFolderCardHtml(f, withHandle){
 }
 function svcListHtml(){
   const list = svcSortedFolders();
-  if(!list.length) return '<div class="empty">Папок ТО пока нет. Нажмите «+», чтобы создать первую.</div>';
-  return '<div data-svc-container="folders" style="position:relative;">' + list.map(f => svcFolderCardHtml(f, list.length > 1)).join('') + '</div>';
+  // Закреплённая карточка «Мой автомобиль» — вне контейнера папок: не перетаскивается и не удаляется.
+  const pinned = carCardHtml();
+  if(!list.length) return pinned + '<div class="empty">Папок ТО пока нет. Нажмите «+», чтобы создать первую.</div>';
+  return pinned + '<div data-svc-container="folders" style="position:relative;">' + list.map(f => svcFolderCardHtml(f, list.length > 1)).join('') + '</div>';
 }
 function svcGroupsHtml(f){
   if(!f.items.length) return '<div class="empty" style="margin-top:30px;">Пока нет пунктов. Добавьте первый выше.</div>';
@@ -5450,12 +5467,24 @@ function svcSearch(q){
   });
   // Полные совпадения выше частичных (сортировка устойчивая — порядок по ТО внутри равных не меняется).
   const sorted = Array.from(groups.values()).sort((a, b) => b.score - a.score);
-  return { folderHits, groups: sorted };
+  return { folderHits, groups: sorted, carHits: carSearch(stems) };
 }
 function svcSearchHtml(q){
   const res = svcSearch(q);
-  if(!res.folderHits.length && !res.groups.length) return '<div class="empty">Ничего не найдено.</div>';
+  if(!res.folderHits.length && !res.groups.length && !res.carHits.length) return '<div class="empty">Ничего не найдено.</div>';
   let html = '';
+  if(res.carHits.length){
+    html += '<div class="svc-res-head">Мой автомобиль</div><div class="svc-res-group">';
+    res.carHits.forEach((h, i) => {
+      const ph = (h.entry.photos || []).length, ln = (h.entry.links || []).length;
+      const ind = (ph ? `<span class="svc-res-ind">📷${ph}</span>` : '') + (ln ? `<span class="svc-res-ind">🔗${ln}</span>` : '');
+      html += `<div class="svc-res-entry" ${i === 0 ? 'style="border-top:none;"' : ''} data-car-entry="${escapeHtml(h.entry.id)}">
+        <div class="svc-res-body"><div class="svc-res-where">${escapeHtml(carTitleOf(h.entry))}${ind}</div>${h.snippet ? `<div class="svc-res-snip">${escapeHtml(h.snippet)}</div>` : ''}</div>
+      </div>`;
+    });
+    html += '</div>';
+    if(res.folderHits.length || res.groups.length) html += '<div class="svc-res-head" style="font-weight:700;">История ТО</div>';
+  }
   if(res.folderHits.length){
     html += '<div class="svc-res-head">Папки ТО</div>' + res.folderHits.map(f => svcFolderCardHtml(f, false)).join('');
   }
@@ -5492,10 +5521,12 @@ function svcUpdateFab(){
 function svcRenderSyncNote(){
   const el = document.getElementById('svcSyncNote');
   if(!el) return;
-  if(!svcSyncErrorCode){ el.style.display = 'none'; return; }
+  const code = svcSyncErrorCode || carSyncErrorCode;
+  if(!code){ el.style.display = 'none'; return; }
+  const isTo = !!svcSyncErrorCode;
   el.style.display = 'block';
-  el.textContent = 'Автосервис сохранён на этом телефоне, но пока не ушёл в облако (' + svcSyncErrorCode + ')'
-    + (svcSyncErrorCode === 'permission-denied' ? ' — в правилах Firebase нужно разрешить коллекцию serviceFolders' : '')
+  el.textContent = (isTo ? 'Автосервис' : 'Мой автомобиль') + ' сохранён на этом телефоне, но пока не ушёл в облако (' + code + ')'
+    + (code === 'permission-denied' ? ' — в правилах Firebase нужно разрешить коллекцию ' + (isTo ? 'serviceFolders' : 'serviceCarNotes') : '')
     + '. Нажмите, чтобы повторить.';
 }
 function svcSetSyncError(code){
@@ -5509,6 +5540,8 @@ function renderService(){
   const q = (searchQuery || '').trim();
   if(q){
     body.innerHTML = svcSearchHtml(q);
+  } else if(carOpen){
+    body.innerHTML = carListHtml();
   } else {
     const f = svcFolderById(svcOpenFolderId);
     if(svcOpenFolderId != null && f){
@@ -5525,6 +5558,7 @@ function renderService(){
 function svcRerenderIfVisible(){
   if(currentSection !== 'service') return;
   svcDetailOnRemote();
+  carDetailOnRemote();
   const ae = document.activeElement;
   const typing = ae && ae.tagName === 'INPUT' && ae.closest && ae.closest('#serviceSection');
   if(svcDrag || typing){ svcRenderPending = true; return; }
@@ -5532,6 +5566,7 @@ function svcRerenderIfVisible(){
 }
 function svcOpenFolder(id, flashItemId){
   svcFlushLocalSave();
+  carOpen = false;
   svcOpenFolderId = String(id);
   svcFlashItemId = flashItemId || null;
   searchQuery = '';
@@ -5580,10 +5615,18 @@ svcSectionEl.addEventListener('click', (e) => {
   if(e.target.closest('.svc-handle')) return;
   if(e.target.closest('#svcSyncNote')){
     svcSetSyncError('');
+    carSetSyncError('');
     flushServiceFolders();
     refreshServiceFoldersOnResume();
+    flushCarNotes();
+    refreshCarNotesOnResume();
     return;
   }
+  if(e.target.closest('[data-car-back]')){ carCloseList(); return; }
+  const carOpenBtn = e.target.closest('[data-car-open]');
+  if(carOpenBtn){ carOpenList(); return; }
+  const carEntryBtn = e.target.closest('[data-car-entry]');
+  if(carEntryBtn){ carOpenDetail(carEntryBtn.getAttribute('data-car-entry')); return; }
   if(e.target.closest('[data-svc-back]')){ svcCloseFolder(); return; }
   if(e.target.closest('[data-svc-editmeta]')){
     const f = svcFolderById(svcOpenFolderId);
@@ -5894,12 +5937,18 @@ function svcQueuePhotoDelete(photo){
   // Если файла ещё нет (не успел загрузиться) — "not found" тихо снимает запись из очереди.
   queueStorageDeletePath(svcPhotoPath(currentUID, photo.id));
 }
+// kind говорит, чьё это фото: 'service' (пункт папки ТО) или 'car' (запись «Мой автомобиль»),
+// чтобы результат загрузки сохранялся именно в тот объект и тем способом, которым нужно.
 function svcFindPhoto(photoId){
   for(const f of serviceFolders){
     for(const it of f.items){
       const p = (it.photos || []).find(x => x.id === photoId);
-      if(p) return { f, it, p };
+      if(p) return { kind: 'service', f, it, p };
     }
+  }
+  for(const entry of serviceCarNotes){
+    const p = (entry.photos || []).find(x => x.id === photoId);
+    if(p) return { kind: 'car', entry, p };
   }
   return null;
 }
@@ -5948,9 +5997,15 @@ function svcApplyUploadedUrl(photoId, uid, gen, path, url){
   delete found.p.local;
   svcPhotoError.delete(photoId);
   svcPhotoAttempts.delete(photoId);
-  svcTouch(found.f);
-  svcSave();
-  svcDetailRefreshMedia();
+  if(found.kind === 'car'){
+    carTouch(found.entry);
+    carSave();
+    carDetailRefreshMedia();
+  } else {
+    svcTouch(found.f);
+    svcSave();
+    svcDetailRefreshMedia();
+  }
 }
 async function svcUploadPhoto(photoId){
   if(!currentUID || svcPhotoPending.has(photoId)) return;
@@ -5995,6 +6050,9 @@ function svcRetryPendingUploads(){
   serviceFolders.forEach(f => f.items.forEach(it => (it.photos || []).forEach(p => {
     if(!p.url && p.local) svcUploadPhoto(p.id);
   })));
+  serviceCarNotes.forEach(e => (e.photos || []).forEach(p => {
+    if(!p.url && p.local) svcUploadPhoto(p.id);
+  }));
 }
 
 // ---- панель деталей пункта (по нажатию на текст пункта) ----
@@ -6437,6 +6495,584 @@ function refreshServiceFoldersOnResume(){
   }).catch(e => console.warn('Не удалось обновить Автосервис с сервера:', e));
 }
 
+// ==================== АВТОСЕРВИС: «Мой автомобиль» ====================
+// Справочные записи про автомобиль (масло, размер шин, артикулы…): название,
+// заметка, до 10 фото, до 10 ссылок. Это НЕ папка ТО и не часть serviceFolders:
+// отдельный список serviceCarNotes и своя коллекция users/{uid}/serviceCarNotes/{id}
+// (один документ — одна запись) с собственной цепочкой синхронизации.
+// Фото: те же механики, что у пунктов ТО (svcUploadPhoto и очередь удаления), путь
+// users/{uid}/photos/svc_car_ph_….jpg (id фото начинается с «car_»).
+function carNewEntry(){
+  const now = Date.now();
+  return { id: svcNewId(), title: '', note: '', photos: [], links: [], createdAt: now, editedAt: now };
+}
+function carSanitizeEntry(raw){
+  if(!raw || raw.id == null) return null;
+  return {
+    id: String(raw.id),
+    title: typeof raw.title === 'string' ? raw.title.slice(0, 200) : '',
+    note: typeof raw.note === 'string' ? raw.note.slice(0, 5000) : '',
+    photos: svcSanitizePhotos(raw.photos),
+    links: svcSanitizeLinks(raw.links),
+    createdAt: raw.createdAt || 0,
+    editedAt: raw.editedAt || raw.createdAt || 0
+  };
+}
+// Копия записи для Firestore/резервной копии: без base64 и без ещё не загруженных фото.
+function carEntryForCloud(e){
+  const c = JSON.parse(JSON.stringify(e));
+  c.photos = (c.photos || []).filter(p => p && p.url).map(p => ({ id: p.id, url: p.url }));
+  return c;
+}
+function carTouch(e){ e.editedAt = Date.now(); }
+function carTitleOf(e){ return (e.title && e.title.trim()) || 'Без названия'; }
+function carEntryById(id){
+  if(id == null) return null;
+  return serviceCarNotes.find(e => String(e.id) === String(id)) || null;
+}
+function carEntryAny(id){
+  if(carDraft && String(carDraft.id) === String(id)) return carDraft;
+  return carEntryById(id);
+}
+function carSortedEntries(){
+  return serviceCarNotes.slice().sort((a, b) => {
+    const ta = (a.title || '').trim(), tb = (b.title || '').trim();
+    if(!ta !== !tb) return ta ? -1 : 1; // без названия — в конец
+    return ta.localeCompare(tb, 'ru') || (a.createdAt || 0) - (b.createdAt || 0);
+  });
+}
+function carEnsureCommitted(e){
+  if(e && carDraft === e){ serviceCarNotes.push(e); carDraft = null; }
+}
+function carHasContent(e){
+  return !!(e && ((e.title && e.title.trim()) || (e.note && e.note.trim()) || (e.photos && e.photos.length) || (e.links && e.links.length)));
+}
+
+// ---- удаление: подтверждённое пользователем, окончательное ----
+function carPendingDeletedKey(uid){ return 'vreyse_pendingCarDeleted_' + uid; }
+function loadCarPendingDeletedForUID(uid){
+  carPendingDeletedIds = [];
+  try{
+    const a = JSON.parse(localStorage.getItem(carPendingDeletedKey(uid)) || '[]');
+    if(Array.isArray(a)) carPendingDeletedIds = a.map(String);
+  } catch(e){}
+}
+function carSavePendingDeleted(){
+  if(!currentUID) return;
+  try{ localStorage.setItem(carPendingDeletedKey(currentUID), JSON.stringify(carPendingDeletedIds)); }catch(e){}
+}
+function carDeleteEntry(id){
+  const sid = String(id);
+  const e = carEntryById(sid);
+  if(e) (e.photos || []).forEach(svcQueuePhotoDelete);
+  serviceCarNotes = serviceCarNotes.filter(x => String(x.id) !== sid);
+  if(carPendingDeletedIds.indexOf(sid) === -1){ carPendingDeletedIds.push(sid); carSavePendingDeleted(); }
+  carSave();
+}
+
+// ---- сохранение ----
+function carSave(){
+  saveState();
+  carScheduleFlush();
+}
+function carSaveSoon(){
+  clearTimeout(carSaveTimer);
+  carSaveTimer = setTimeout(() => { carSaveTimer = null; carSave(); }, 500);
+}
+function carFlushLocalSave(){
+  if(carSaveTimer){
+    clearTimeout(carSaveTimer);
+    carSaveTimer = null;
+    carSave();
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){
+    carFlushLocalSave();
+    flushCarNotes();
+  }
+});
+window.addEventListener('pagehide', () => { carFlushLocalSave(); });
+
+// ---- экран: карточка, список записей ----
+function carCardHtml(){
+  return `<div class="svc-card svc-carcard" data-car-open>
+    <div class="svc-main">
+      <div class="svc-title">🚘 Мой автомобиль</div>
+      <div class="svc-meta">Заметки · фото · ссылки</div>
+    </div>
+  </div>`;
+}
+function carListHtml(){
+  const list = carSortedEntries();
+  let html = `<div class="svc-head">
+      <button class="svc-iconbtn" data-car-back type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
+      <div class="svc-htitle">🚘 Мой автомобиль</div>
+    </div>`;
+  if(!list.length) return html + '<div class="empty" style="margin-top:30px;">Записей пока нет. Нажмите «+», чтобы добавить первую.</div>';
+  list.forEach(e => {
+    const note = (e.note || '').replace(/\s+/g, ' ').trim();
+    const parts = [];
+    if(note) parts.push(note.length > 70 ? note.slice(0, 70).trim() + '…' : note);
+    const ind = [];
+    if(e.photos && e.photos.length) ind.push('📷' + e.photos.length);
+    if(e.links && e.links.length) ind.push('🔗' + e.links.length);
+    html += `<div class="svc-card" data-car-entry="${escapeHtml(e.id)}">
+      <div class="svc-main">
+        <div class="svc-title">${escapeHtml(carTitleOf(e))}${ind.length ? ` <span class="svc-km">${escapeHtml(ind.join(' '))}</span>` : ''}</div>
+        ${parts.length ? `<div class="svc-meta">${escapeHtml(parts.join(' · '))}</div>` : ''}
+      </div>
+    </div>`;
+  });
+  return html;
+}
+function carOpenList(){
+  svcFlushLocalSave();
+  carOpen = true;
+  svcOpenFolderId = null;
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  renderService();
+  document.getElementById('main').scrollTop = 0;
+}
+function carCloseList(){
+  carFlushLocalSave();
+  carOpen = false;
+  renderService();
+}
+
+// ---- поиск (те же правила, что у ТО: служебные слова, порог совпадений) ----
+function carSearch(stems){
+  const hits = [];
+  if(!stems || !stems.length) return hits;
+  const need = svcNeedCount(stems.length);
+  serviceCarNotes.forEach(e => {
+    const titleWords = svcWords(e.title);
+    const noteWords = svcWords(e.note);
+    const linkTitles = (e.links || []).map(l => l.title || '').filter(Boolean);
+    const linkWords = [].concat.apply([], linkTitles.map(svcWords));
+    const score = svcCountMatches(titleWords.concat(noteWords, linkWords), stems);
+    if(score < need) return;
+    let snippet = '';
+    if(svcCountMatches(titleWords, stems) < score){
+      const noteHit = noteWords.length && stems.some(st => noteWords.some(w => w.indexOf(st) === 0));
+      if(noteHit) snippet = '📝 ' + svcNoteSnippet(e.note, stems);
+      else {
+        const lt = linkTitles.filter(t => stems.some(st => svcWords(t).some(w => w.indexOf(st) === 0)));
+        if(lt.length) snippet = '🔗 ' + lt.join(', ');
+      }
+    }
+    hits.push({ entry: e, score, snippet });
+  });
+  hits.sort((a, b) => b.score - a.score || carTitleOf(a.entry).localeCompare(carTitleOf(b.entry), 'ru'));
+  return hits;
+}
+
+// ---- панель записи ----
+const carDetailOverlay = document.getElementById('svcCarDetailOverlay');
+const carDetailEl = document.getElementById('svcCarDetail');
+const carPhotoInput = document.getElementById('svcCarPhotoInput');
+function carTarget(){ return carDetail ? carEntryAny(carDetail.id) : null; }
+function carDetailHtml(e){
+  return `<div class="svc-dhead">
+      <button class="svc-iconbtn" data-det-close type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
+      <div class="svc-dtitle">🚘 Мой автомобиль</div>
+      <button class="svc-iconbtn danger" data-cdet-delete type="button" aria-label="Удалить запись">${SVC_TRASH_SVG}</button>
+    </div>
+    <div class="svc-dbody">
+      <label class="svc-dlabel" for="carDetTitle">Название</label>
+      <textarea id="carDetTitle" class="svc-dfield" rows="2" maxlength="200" placeholder="Например, «Масло КПП»">${escapeHtml(e.title)}</textarea>
+      <label class="svc-dlabel" for="carDetNote">Заметка</label>
+      <textarea id="carDetNote" class="svc-dfield" rows="6" maxlength="5000" placeholder="Заметка (необязательно)">${escapeHtml(e.note || '')}</textarea>
+      <div class="svc-dlabel" id="carDetPhotosLabel"></div>
+      <div id="carDetPhotos"></div>
+      <button class="svc-dbtn" type="button" data-cdet-addphoto>+ Добавить фото</button>
+      <div class="svc-dlabel" id="carDetLinksLabel"></div>
+      <div id="carDetLinks"></div>
+      <div class="svc-linkadd">
+        <input id="carDetLinkTitle" class="svc-dfield" maxlength="120" autocomplete="off" placeholder="Подпись, например «Масло КПП»">
+        <input id="carDetLinkUrl" class="svc-dfield" inputmode="url" autocomplete="off" placeholder="Адрес ссылки">
+        <button class="svc-dbtn" type="button" data-cdet-addlink>+ Добавить ссылку</button>
+      </div>
+    </div>`;
+}
+// Только блоки фото и ссылок — поля ввода не трогаем, чтобы не сбить набор текста.
+function carDetailRefreshMedia(){
+  if(!carDetail) return;
+  const e = carTarget();
+  const ph = document.getElementById('carDetPhotos');
+  if(!e || !ph) return;
+  ph.innerHTML = svcPhotosHtml(e);
+  document.getElementById('carDetPhotosLabel').textContent = 'Фото · ' + (e.photos || []).length + '/' + SVC_MAX_PHOTOS;
+  document.getElementById('carDetLinks').innerHTML = svcLinksHtml(e);
+  document.getElementById('carDetLinksLabel').textContent = 'Ссылки · ' + (e.links || []).length + '/' + SVC_MAX_LINKS;
+}
+function carShowDetail(e){
+  carDetail = { id: e.id };
+  carDetailEl.innerHTML = carDetailHtml(e);
+  carDetailRefreshMedia();
+  carDetailEl.scrollTop = 0;
+  carDetailOverlay.classList.add('show');
+}
+function carStartNew(){
+  carFlushLocalSave();
+  carDraft = carNewEntry();
+  carShowDetail(carDraft);
+  setTimeout(() => { const t = document.getElementById('carDetTitle'); if(t) t.focus(); }, 200);
+}
+function carOpenDetail(id){
+  const e = carEntryById(id);
+  if(!e) return;
+  carFlushLocalSave();
+  // Из результатов поиска: открываем нужную запись поверх списка автомобиля.
+  if((searchQuery || '').trim()){
+    searchQuery = '';
+    document.getElementById('searchInput').value = '';
+  }
+  carOpen = true;
+  svcOpenFolderId = null;
+  renderService();
+  carShowDetail(e);
+}
+function carResetDetail(){
+  carDetail = null;
+  carDraft = null;
+  carDetailOverlay.classList.remove('show');
+}
+function carCloseDetail(){
+  const e = carTarget();
+  if(e && !e.title.trim()){
+    // Пустой НОВЫЙ черновик (в список так и не попал) тихо отбрасывается ниже, в carResetDetail().
+    // Уже сохранённая запись НИКОГДА не удаляется сама: остаётся как «Без названия».
+    // Удалить её можно только кнопкой корзины с подтверждением.
+    if(carDraft !== e){ e.title = 'Без названия'; carTouch(e); carSaveSoon(); }
+  }
+  carFlushLocalSave();
+  carResetDetail();
+  if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  if(currentSection === 'service') renderService();
+}
+// Изменение пришло из облака, пока панель открыта.
+function carDetailOnRemote(){
+  if(!carDetail) return;
+  if(!carTarget()){
+    carResetDetail();
+    showToast('Эта запись удалена на другом устройстве');
+    return;
+  }
+  carDetailRefreshMedia();
+}
+async function carAddPhotosFromFiles(files){
+  const t0 = carTarget();
+  if(!t0) return;
+  const eid = t0.id;
+  for(const file of files){
+    let e = carEntryAny(eid);
+    if(!e) return;
+    if((e.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото в записи'); return; }
+    let dataUrl;
+    try{ dataUrl = await compressImage(file, 1600, 0.75, true); }
+    catch(err){ showToast('Не удалось обработать фото'); continue; }
+    e = carEntryAny(eid); // пока сжималось, запись могли удалить
+    if(!e) return;
+    if((e.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото в записи'); return; }
+    carEnsureCommitted(e);
+    const photo = { id: 'car_' + newPhotoId(), url: null, local: dataUrl };
+    e.photos.push(photo);
+    carTouch(e);
+    // Фото должно оказаться на диске ДО начала загрузки — иначе закрытие приложения его потеряет.
+    let stored = true;
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(err){ stored = false; }
+    if(!stored){
+      e.photos.pop();
+      showToast('Не хватает памяти телефона для фото — дождитесь загрузки предыдущих или удалите лишнее');
+      continue;
+    }
+    carSave();
+    carDetailRefreshMedia();
+    svcUploadPhoto(photo.id);
+  }
+}
+function carDetailAddLink(){
+  const e = carTarget();
+  if(!e) return;
+  const tIn = document.getElementById('carDetLinkTitle'), uIn = document.getElementById('carDetLinkUrl');
+  const url = svcNormalizeUrl(uIn.value);
+  if(!url){ showToast('Введите корректный адрес ссылки'); uIn.focus(); return; }
+  if((e.links || []).length >= SVC_MAX_LINKS){ showToast('Не больше ' + SVC_MAX_LINKS + ' ссылок в записи'); return; }
+  carEnsureCommitted(e);
+  if(!e.links) e.links = [];
+  e.links.push({ id: svcNewId(), url, title: tIn.value.trim().slice(0, 120) });
+  carTouch(e);
+  carSave();
+  tIn.value = ''; uIn.value = '';
+  carDetailRefreshMedia();
+}
+carDetailEl.addEventListener('click', (ev) => {
+  const t = ev.target;
+  if(t.closest('[data-det-close]')){ carCloseDetail(); return; }
+  const e = carTarget();
+  if(!e) return;
+  if(t.closest('[data-cdet-delete]')){
+    const id = e.id;
+    if(carDraft === e && !carHasContent(e)){ carResetDetail(); if(currentSection === 'service') renderService(); return; }
+    showConfirm('Удалить запись «' + carTitleOf(e) + '»' + ((e.photos || []).length || (e.links || []).length || (e.note || '').trim() ? ' вместе с фото, заметкой и ссылками' : '') + '? Это действие нельзя отменить.', () => {
+      if(carDraft && carDraft.id === id) carDraft = null;
+      else carDeleteEntry(id);
+      carResetDetail();
+      if(currentSection === 'service') renderService();
+    });
+    return;
+  }
+  if(t.closest('[data-cdet-addphoto]')){
+    if((e.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото в записи'); return; }
+    carPhotoInput.click();
+    return;
+  }
+  const rmPh = t.closest('[data-det-phrm]');
+  if(rmPh){
+    const pid = rmPh.getAttribute('data-det-phrm');
+    showConfirm('Удалить это фото?', () => {
+      const cur = carTarget();
+      if(!cur) return;
+      const idx = (cur.photos || []).findIndex(p => p.id === pid);
+      if(idx === -1) return;
+      const p = cur.photos.splice(idx, 1)[0];
+      svcQueuePhotoDelete(p); // файл — в постоянную очередь удаления из Storage
+      svcPhotoError.delete(pid);
+      carTouch(cur);
+      carSave();
+      carDetailRefreshMedia();
+    });
+    return;
+  }
+  const img = t.closest('[data-det-photo]');
+  if(img){ svcOpenPhotoViewer(e, img.getAttribute('data-det-photo')); return; }
+  if(t.closest('[data-cdet-addlink]')){ carDetailAddLink(); return; }
+  const rmLn = t.closest('[data-det-lnrm]');
+  if(rmLn){
+    const lid = rmLn.getAttribute('data-det-lnrm');
+    e.links = (e.links || []).filter(l => l.id !== lid);
+    carTouch(e);
+    carSave();
+    carDetailRefreshMedia();
+  }
+});
+carDetailEl.addEventListener('input', (ev) => {
+  const e = carTarget();
+  if(!e) return;
+  const id = ev.target.id;
+  if(id === 'carDetTitle') e.title = ev.target.value;
+  else if(id === 'carDetNote') e.note = ev.target.value;
+  else return;
+  carEnsureCommitted(e); // первая правка превращает черновик в настоящую запись
+  carTouch(e);
+  carSaveSoon();
+});
+carDetailEl.addEventListener('keydown', (ev) => {
+  if(ev.key !== 'Enter') return;
+  const id = ev.target.id;
+  if(id === 'carDetTitle'){ ev.preventDefault(); ev.target.blur(); }
+  else if(id === 'carDetLinkUrl' || id === 'carDetLinkTitle'){ ev.preventDefault(); carDetailAddLink(); }
+});
+carDetailEl.addEventListener('focusout', (ev) => {
+  if(ev.target.id === 'carDetTitle' || ev.target.id === 'carDetNote') carFlushLocalSave();
+});
+carPhotoInput.addEventListener('change', () => {
+  const files = Array.from(carPhotoInput.files || []);
+  carPhotoInput.value = '';
+  if(files.length) carAddPhotosFromFiles(files);
+});
+
+// ---- синхронизация: ОТДЕЛЬНАЯ цепочка (не связана ни с заявками/расходами, ни с папками ТО) ----
+function carSetSyncError(code){
+  carSyncErrorCode = code || '';
+  if(currentSection === 'service') svcRenderSyncNote();
+}
+function carScheduleFlush(){
+  clearTimeout(carFlushTimer);
+  carFlushTimer = setTimeout(flushCarNotes, 800);
+}
+function flushCarNotes(){
+  if(!currentUID || !carBaselineReady || !carWritesAllowed || suppressCloudSave) return Promise.resolve();
+  if(carFlushInFlight){ carFlushAgain = true; return carFlushInFlight; }
+  if(carRetryTimer){ clearTimeout(carRetryTimer); carRetryTimer = null; }
+  const uid = currentUID, gen = authGeneration;
+  const colRef = db.collection('users').doc(uid).collection('serviceCarNotes');
+  const ops = [];
+  const localIds = new Set();
+  serviceCarNotes.forEach(e => {
+    if(!e || e.id == null) return;
+    const id = String(e.id);
+    localIds.add(id);
+    if(carPendingDeletedIds.indexOf(id) !== -1) return;
+    const et = e.editedAt || e.createdAt || 0;
+    if(lastSyncedCarNotes.get(id) !== et){
+      ops.push({ ref: colRef.doc(id), action: 'set', data: carEntryForCloud(e), id, et });
+    }
+  });
+  const deleteIds = new Set(carPendingDeletedIds);
+  lastSyncedCarNotes.forEach((et, id) => { if(!localIds.has(id)) deleteIds.add(id); });
+  deleteIds.forEach(id => { if(!localIds.has(id)) ops.push({ ref: colRef.doc(id), action: 'delete', id }); });
+  if(!ops.length){ carSetSyncError(''); return Promise.resolve(); }
+
+  const chunks = [];
+  for(let i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
+  let chain = Promise.resolve();
+  chunks.forEach(chunk => {
+    chain = chain.then(() => {
+      if(currentUID !== uid || authGeneration !== gen) return;
+      const batch = db.batch();
+      chunk.forEach(op => { if(op.action === 'set') batch.set(op.ref, op.data); else batch.delete(op.ref); });
+      return batch.commit();
+    });
+  });
+  const run = chain.then(() => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    let pendingChanged = false;
+    ops.forEach(op => {
+      if(op.action === 'set') lastSyncedCarNotes.set(op.id, op.et);
+      else {
+        lastSyncedCarNotes.delete(op.id);
+        const i = carPendingDeletedIds.indexOf(op.id);
+        if(i !== -1){ carPendingDeletedIds.splice(i, 1); pendingChanged = true; }
+      }
+    });
+    if(pendingChanged) carSavePendingDeleted();
+    carSetSyncError('');
+    // Копия не должна зависеть от того, менялись ли при этом обычные ТО/заявки
+    // (интервал 3 часа проверяется внутри; base64-фото вырезаны).
+    maybeSaveDailyBackup(stateSnapshot(true));
+  }).catch(err => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    console.warn('Не удалось отправить «Мой автомобиль» в облако:', err);
+    const code = err && err.code ? err.code : (err && err.message ? err.message : 'ошибка');
+    carSetSyncError(code);
+    if(code !== 'permission-denied'){
+      carRetryTimer = setTimeout(() => { carRetryTimer = null; flushCarNotes(); }, 15000);
+    }
+  }).then(() => {
+    const same = currentUID === uid && authGeneration === gen;
+    carFlushInFlight = null;
+    if(carFlushAgain){ carFlushAgain = false; if(same) flushCarNotes(); }
+  });
+  carFlushInFlight = run;
+  return run;
+}
+// Фото, лежащие только на этом телефоне, переносим в приходящую версию записи
+// (в облаке таких фото нет — иначе ответ сервера стёр бы их).
+function carCarryPendingPhotos(incoming, local){
+  if(!incoming || !local) return;
+  (local.photos || []).forEach(p => {
+    if(p.url || !p.local) return;
+    if(incoming.photos.some(x => x.id === p.id)) return;
+    if(incoming.photos.length < SVC_MAX_PHOTOS) incoming.photos.push({ id: p.id, url: null, local: p.local });
+  });
+}
+function carApplyIncoming(id, rawData){
+  const incoming = carSanitizeEntry(Object.assign({}, rawData, { id }));
+  if(!incoming) return false;
+  const incomingEt = incoming.editedAt || incoming.createdAt || 0;
+  if(carPendingDeletedIds.indexOf(id) !== -1){
+    // Удалена на этом телефоне, сервер ещё присылает — не вставляем обратно.
+    lastSyncedCarNotes.set(id, incomingEt);
+    return false;
+  }
+  const idx = serviceCarNotes.findIndex(e => String(e.id) === id);
+  let touched = false;
+  if(idx === -1){
+    serviceCarNotes.push(incoming);
+    touched = true;
+  } else {
+    const localEt = serviceCarNotes[idx].editedAt || serviceCarNotes[idx].createdAt || 0;
+    if(incomingEt > localEt){
+      carCarryPendingPhotos(incoming, serviceCarNotes[idx]);
+      serviceCarNotes[idx] = incoming;
+      touched = true;
+    }
+  }
+  lastSyncedCarNotes.set(id, incomingEt);
+  return touched;
+}
+function carApplyRemoval(id){
+  const idx = serviceCarNotes.findIndex(e => String(e.id) === id);
+  if(idx !== -1){
+    const localEt = serviceCarNotes[idx].editedAt || serviceCarNotes[idx].createdAt || 0;
+    const knownEt = lastSyncedCarNotes.get(id);
+    // Локальная правка новее того, что мы видели в облаке, — не стираем, она вернётся при отправке.
+    if(knownEt != null && localEt > knownEt){ lastSyncedCarNotes.delete(id); return true; }
+    serviceCarNotes.splice(idx, 1);
+    lastSyncedCarNotes.delete(id);
+    return true;
+  }
+  lastSyncedCarNotes.delete(id);
+  return false;
+}
+function carSweepPendingDeleted(cloudIds){
+  const still = carPendingDeletedIds.filter(id => cloudIds.has(id));
+  if(still.length !== carPendingDeletedIds.length){
+    carPendingDeletedIds = still;
+    carSavePendingDeleted();
+  }
+}
+// Четвёртая живая подписка (вызывается из subscribeCloud). Своя готовность
+// (carBaselineReady) — не входит в maybeBaselineReady() заявок/расходов.
+function carSubscribe(userRef, writesAllowed){
+  const uid = currentUID, gen = authGeneration;
+  let ready = false;
+  return userRef.collection('serviceCarNotes').onSnapshot(snapshot => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    let touched = false;
+    snapshot.docChanges().forEach(change => {
+      if(change.doc.metadata.hasPendingWrites) return; // наша же ещё не подтверждённая запись
+      const id = change.doc.id;
+      if(change.type === 'removed'){ if(carApplyRemoval(id)) touched = true; return; }
+      if(carApplyIncoming(id, change.doc.data())) touched = true;
+    });
+    if(!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites){
+      carSweepPendingDeleted(new Set(snapshot.docs.map(d => d.id)));
+      if(!ready){
+        ready = true;
+        carBaselineReady = true;
+        carWritesAllowed = !!writesAllowed;
+        carSetSyncError('');
+        flushCarNotes(); // накопленные до готовности локальные правки
+        svcRetryPendingUploads(); // фото, не успевшие загрузиться до закрытия приложения
+      }
+    }
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+      svcRerenderIfVisible();
+    }
+  }, err => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    console.warn('Не удалось подписаться на «Мой автомобиль»:', err);
+    carSetSyncError(err && err.code ? err.code : 'subscribe-error');
+  });
+}
+function refreshCarNotesOnResume(){
+  if(!currentUID || !carBaselineReady) return;
+  const uid = currentUID, gen = authGeneration;
+  db.collection('users').doc(uid).collection('serviceCarNotes').get({ source: 'server' }).then(snap => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    let touched = false;
+    const serverIds = new Set();
+    snap.forEach(d => {
+      serverIds.add(d.id);
+      if(carApplyIncoming(d.id, d.data())) touched = true;
+    });
+    Array.from(lastSyncedCarNotes.keys()).forEach(id => {
+      if(!serverIds.has(id) && carApplyRemoval(id)) touched = true;
+    });
+    carSweepPendingDeleted(serverIds);
+    carSetSyncError('');
+    if(touched){
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
+      svcRerenderIfVisible();
+    }
+  }).catch(e => console.warn('Не удалось обновить «Мой автомобиль» с сервера:', e));
+}
+
 // ---- persistence (localStorage — быстрый локальный кэш) ----
 const STORAGE_KEY = 'moyreys_notes_v1';
 let localUpdatedAt = 0; // метка времени последней правки на этом телефоне — чтобы облако
@@ -6453,13 +7089,17 @@ function toMillis(v){
 // forCloud=true — для резервных копий в Firestore: у Автосервиса без временных base64-фото.
 function stateSnapshot(forCloud){
   return { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories,
-    serviceFolders: forCloud ? serviceFolders.map(svcFolderForCloud) : serviceFolders, updatedAt: localUpdatedAt };
+    serviceFolders: forCloud ? serviceFolders.map(svcFolderForCloud) : serviceFolders,
+    serviceCarNotes: forCloud ? serviceCarNotes.map(carEntryForCloud) : serviceCarNotes, updatedAt: localUpdatedAt };
 }
 function applyState(s){
   // Автосервис: массив в состоянии — применяем; пустой объект (сброс при
   // входе/выходе) — очищаем; иначе (старая копия без этого ключа) — оставляем как есть.
   if(Array.isArray(s.serviceFolders)) serviceFolders = s.serviceFolders.map(svcSanitizeFolder).filter(Boolean);
   else if(!Object.keys(s).length) serviceFolders = [];
+  // «Мой автомобиль» — то же правило: массив применяем, {} очищает, ключа нет — оставляем как есть.
+  if(Array.isArray(s.serviceCarNotes)) serviceCarNotes = s.serviceCarNotes.map(carSanitizeEntry).filter(Boolean);
+  else if(!Object.keys(s).length) serviceCarNotes = [];
   notes = s.notes || [];
   idSeq = s.idSeq || 1;
   monthKey = s.monthKey || null;
@@ -6710,6 +7350,7 @@ function flushCloudSave(){
   // Автосервис отправляется отдельной цепочкой (своя блокировка и свои флаги),
   // чтобы ошибка правил Firestore для новой коллекции не ломала заявки/расходы.
   flushServiceFolders();
+  flushCarNotes();
   if(cloudSaveTimer){ clearTimeout(cloudSaveTimer); cloudSaveTimer = null; }
   if(cloudSaveInFlight){
     // Предыдущая отправка ещё летит — не запускаем вторую поверх неё (см.
@@ -7430,6 +8071,8 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
   // не входит в maybeBaselineReady(): иначе ошибка правил новой коллекции
   // навсегда заблокировала бы отправку заявок и расходов.
   cloudUnsubscribes.push(svcSubscribe(userRef, writesAllowed));
+  // «Мой автомобиль» — тоже отдельная подписка и отдельный baseline (carBaselineReady).
+  cloudUnsubscribes.push(carSubscribe(userRef, writesAllowed));
 }
 
 // Локальный кэш (STORAGE_KEY) — общий на весь телефон, один на все аккаунты.
@@ -7457,9 +8100,15 @@ auth.onAuthStateChanged(user => {
   lastSyncedServiceFolders = new Map();
   svcOpenFolderId = null;
   svcResetDetail();
+  carBaselineReady = false;
+  carWritesAllowed = false;
+  lastSyncedCarNotes = new Map();
+  carOpen = false;
+  carResetDetail();
   if(user){
     currentUID = user.uid;
     loadSvcPendingDeletedForUID(currentUID);
+    loadCarPendingDeletedForUID(currentUID);
     loadPendingPhotoDeletesForUID(currentUID);
     loadPendingDeletedNoteIdsForUID(currentUID); // именно СЕЙЧАС, когда currentUID уже точно известен — не раньше (см. комментарий у функции)
     let cacheOwner = null;
@@ -7515,6 +8164,7 @@ auth.onAuthStateChanged(user => {
     pendingPhotoDeletePaths = []; // сама очередь на диске под прежним UID остаётся нетронутой
     pendingDeletedNoteIds = []; // очередь удаления заявок на диске под прежним UID тоже остаётся нетронутой
     svcPendingDeletedIds = []; // то же для папок Автосервиса (на диске остаётся)
+    carPendingDeletedIds = []; // и для «Мой автомобиль»
     authOverlay.style.display = 'flex';
   }
 });
@@ -7820,6 +8470,10 @@ function setupNativeBackButton(){
       closeSvcDetail();
       return;
     }
+    if(carDetailOverlay && carDetailOverlay.classList.contains('show')){
+      carCloseDetail();
+      return;
+    }
     if(drawerEl && drawerEl.classList.contains('show')){
       drawerEl.classList.remove('show');
       overlay.classList.remove('show');
@@ -7827,6 +8481,10 @@ function setupNativeBackButton(){
     }
     if(currentSection === 'service' && svcOpenFolderId){
       svcCloseFolder();
+      return;
+    }
+    if(currentSection === 'service' && carOpen){
+      carCloseList();
       return;
     }
     // Архив/корзина внутри "Заявок" — поднимаемся на один уровень назад к
@@ -7889,6 +8547,9 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   lastSyncedServiceFolders = new Map();
   svcOpenFolderId = null;
   svcResetDetail();
+  lastSyncedCarNotes = new Map();
+  carOpen = false;
+  carResetDetail();
   persistSyncedNotesMap();
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
@@ -8089,7 +8750,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
 // новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
 // позволяют вручную сохранить всё в JSON-файл и загрузить его обратно.
 function exportData(){
-  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, serviceFolders };
+  const payload = { notes, idSeq, monthKey, monthlyGoal, expenses, expenseIdSeq, expenseCategories, serviceFolders, serviceCarNotes };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -8123,8 +8784,10 @@ function importDataFromFile(file){
           expenseIdSeq = s.expenseIdSeq || 1;
           expenseCategories = s.expenseCategories || [];
           if(Array.isArray(s.serviceFolders)) serviceFolders = s.serviceFolders.map(svcSanitizeFolder).filter(Boolean);
+          if(Array.isArray(s.serviceCarNotes)) serviceCarNotes = s.serviceCarNotes.map(carSanitizeEntry).filter(Boolean);
           saveState();
           svcScheduleFlush();
+          carScheduleFlush();
           renderContent();
           svcRerenderIfVisible();
           showToast('Данные загружены');
@@ -8263,12 +8926,13 @@ if ('serviceWorker' in navigator) {
       document.getElementById('updateBannerBtn').addEventListener('click', async () => {
         // Незаконченная правка в открытом окне живёт только в памяти — перезагрузка
         // её стёрла бы. Пока такое окно открыто, не перезагружаем.
-        const openEditorLike = ['editorOverlay', 'expSheetOverlay', 'svcSheetOverlay'].some(id => {
+        const openEditorLike = ['editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcCarDetailOverlay'].some(id => {
           const el = document.getElementById(id);
           return el && el.classList.contains('show');
         });
         if(openEditorLike){ showToast('Сначала закройте окно редактирования, потом нажмите «Обновить»'); return; }
         try{ svcFlushLocalSave(); }catch(e){} // набранное в панели пункта Автосервиса — на диск
+        try{ carFlushLocalSave(); }catch(e){} // и в панели «Мой автомобиль»
         const btn = document.getElementById('updateBannerBtn');
         btn.disabled = true;
         // Гарантируем свежий index.html: скачиваем его в обход кэша и кладём во все
@@ -8339,6 +9003,7 @@ function refreshFromCloudOnResume(){
   const gen = authGeneration;
   const userRef = db.collection('users').doc(currentUID);
   refreshServiceFoldersOnResume();
+  refreshCarNotesOnResume();
   return Promise.all([
     userRef.get({ source: 'server' }),
     userRef.collection('notes').get({ source: 'server' }),
@@ -8504,7 +9169,7 @@ function refreshFromCloudOnResume(){
   // вниз не должен запускать обновление списка под ними.
   const BLOCKING_OVERLAY_IDS = ['confirmOverlay', 'lightbox', 'ocrResultOverlay', 'drawer',
     'backupsOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
-    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcDetailOverlay', 'authOverlay'];
+    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcDetailOverlay', 'svcCarDetailOverlay', 'authOverlay'];
 
   function blockingOverlayOpen(){
     return BLOCKING_OVERLAY_IDS.some(id => {
