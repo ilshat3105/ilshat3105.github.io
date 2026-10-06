@@ -26,7 +26,45 @@ messaging.onBackgroundMessage(() => {
   });
 });
 
-const CACHE_NAME = 'vreyse-v6';
+const CACHE_NAME = 'vreyse-v7';
+
+// ---- Защита от отката на более старый index.html ----
+// Версия приложения — строка «Версия: ГГГГ-ММ-ДД ЧЧ:ММ» в #appVersionLine.
+// Формат фиксированный, поэтому версии сравниваются как обычные строки.
+// Правило: страница НИКОГДА не получает index.html с версией НИЖЕ самой новой,
+// уже сохранённой на этом устройстве (ни из сети, ни из кэша), и такой ответ
+// не кэшируется. Плохая сеть/устаревший CDN может открыть только последнюю
+// успешно установленную копию, но не более старую.
+const VERSION_RE = /id="appVersionLine"[^>]*>\s*Версия:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
+
+async function versionOfResponse(response) {
+  try {
+    const text = await response.clone().text();
+    const m = VERSION_RE.exec(text);
+    return m ? m[1] : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Самая новая сохранённая копия index.html среди ВСЕХ кэшей (старые кэши живут
+// до activate, поэтому в install новая версия может взять копию из прежнего).
+async function newestCachedIndex() {
+  let best = null;
+  let keys = [];
+  try { keys = await caches.keys(); } catch (e) { return null; }
+  for (const key of keys) {
+    try {
+      const cache = await caches.open(key);
+      const response = await cache.match('./index.html');
+      if (!response) continue;
+      const version = await versionOfResponse(response);
+      if (!version) continue;
+      if (!best || version > best.version) best = { version, response };
+    } catch (e) { /* пропускаем повреждённый кэш */ }
+  }
+  return best;
+}
 
 // Установка: скачиваем и сохраняем нужные файлы.
 //
@@ -54,19 +92,32 @@ const CACHE_NAME = 'vreyse-v6';
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      // КРИТИЧЕСКИЙ файл — если не скачался, установка должна провалиться.
-      const indexResponse = await fetch('./index.html', { cache: 'no-store' });
-      if(!indexResponse || !indexResponse.ok){
-        throw new Error('Не удалось загрузить index.html при установке новой версии');
+      // КРИТИЧЕСКИЙ файл. Берём сеть, но если она дала версию НИЖЕ уже
+      // сохранённой (или вообще без версии), а в кэше есть более новая —
+      // копируем в новый кэш именно более новую. Нет сети, но есть валидная
+      // сохранённая версия — используем её. Нет ни сети, ни валидного кэша —
+      // установка проваливается (старая рабочая версия продолжает работать).
+      const best = await newestCachedIndex();
+      let net = null, netVersion = null;
+      try {
+        const r = await fetch('./index.html', { cache: 'no-store' });
+        if (r && r.ok) { net = r; netVersion = await versionOfResponse(r); }
+      } catch (e) { /* сети нет — решим ниже */ }
+
+      let chosen = null;
+      if (net && (!best || (netVersion && netVersion >= best.version))) chosen = net;
+      else if (best) chosen = best.response;
+      if (!chosen) {
+        throw new Error('Не удалось загрузить index.html и нет сохранённой копии');
       }
-      await cache.put('./index.html', indexResponse.clone());
-      await cache.put('./', indexResponse.clone());
+      await cache.put('./index.html', chosen.clone());
+      await cache.put('./', chosen.clone());
 
       // НЕкритические файлы — сбой любого из них не должен рушить обновление.
       await Promise.allSettled(
         ['./manifest.json', './icon-192.png', './icon-512.png'].map(async (url) => {
           const response = await fetch(url, { cache: 'no-store' });
-          if(response && response.ok) await cache.put(url, response);
+          if (response && response.ok) await cache.put(url, response);
         })
       );
     })
@@ -149,6 +200,31 @@ self.addEventListener('fetch', (event) => {
     || event.request.destination === 'document'
     || requestURL.pathname.endsWith('/index.html');
   const timeoutMs = isNavigation ? NAVIGATION_FETCH_TIMEOUT_MS : FETCH_TIMEOUT_MS;
+
+  if (isNavigation) {
+    // Страница приложения: сеть может вернуть только версию НЕ ниже сохранённой.
+    event.respondWith((async () => {
+      const best = await newestCachedIndex();
+      try {
+        const response = await fetchWithTimeout(event.request, timeoutMs);
+        if (best && !response.ok) return best.response;
+        const netVersion = await versionOfResponse(response);
+        if (best && (!netVersion || netVersion < best.version)) {
+          // Старый (или непроверяемый) ответ сети: не кэшируем и не показываем.
+          return best.response;
+        }
+        if (!response.ok) return response; // ошибочную страницу в кэш не кладём
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(event.request, response.clone());
+        cache.put('./index.html', response.clone());
+        return response;
+      } catch (e) {
+        if (best) return best.response;
+        return (await caches.match(event.request)) || (await caches.match('./index.html'));
+      }
+    })());
+    return;
+  }
 
   event.respondWith(
     fetchWithTimeout(event.request, timeoutMs)
