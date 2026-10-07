@@ -562,6 +562,29 @@
     background:var(--success);opacity:.06;pointer-events:none;}
   .svc-card.svc-card-done::after{content:'';position:absolute;inset:-1px;border-radius:inherit;
     border:1px solid var(--success);opacity:.35;pointer-events:none;}
+  /* ---- Перенос невыполненных пунктов в другое ТО ---- */
+  .svc-htitle .svc-km{white-space:nowrap;}
+  .svc-textbtn{background:none;border:none;color:var(--accent);font-size:13.5px;font-weight:700;
+    padding:8px 8px;cursor:pointer;flex-shrink:0;font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;}
+  .svc-row.svc-move-sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);}
+  .svc-row.svc-move-off{opacity:.45;}
+  .svc-row .svc-move-chk{pointer-events:none;accent-color:var(--accent);}
+  .svc-movebar{position:sticky;bottom:12px;z-index:3;display:flex;align-items:center;gap:8px;margin-top:14px;
+    padding:10px 12px;background:var(--surface);border:1px solid var(--card-line);border-radius:14px;
+    box-shadow:0 6px 20px rgba(0,0,0,.18);}
+  .svc-movebar .svc-movecount{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--muted);}
+  .svc-movebar button{border-radius:12px;padding:10px 14px;font-size:14px;font-weight:700;cursor:pointer;
+    font-family:'Inter',sans-serif;}
+  .svc-movebar .svc-move-cancel{background:var(--surface);border:1.5px solid var(--card-line);color:var(--muted);}
+  .svc-movebar .svc-move-go{background:var(--accent);border:none;color:#fff;}
+  .svc-movebar .svc-move-go:disabled{opacity:.4;}
+  #svcMoveList{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;}
+  .svc-move-target{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;
+    background:var(--surface);border:1px solid var(--card-line);border-radius:12px;padding:12px 14px;cursor:pointer;
+    font-family:'Inter',sans-serif;color:var(--ink);}
+  .svc-move-target .svc-mt-title{font-size:15px;font-weight:700;}
+  .svc-move-target .svc-mt-meta{font-size:12.5px;color:var(--faint);}
+  .svc-move-target.svc-move-new{border:1.5px dashed var(--accent);color:var(--accent);font-size:15px;font-weight:700;}
   .svc-handle{background:none;border:none;color:var(--faint);padding:8px;flex-shrink:0;cursor:grab;
     touch-action:none;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;}
   [data-svc-row]{transition:transform .15s ease;}
@@ -997,7 +1020,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 14:45 (Автосервис: статус папок ТО — «В плане» / «В работе · X/Y» / «✓ Выполнено» по чек-листу)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 17:12 (Автосервис: перенос невыполненных пунктов из одного ТО в другое)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1241,6 +1264,14 @@
       <button class="exp-delete-btn" id="svcSkipBtn" type="button" style="display:none;border-color:var(--card-line);color:var(--muted);">Пропустить</button>
       <button class="exp-save-btn" id="svcSheetOk" type="button">Далее</button>
     </div>
+  </div>
+</div>
+
+<div class="exp-sheet-overlay" id="svcMoveOverlay">
+  <div class="exp-sheet">
+    <div class="exp-sheet-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:var(--ink);">Куда перенести?</div>
+    <div id="svcMoveList"></div>
   </div>
 </div>
 
@@ -5096,6 +5127,7 @@ document.getElementById('expDeleteBtn').addEventListener('click', () => {
 // правил Firestore для этой коллекции не должна блокировать остальное.
 let serviceFolders = [];
 let svcOpenFolderId = null;     // null — список папок; иначе id открытой папки
+let svcMove = null;             // режим переноса пунктов: { folderId, selected:Set<id> } — только в памяти, не сохраняется
 let svcFlashItemId = null;      // пункт, который подсветить при открытии папки из поиска
 let svcSaveTimer = null;        // отложенное сохранение набираемого текста пункта
 let svcFlushTimer = null;       // отложенная отправка в облако
@@ -5241,12 +5273,12 @@ function svcSanitizeFolder(raw){
 }
 
 // ---- операции над данными ----
-function svcCreateFolder(number, mileage){
+function svcCreateFolder(number, mileage, skipSave){
   const now = Date.now();
   const minOrder = serviceFolders.length ? Math.min.apply(null, serviceFolders.map(f => f.order || 0)) : 1;
   const f = { id: svcNewId(), number: String(number), mileage: mileage, order: minOrder - 1, createdAt: now, editedAt: now, items: [] };
   serviceFolders.push(f);
-  svcSave();
+  if(!skipSave) svcSave();
   return f;
 }
 function svcPendingDeletedKey(uid){ return 'vreyse_pendingSvcDeleted_' + uid; }
@@ -5315,6 +5347,49 @@ function svcReorderGroup(f, done, orderedIds){
   return true;
 }
 
+// Перенос (не копирование) невыполненных пунктов из одной папки ТО в другую. Пункт
+// переносится тем же объектом целиком (id, text, note, planKm, photos со всеми id/url/local,
+// links) — фото заново не загружаются. Порядок исходного ТО сохраняется, пункты встают в
+// конец невыполненных целевой папки. Из исходной папки пункты убираются только после
+// того, как добавлены в целевую; при ошибке всё откатывается.
+function svcMoveItems(srcId, dst, itemIds){
+  const src = svcFolderById(srcId);
+  if(!src || !dst) return { ok: false, message: 'ТО не найдено — ничего не перенесено' };
+  if(String(src.id) === String(dst.id)) return { ok: false, message: 'Нельзя перенести пункты в то же самое ТО' };
+  const want = new Set((itemIds || []).map(String));
+  const picked = src.items.filter(i => want.has(String(i.id)) && !i.done); // порядок — как в исходном ТО
+  if(!picked.length) return { ok: false, message: 'Нет невыполненных пунктов для переноса' };
+  const srcItemsBefore = src.items.slice(), dstItemsBefore = dst.items.slice();
+  const srcEdBefore = src.editedAt, dstEdBefore = dst.editedAt;
+  const idsBefore = picked.map(i => i.id);
+  try{
+    const used = new Set(dst.items.map(i => String(i.id)));
+    picked.forEach(it => {
+      if(used.has(String(it.id))) it.id = svcNewId(); // такой id уже есть в целевом ТО — молча дубль не создаём
+      used.add(String(it.id));
+      it.done = false;
+    });
+    const firstDone = dst.items.findIndex(i => i.done);
+    if(firstDone === -1) dst.items = dst.items.concat(picked);
+    else dst.items = dst.items.slice(0, firstDone).concat(picked, dst.items.slice(firstDone));
+    // Только теперь — убираем из исходного.
+    const pickedSet = new Set(picked);
+    src.items = src.items.filter(i => !pickedSet.has(i));
+    const now = Date.now();
+    src.editedAt = now;
+    dst.editedAt = now;
+  } catch(err){
+    console.warn('Перенос пунктов не удался, откатываю:', err);
+    src.items = srcItemsBefore;
+    dst.items = dstItemsBefore;
+    src.editedAt = srcEdBefore;
+    dst.editedAt = dstEdBefore;
+    picked.forEach((it, k) => { it.id = idsBefore[k]; });
+    return { ok: false, message: 'Не удалось перенести пункты — ничего не изменено' };
+  }
+  return { ok: true, moved: picked.length };
+}
+
 // ---- сохранение ----
 function svcSave(){
   saveState();
@@ -5347,13 +5422,23 @@ function svcFolderStatus(total, done){
   if(done === 0) return { cls: 'st-plan', text: 'В плане' };
   return { cls: 'st-work', text: 'В работе · ' + done + '/' + total };
 }
+function svcPluralPunkt(n){
+  const m10 = n % 10, m100 = n % 100;
+  if(m10 === 1 && m100 !== 11) return 'пункт';
+  if(m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'пункта';
+  return 'пунктов';
+}
 function svcFolderCardHtml(f, withHandle){
   const total = f.items.length, done = f.items.filter(i => i.done).length;
   const km = svcFormatKm(f.mileage);
   const id = escapeHtml(String(f.id));
   const st = svcFolderStatus(total, done);
+  // Вторая часть строки не дублирует статус: «В плане · 3 пункта», «✓ Выполнено · 9/9»; у «В работе» счётчик уже в плашке.
+  let extra = '';
+  if(st && st.cls === 'st-plan') extra = '· ' + total + ' ' + svcPluralPunkt(total);
+  else if(st && st.cls === 'st-done') extra = '· ' + done + '/' + total;
   const meta = st
-    ? `<span class="svc-status ${st.cls}">${escapeHtml(st.text)}</span><span>пунктов: ${total}</span>`
+    ? `<span class="svc-status ${st.cls}">${escapeHtml(st.text)}</span>${extra ? `<span>${escapeHtml(extra)}</span>` : ''}`
     : 'пока пусто';
   return `<div class="svc-card${st && st.cls === 'st-done' ? ' svc-card-done' : ''}" data-svc-row data-svc-key="${id}" data-svc-open="${id}">
     <div class="svc-main">
@@ -5370,9 +5455,30 @@ function svcListHtml(){
   if(!list.length) return pinned + '<div class="empty">Папок ТО пока нет. Нажмите «+», чтобы создать первую.</div>';
   return pinned + '<div data-svc-container="folders" style="position:relative;">' + list.map(f => svcFolderCardHtml(f, list.length > 1)).join('') + '</div>';
 }
+// Режим переноса: актуален только для открытой папки, где он включён.
+function svcMoveCur(){
+  if(svcMove && (svcOpenFolderId == null || String(svcOpenFolderId) !== svcMove.folderId || !svcFolderById(svcMove.folderId))) svcMove = null;
+  return svcMove;
+}
+function svcMoveRefreshBar(){
+  const mv = svcMoveCur();
+  const bar = document.querySelector('.svc-movebar');
+  if(!mv || !bar) return;
+  const n = mv.selected.size;
+  const cnt = bar.querySelector('[data-svc-movecount]');
+  if(cnt) cnt.textContent = n ? 'Выбрано: ' + n : 'Отметьте пункты';
+  const go = bar.querySelector('[data-svc-movego]');
+  if(go){ go.disabled = !n; go.textContent = n ? 'Перенести ' + n : 'Перенести'; }
+}
 function svcGroupsHtml(f){
   if(!f.items.length) return '<div class="empty" style="margin-top:30px;">Пока нет пунктов. Добавьте первый выше.</div>';
   const active = f.items.filter(i => !i.done), done = f.items.filter(i => i.done);
+  const mv = svcMoveCur();
+  if(mv){
+    // Выбранные, которых уже нет среди невыполненных (изменилось с другого телефона), снимаем.
+    const valid = new Set(active.map(i => i.id));
+    mv.selected = new Set(Array.from(mv.selected).filter(x => valid.has(x)));
+  }
   const rowHtml = it => {
     const id = escapeHtml(it.id);
     const ind = [];
@@ -5380,6 +5486,14 @@ function svcGroupsHtml(f){
     if(it.links && it.links.length) ind.push('🔗' + it.links.length);
     if(it.note && it.note.trim()) ind.push('📝');
     if(it.planKm) ind.push('на ' + svcFormatKm(it.planKm));
+    if(mv){
+      // Режим выбора: деталь пункта не открывается, нет удаления и перетаскивания; выполненные выбрать нельзя.
+      const sel = !it.done && mv.selected.has(it.id);
+      return `<div class="svc-row cl-row ${it.done ? 'done svc-move-off' : ''}${sel ? ' svc-move-sel' : ''}" data-svc-row data-svc-key="${id}" data-svc-item="${id}"${it.done ? '' : ` data-svc-pick="${id}"`}>
+      <input type="checkbox" class="svc-move-chk" tabindex="-1" ${sel ? 'checked' : ''} ${it.done ? 'disabled' : ''}>
+      <div class="svc-rowtext"><span class="svc-rt">${escapeHtml(it.text) || '&nbsp;'}</span>${ind.length ? `<span class="svc-ind">${escapeHtml(ind.join(' · '))}</span>` : ''}</div>
+    </div>`;
+    }
     return `<div class="svc-row cl-row ${it.done ? 'done' : ''}" data-svc-row data-svc-key="${id}" data-svc-item="${id}">
       <input type="checkbox" data-svc-check="${id}" ${it.done ? 'checked' : ''}>
       <div class="svc-rowtext" data-svc-detail="${id}"><span class="svc-rt">${escapeHtml(it.text) || '&nbsp;'}</span>${ind.length ? `<span class="svc-ind">${escapeHtml(ind.join(' · '))}</span>` : ''}</div>
@@ -5394,23 +5508,33 @@ function svcGroupsHtml(f){
 }
 function svcFolderHtml(f){
   const km = svcFormatKm(f.mileage);
+  const mv = svcMoveCur();
+  const groups = svcGroupsHtml(f); // заодно снимает устаревшие отметки
+  const n = mv ? mv.selected.size : 0;
   return `<div class="svc-head">
       <button class="svc-iconbtn" data-svc-back type="button" aria-label="Назад к папкам">${SVC_BACK_SVG}</button>
       <div class="svc-htitle">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
+      ${mv ? '' : `<button class="svc-textbtn" data-svc-movestart type="button">Перенести</button>
       <button class="svc-iconbtn" data-svc-editmeta type="button" aria-label="Изменить номер и пробег">${SVC_EDIT_SVG}</button>
-      <button class="svc-iconbtn danger" data-svc-delete type="button" aria-label="Удалить папку">${SVC_TRASH_SVG}</button>
+      <button class="svc-iconbtn danger" data-svc-delete type="button" aria-label="Удалить папку">${SVC_TRASH_SVG}</button>`}
     </div>
-    <div class="svc-add">
+    ${mv ? '' : `<div class="svc-add">
       <input id="svcNewItem" placeholder="Новый пункт" autocomplete="off" enterkeyhint="done">
       <button id="svcNewItemBtn" type="button" aria-label="Добавить пункт">+</button>
-    </div>
-    <div id="svcGroups">${svcGroupsHtml(f)}</div>`;
+    </div>`}
+    <div id="svcGroups">${groups}</div>
+    ${mv ? `<div class="svc-movebar">
+      <span class="svc-movecount" data-svc-movecount>${n ? 'Выбрано: ' + n : 'Отметьте пункты'}</span>
+      <button class="svc-move-cancel" data-svc-movecancel type="button">Отмена</button>
+      <button class="svc-move-go" data-svc-movego type="button" ${n ? '' : 'disabled'}>${n ? 'Перенести ' + n : 'Перенести'}</button>
+    </div>` : ''}`;
 }
 function svcRerenderGroups(){
   const f = svcFolderById(svcOpenFolderId);
   const box = document.getElementById('svcGroups');
   if(!f || !box){ renderService(); return; }
   box.innerHTML = svcGroupsHtml(f);
+  svcMoveRefreshBar();
 }
 
 // ---- поиск по содержимому ВСЕХ папок ----
@@ -5589,6 +5713,7 @@ function renderService(){
       body.innerHTML = svcFolderHtml(f);
     } else {
       svcOpenFolderId = null;
+      svcMove = null;
       body.innerHTML = svcListHtml();
     }
   }
@@ -5608,6 +5733,7 @@ function svcRerenderIfVisible(){
 function svcOpenFolder(id, flashItemId){
   svcFlushLocalSave();
   carOpen = false;
+  svcMove = null;
   svcOpenFolderId = String(id);
   svcFlashItemId = flashItemId || null;
   searchQuery = '';
@@ -5626,6 +5752,7 @@ function svcOpenFolder(id, flashItemId){
 }
 function svcCloseFolder(){
   svcFlushLocalSave();
+  svcMove = null;
   svcOpenFolderId = null;
   renderService();
 }
@@ -5669,6 +5796,39 @@ svcSectionEl.addEventListener('click', (e) => {
   const carEntryBtn = e.target.closest('[data-car-entry]');
   if(carEntryBtn){ carOpenDetail(carEntryBtn.getAttribute('data-car-entry')); return; }
   if(e.target.closest('[data-svc-back]')){ svcCloseFolder(); return; }
+  // ---- перенос пунктов в другое ТО ----
+  if(e.target.closest('[data-svc-movestart]')){
+    const f = svcFolderById(svcOpenFolderId);
+    if(!f) return;
+    if(!f.items.some(i => !i.done)){ showToast('В этом ТО нет невыполненных пунктов'); return; }
+    svcFlushLocalSave();
+    svcMove = { folderId: String(f.id), selected: new Set() };
+    renderService();
+    return;
+  }
+  if(e.target.closest('[data-svc-movecancel]')){ svcMove = null; renderService(); return; }
+  if(e.target.closest('[data-svc-movego]')){
+    const mv = svcMoveCur();
+    if(mv && mv.selected.size) openSvcMovePicker();
+    return;
+  }
+  const pick = e.target.closest('[data-svc-pick]');
+  if(pick){
+    const mv = svcMoveCur();
+    if(!mv) return;
+    const pid = pick.getAttribute('data-svc-pick');
+    const pf = svcFolderById(mv.folderId);
+    const pit = pf && pf.items.find(i => i.id === pid);
+    if(!pit || pit.done) return;
+    if(mv.selected.has(pid)) mv.selected.delete(pid); else mv.selected.add(pid);
+    const on = mv.selected.has(pid);
+    const row = pick.closest('.svc-row') || pick;
+    row.classList.toggle('svc-move-sel', on);
+    const cb = row.querySelector('input[type=checkbox]');
+    if(cb) cb.checked = on;
+    svcMoveRefreshBar();
+    return;
+  }
   if(e.target.closest('[data-svc-editmeta]')){
     const f = svcFolderById(svcOpenFolderId);
     if(f) openSvcSheetEdit(f);
@@ -5873,8 +6033,8 @@ function svcSheetRender(){
     svcSheetOk.disabled = !svcNumberInput.value.trim();
   }
 }
-function openSvcSheetCreate(){
-  svcSheetState = { mode: 'create', step: 1, folderId: null, number: '' };
+function openSvcSheetCreate(moveReq){
+  svcSheetState = { mode: 'create', step: 1, folderId: null, number: '', move: moveReq || null };
   svcNumberInput.value = ''; svcMileageInput.value = '';
   svcSheetRender();
   svcSheetOverlay.classList.add('show');
@@ -5895,8 +6055,27 @@ function svcDuplicateNumber(number, exceptId){
   const n = svcNorm(number);
   return serviceFolders.some(f => (exceptId == null || String(f.id) !== String(exceptId)) && svcNorm(f.number) === n);
 }
+// «Куда перенести → + Создать новое ТО»: создаём папку и сразу переносим в неё выбранные пункты
+// одним сохранением; если перенос не удался — новая папка не остаётся, исходные пункты на месте.
+function svcFinishCreateWithMove(number, km, req){
+  closeSvcSheet();
+  const f = svcCreateFolder(number, km, true);
+  const res = svcMoveItems(req.folderId, f, req.ids);
+  if(!res.ok){
+    serviceFolders = serviceFolders.filter(x => x !== f);
+    showToast(res.message || 'Не удалось перенести пункты — ничего не изменено');
+    renderService();
+    return;
+  }
+  svcMove = null;
+  svcSave();
+  renderService();
+  showToast('Создано «' + svcFolderTitle(f) + '», перенесено: ' + res.moved + ' ' + svcPluralPunkt(res.moved));
+}
 function svcFinishCreate(number, km){
+  const moveReq = svcSheetState ? svcSheetState.move : null;
   const go = () => {
+    if(moveReq){ svcFinishCreateWithMove(number, km, moveReq); return; }
     const f = svcCreateFolder(number, km);
     closeSvcSheet();
     searchQuery = '';
@@ -5960,6 +6139,57 @@ svcSkipBtn.addEventListener('click', () => {
 });
 svcSheetOverlay.addEventListener('click', (e) => {
   if(e.target === svcSheetOverlay) closeSvcSheet();
+});
+
+// ---- окно «Куда перенести?» ----
+const svcMoveOverlay = document.getElementById('svcMoveOverlay');
+const svcMoveList = document.getElementById('svcMoveList');
+function openSvcMovePicker(){
+  const mv = svcMoveCur();
+  if(!mv || !mv.selected.size) return;
+  const targets = svcSortedFolders().filter(f => String(f.id) !== mv.folderId);
+  let html = targets.map(f => {
+    const km = svcFormatKm(f.mileage);
+    const total = f.items.length, done = f.items.filter(i => i.done).length;
+    const st = svcFolderStatus(total, done);
+    return `<button class="svc-move-target" type="button" data-svc-moveto="${escapeHtml(String(f.id))}">
+      <span class="svc-mt-title">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</span>
+      <span class="svc-mt-meta">${st ? escapeHtml(st.text) : 'пока пусто'}</span>
+    </button>`;
+  }).join('');
+  html += '<button class="svc-move-target svc-move-new" type="button" data-svc-movenew>+ Создать новое ТО</button>';
+  svcMoveList.innerHTML = html;
+  svcMoveOverlay.classList.add('show');
+}
+function closeSvcMovePicker(){
+  svcMoveOverlay.classList.remove('show');
+}
+function svcMoveSelectedInto(dst){
+  const mv = svcMoveCur();
+  closeSvcMovePicker();
+  if(!mv || !dst){ renderService(); return; }
+  const res = svcMoveItems(mv.folderId, dst, Array.from(mv.selected));
+  if(!res.ok){
+    showToast(res.message || 'Не удалось перенести пункты — ничего не изменено');
+    renderService();
+    return;
+  }
+  svcMove = null;
+  svcSave();
+  renderService();
+  showToast('Перенесено в «' + svcFolderTitle(dst) + '»: ' + res.moved + ' ' + svcPluralPunkt(res.moved));
+}
+svcMoveOverlay.addEventListener('click', (e) => {
+  if(e.target === svcMoveOverlay){ closeSvcMovePicker(); return; }
+  const to = e.target.closest('[data-svc-moveto]');
+  if(to){ svcMoveSelectedInto(svcFolderById(to.getAttribute('data-svc-moveto'))); return; }
+  if(e.target.closest('[data-svc-movenew]')){
+    const mv = svcMoveCur();
+    if(!mv || !mv.selected.size){ closeSvcMovePicker(); return; }
+    const req = { folderId: mv.folderId, ids: Array.from(mv.selected) };
+    closeSvcMovePicker();
+    openSvcSheetCreate(req);
+  }
 });
 
 // ---- фото пунктов: загрузка в Firebase Storage ----
@@ -8636,6 +8866,10 @@ function setupNativeBackButton(){
       closeExpenseSheet();
       return;
     }
+    if(svcMoveOverlay && svcMoveOverlay.classList.contains('show')){
+      closeSvcMovePicker();
+      return;
+    }
     if(svcSheetOverlay && svcSheetOverlay.classList.contains('show')){
       closeSvcSheet();
       return;
@@ -8651,6 +8885,10 @@ function setupNativeBackButton(){
     if(drawerEl && drawerEl.classList.contains('show')){
       drawerEl.classList.remove('show');
       overlay.classList.remove('show');
+      return;
+    }
+    if(currentSection === 'service' && svcMoveCur()){
+      svcMove = null; renderService(); // системная «Назад» сначала выходит из режима выбора
       return;
     }
     if(currentSection === 'service' && svcOpenFolderId){
@@ -9103,7 +9341,7 @@ if ('serviceWorker' in navigator) {
       document.getElementById('updateBannerBtn').addEventListener('click', async () => {
         // Незаконченная правка в открытом окне живёт только в памяти — перезагрузка
         // её стёрла бы. Пока такое окно открыто, не перезагружаем.
-        const openEditorLike = ['editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcCarDetailOverlay'].some(id => {
+        const openEditorLike = ['editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcMoveOverlay', 'svcCarDetailOverlay'].some(id => {
           const el = document.getElementById(id);
           return el && el.classList.contains('show');
         });
@@ -9346,7 +9584,7 @@ function refreshFromCloudOnResume(){
   // вниз не должен запускать обновление списка под ними.
   const BLOCKING_OVERLAY_IDS = ['confirmOverlay', 'lightbox', 'ocrResultOverlay', 'drawer',
     'backupsOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
-    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcDetailOverlay', 'svcCarDetailOverlay', 'authOverlay'];
+    'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcMoveOverlay', 'svcDetailOverlay', 'svcCarDetailOverlay', 'authOverlay'];
 
   function blockingOverlayOpen(){
     return BLOCKING_OVERLAY_IDS.some(id => {
