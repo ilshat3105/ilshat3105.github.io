@@ -149,6 +149,14 @@
   .ocr-preview:empty:before{content:attr(data-placeholder);color:var(--muted);}
   .ocr-preview mark{background:#fde68a;color:#92400e;border-radius:3px;padding:0 1px;font-weight:700;}
   .ocr-preview a.ocr-phone-link{color:#2563eb;font-weight:700;text-decoration:underline;cursor:pointer;}
+  .ocr-found{display:none;flex:0 0 auto;max-height:26vh;overflow-y:auto;margin-bottom:8px;padding:8px 12px;box-sizing:border-box;width:100%;
+    background:var(--tint-blue-bg);border:1px solid var(--tint-blue-border);border-radius:10px;font-size:14px;line-height:1.55;color:var(--ink);user-select:text;-webkit-user-select:text;}
+  .ocr-found-title{font-size:12px;font-weight:700;color:var(--muted);margin-top:2px;}
+  .ocr-found-title:not(:first-child){margin-top:8px;}
+  .ocr-found-row{margin:2px 0;}
+  .ocr-found a.ocr-phone-link{color:#2563eb;font-weight:700;text-decoration:underline;}
+  .ocr-found-kind{font-weight:700;}
+  .ocr-found-warn{font-size:11px;color:#b45309;margin-left:4px;}
   .ocr-zoom-hint{font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4;
     background:var(--tint-blue-bg);border:1px solid var(--tint-blue-border);border-radius:8px;padding:8px 10px;}
   .ed-photo-checking{position:absolute;inset:0;background:rgba(0,0,0,.45);
@@ -316,6 +324,9 @@
   .route-import-sheet{background:var(--surface);width:100%;max-width:520px;max-height:44vh;
     border-radius:20px 20px 0 0;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));
     display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.25);pointer-events:auto;}
+  .route-import-sheet.has-found{max-height:62vh;}
+  .ocr-btn-row{display:flex;gap:8px;flex-shrink:0;}
+  .ocr-btn-row .route-save-btn{flex:1 1 0;min-width:0;padding-left:8px;padding-right:8px;}
   .route-import-title{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:10px;flex-shrink:0;}
   .route-import-close{flex-shrink:0;width:100%;background:none;border:1.5px solid var(--card-line);
     border-radius:12px;padding:12px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;
@@ -1020,7 +1031,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 17:12 (Автосервис: перенос невыполненных пунктов из одного ТО в другое)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 21:02 (OCR заявок: быстрый проход, точные телефоны и адреса, кэш)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1282,8 +1293,12 @@
       <span class="spinner"></span> Распознаю текст…
     </div>
     <div class="ocr-confidence-hint" id="ocrConfidenceHint"><span class="dot"></span>Жёлтым — места, где программа сама не уверена в цифре/символе. Проверьте их глазами по фото.</div>
+    <div class="ocr-found" id="ocrFound"></div>
     <div class="ocr-preview ocr-result-body" id="ocrPreview" contenteditable="true"></div>
-    <button class="route-save-btn" id="ocrSelectBtn" type="button" style="display:none;margin-bottom:8px;">▭ Выделить область</button>
+    <div class="ocr-btn-row">
+      <button class="route-save-btn" id="ocrSelectBtn" type="button" style="display:none;margin-bottom:8px;">▭ Выделить область</button>
+      <button class="route-save-btn" id="ocrRedoBtn" type="button" style="display:none;margin-bottom:8px;">↻ Распознать заново</button>
+    </div>
     <button class="route-import-close" id="ocrResultClose" type="button">Закрыть</button>
   </div>
 </div>
@@ -3151,8 +3166,11 @@ document.getElementById('lbOcrBtn').addEventListener('click', async () => {
   if(!dataUrl) return;
   // Приближено (щипком) больше, чем чуть-чуть — вырезаем видимую область;
   // иначе распознаём фото целиком, как обычно.
-  const cropped = lbScale > 1.05 ? await cropVisibleLightboxRegion(dataUrl) : dataUrl;
-  runManualPhotoOcr(cropped);
+  const zoomed = lbScale > 1.05;
+  const cropped = zoomed ? await cropVisibleLightboxRegion(dataUrl) : dataUrl;
+  // id фото нужен для кэша; у вырезки приближённой области кэша нет — это уже не всё фото
+  const lbIdsNow = lightboxPhotoIds || (editingNote ? editingNote.photoIds : null) || [];
+  runManualPhotoOcr(cropped, zoomed ? null : (lbIdsNow[lbIndex] || null));
 });
 
 // "▭ Область" — выделить пальцем прямоугольником нужный кусок фото прямо на экране и
@@ -3620,11 +3638,528 @@ async function buildTextWithConfidence(worker, imgEl, data){
   return { text: out, lowRanges };
 }
 
+// =====================================================================================
+// Быстрый OCR для заявок (кнопка Aa и проверка платёжки при загрузке фото).
+// Этап 1 — один обычный проход по документу, БЕЗ посимвольного повторного OCR.
+// Этап 2 — точечное уточнение: строки с телефонами (PSM 7 + только цифры, область ×2,5–3)
+// и области вокруг слов «адрес/место погрузки/выгрузки». Посимвольный проход (старый)
+// остаётся только запасным вариантом для телефона, который не прошёл проверку или по
+// которому варианты разошлись.
+// Выделение области (appendOcrRegionResult) по-прежнему идёт через старый recognizeQueued.
+// =====================================================================================
+const OCR_CONFUSABLE = { 'O':'0','o':'0','о':'0','О':'0', 'I':'1','l':'1','|':'1','і':'1', 'S':'5','s':'5', 'B':'8', 'Z':'2','z':'2', 'З':'3','з':'3' };
+const OCR_LOOK_RE = /[0-9OoоОIl|іSsBZzЗз]/;
+const OCR_LOOK_G = /[0-9OoоОIl|іSsBZzЗз]/g;
+function ocrMapDigits(s){ return (s || '').replace(/[OoоОIl|іSsBZzЗз]/g, (ch) => OCR_CONFUSABLE[ch] !== undefined ? OCR_CONFUSABLE[ch] : ch); }
+function ocrFmtPhone(nat){ return '+7 ' + nat.slice(0,3) + ' ' + nat.slice(3,6) + '-' + nat.slice(6,8) + '-' + nat.slice(8); }
+function ocrNearPhone(a, b){
+  if(a.length !== b.length) return false;
+  let d = 0;
+  for(let i = 0; i < a.length; i++) if(a[i] !== b[i]) d++;
+  return d <= 2;
+}
+// Проверка правдоподобности номера. ctx.label — рядом слова тел/контакт/водитель/прораб,
+// ctx.neg — рядом ИНН/КПП/ОГРН/р/с/БИК/руб/дата/сумма. Возвращает { tel: '+7XXXXXXXXXX', display } или null.
+// 8… и +7… дают один и тот же tel (так одинаковые номера не дублируются).
+function ocrValidatePhone(str, ctx){
+  const raw = (str || '').trim();
+  if(!raw) return null;
+  if(/\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/.test(raw)) return null; // дата
+  const label = !!(ctx && ctx.label);
+  if(ctx && ctx.neg && !label) return null; // рядом ИНН/сумма/реквизиты, а слов «тел» нет
+  const digits = raw.replace(/\D/g, '');
+  const hasPlus = raw.charAt(0) === '+';
+  const groups = (raw.match(/\d+/g) || []).length;
+  const formatted = /[()\-–—]/.test(raw) || hasPlus || groups >= 3;
+  let nat = null;
+  if(digits.length === 11){
+    const f = digits.charAt(0);
+    if(f !== '7' && f !== '8') return null;
+    if(hasPlus && f === '8') return null;
+    const p2 = digits.slice(0, 2);
+    if(!(formatted || label || p2 === '89' || p2 === '79')) return null;
+    nat = digits.slice(1);
+  } else if(digits.length === 10){
+    // ИНН организаций тоже 10 цифр — поэтому без слов «тел» и без телефонной записи не принимаем
+    const cityParen = /\(\d{3,5}\)/.test(raw);
+    const tail = /\d{2,3}[\s\-–]\d{2}[\s\-–]\d{2}\s*$/.test(raw);
+    if(!(label || cityParen || tail || (digits.charAt(0) === '9' && formatted))) return null;
+    nat = digits;
+  } else {
+    return null;
+  }
+  if('012'.indexOf(nat.charAt(0)) !== -1) return null; // у российских номеров первая цифра после кода страны 3–9
+  return { tel: '+7' + nat, display: ocrFmtPhone(nat) };
+}
+function ocrCleanPhoneStr(s){
+  return (s || '').replace(/\s+/g, ' ').replace(/^[\s\-–—]+|[\s\-–—]+$/g, '');
+}
+
+// Запасной вариант: сначала один проход и сборка текста; посимвольное уточнение — только
+// для строк, которые явно попросила вызывающая сторона (refineLine), например строки
+// «ПЛАТЕЖНОЕ ПОРУЧЕНИЕ № …». Заодно запоминаем координаты слов/символов для этапа 2.
+async function buildTextFast(worker, imgEl, data, refineLine){
+  let out = '';
+  const lowRanges = [];
+  const lines = [];
+  for(const line of (data.lines || [])){
+    const lineText = (line.text || '').replace(/\s+$/, '');
+    const doRefine = !!(refineLine && imgEl && refineLine(lineText));
+    const cl = { t: lineText, b: line.bbox, w: [] };
+    for(const word of (line.words || [])){
+      const wStart = out.length;
+      const cw = { t: '', c: word.confidence, b: word.bbox, s: wStart, e: wStart, y: [] };
+      const syms = word.symbols || [];
+      if(!syms.length){
+        out += (word.text || '');
+      }
+      for(const sym of syms){
+        let ch = sym.text;
+        let conf = sym.confidence;
+        if(doRefine && AMBIGUOUS_CHARS.test(ch) && conf < CONF_THRESHOLD){
+          const refined = await refineAmbiguousSymbol(worker, imgEl, sym.bbox);
+          if(refined && refined.confidence > conf){ ch = refined.text; conf = refined.confidence; }
+        }
+        const start = out.length;
+        out += ch;
+        if(conf < CONF_THRESHOLD) lowRanges.push({ start, end: start + ch.length });
+        cw.y.push({ t: ch, c: conf, b: sym.bbox });
+      }
+      cw.e = out.length;
+      cw.t = out.slice(wStart, cw.e);
+      out += ' ';
+      cl.w.push(cw);
+    }
+    out += '\n';
+    lines.push(cl);
+  }
+  return { text: out, lowRanges, lines };
+}
+// Грузит картинку для вырезания кусков (сначала с crossOrigin — иначе canvas «испачкается»
+// и toDataURL бросит ошибку; если не получилось — без него).
+function loadImageElCors(src){
+  const load = (cors) => new Promise((resolve, reject) => {
+    const img = new Image();
+    if(cors && typeof src === 'string' && src.indexOf('data:') !== 0) img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+  return load(true).catch(() => load(false));
+}
+// Вырезает прямоугольник из картинки, увеличивает и кладёт на белое поле → dataURL.
+function ocrCropDataUrl(imgEl, bbox, padX, padY, scale){
+  const x0 = Math.max(0, Math.floor(bbox.x0 - padX)), y0 = Math.max(0, Math.floor(bbox.y0 - padY));
+  const x1 = Math.min(imgEl.naturalWidth, Math.ceil(bbox.x1 + padX)), y1 = Math.min(imgEl.naturalHeight, Math.ceil(bbox.y1 + padY));
+  const w = x1 - x0, h = y1 - y0;
+  if(w < 12 || h < 6) return null;
+  const M = 12; // белое поле вокруг — Tesseract хуже читает текст, прижатый к краю
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(w * scale) + M * 2;
+  canvas.height = Math.round(h * scale) + M * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(imgEl, x0, y0, w, h, M, M, canvas.width - M * 2, canvas.height - M * 2);
+  return canvas.toDataURL('image/png');
+}
+async function ocrRecognizeCrop(worker, imgEl, bbox, padX, padY, scale){
+  try{
+    const url = ocrCropDataUrl(imgEl, bbox, padX, padY, scale);
+    if(!url) return null;
+    const res = await worker.recognize(url);
+    return { text: (res.data.text || '').replace(/\s*\n+\s*/g, ' ').replace(/\s+/g, ' ').trim(), conf: res.data.confidence };
+  } catch(e){
+    return null;
+  }
+}
+function ocrUnionBox(boxes){
+  const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for(const q of boxes){ b.x0 = Math.min(b.x0, q.x0); b.y0 = Math.min(b.y0, q.y0); b.x1 = Math.max(b.x1, q.x1); b.y1 = Math.max(b.y1, q.y1); }
+  return b;
+}
+
+// Слово похоже на часть номера: 'num' — в основном цифры (и «цифроподобные» буквы), 'sep' — только + ( ) - .
+function ocrPhoneWordKind(t){
+  const raw = t || '';
+  const core = raw.replace(/[+()\-–—.\s]/g, '');
+  if(!core) return raw.trim() ? 'sep' : false;
+  let d = 0, look = 0;
+  for(const ch of core){
+    if(ch >= '0' && ch <= '9') d++;
+    if(OCR_LOOK_RE.test(ch)) look++;
+  }
+  return (d >= 1 && look / core.length >= 0.8) ? 'num' : false;
+}
+// Ищет в строках «цепочки» слов, похожие на телефон. Цепочку обрывает большой пробел
+// (другая колонка таблицы) — поэтому цифры из соседних колонок в один номер не склеиваются.
+function ocrFindPhoneRuns(lines){
+  const LABEL = /тел|конт|водител|прораб/i;
+  const NEG = /инн|кпп|огрн|р\/с|р\.\s?с|расч[её]т|бик|руб|дата|сумм|сч[её]т/i;
+  const runs = [];
+  lines.forEach((ln, li) => {
+    if(!ln.b || !ln.w.length) return;
+    const lh = Math.max(8, ln.b.y1 - ln.b.y0);
+    const prevT = li > 0 ? lines[li - 1].t : '';
+    let cur = [];
+    const flush = () => {
+      while(cur.length && cur[0].k === 'sep') cur.shift();
+      while(cur.length && cur[cur.length - 1].k === 'sep') cur.pop();
+      if(cur.length){
+        const ws = cur.map(x => x.w);
+        const digitish = ws.reduce((n, w) => n + ((w.t.match(OCR_LOOK_G) || []).length), 0);
+        const before = ln.w.slice(0, cur[0].i).map(w => w.t).join(' ');
+        const after = ln.w.slice(cur[cur.length - 1].i + 1).map(w => w.t).join(' ');
+        const atStart = before.trim().length < 3; // номер в начале строки: подпись может быть строкой выше
+        const label = LABEL.test(before.slice(-25)) || (atStart && LABEL.test(prevT));
+        const neg = NEG.test(before.slice(-25)) || NEG.test(after.slice(0, 12)) || (atStart && NEG.test(prevT));
+        const ok = (digitish >= 9 && digitish <= 13) || (label && digitish >= 6 && digitish <= 13);
+        if(ok){
+          runs.push({
+            li, words: ws, s: ws[0].s, e: ws[ws.length - 1].e,
+            base: ws.map(w => w.t).join(' '),
+            bbox: ocrUnionBox(ws.map(w => w.b)),
+            ctx: { label, neg }
+          });
+        }
+      }
+      cur = [];
+    };
+    ln.w.forEach((w, i) => {
+      const k = ocrPhoneWordKind(w.t);
+      if(!k){ flush(); return; }
+      if(cur.length && (w.b.x0 - cur[cur.length - 1].w.b.x1) > lh * 2.5) flush();
+      cur.push({ w, k, i });
+    });
+    flush();
+  });
+  return runs;
+}
+// Запасной посимвольный проход по одной цепочке (только цепочка телефона, а не весь документ).
+async function ocrSymbolVariant(worker, imgEl, run, budget){
+  const parts = [];
+  for(const w of run.words){
+    if(!w.y.length){ parts.push(w.t); continue; }
+    let ws = '';
+    for(const y of w.y){
+      let ch = y.t;
+      if(AMBIGUOUS_CHARS.test(ch) && y.c < CONF_THRESHOLD && budget.n > 0 && imgEl){
+        budget.n--;
+        const r = await refineAmbiguousSymbol(worker, imgEl, y.b);
+        if(r && r.confidence > y.c) ch = r.text;
+      }
+      ws += ch;
+    }
+    parts.push(ws);
+  }
+  return ocrMapDigits(parts.join(' '));
+}
+// Выбор лучшего варианта номера по цепочке: A — основной проход, B — строка PSM 7,
+// C — запасной посимвольный. Берём вариант, прошедший проверку; при расхождении — большинство.
+async function ocrDecidePhone(worker, imgEl, run, budget){
+  const A = { str: ocrMapDigits(run.base) };
+  A.v = ocrValidatePhone(A.str, run.ctx);
+  const B = run.line ? { str: ocrCleanPhoneStr(run.line.text), conf: run.line.conf } : null;
+  if(B) B.v = ocrValidatePhone(B.str, run.ctx);
+  const aOk = !!A.v, bOk = !!(B && B.v);
+  const lowConf = !!(B && B.conf < 50);
+  if(bOk && !lowConf && (!aOk || A.v.tel === B.v.tel)) return { chosen: B, uncertain: false };
+  if(aOk && !B) return { chosen: A, uncertain: true };
+  // запасной вариант: посимвольно только эту цепочку
+  let C = null;
+  if(imgEl && budget.n > 0){
+    C = { str: ocrCleanPhoneStr(await ocrSymbolVariant(worker, imgEl, run, budget)) };
+    C.v = ocrValidatePhone(C.str, run.ctx);
+  }
+  const cands = [B, C, A].filter(x => x && x.v); // приоритет при равенстве: B, C, A
+  if(!cands.length) return null;
+  const count = {};
+  cands.forEach(x => { count[x.v.tel] = (count[x.v.tel] || 0) + 1; });
+  const best = cands.slice().sort((p, q) => count[q.v.tel] - count[p.v.tel])[0];
+  if(count[best.v.tel] >= 2) return { chosen: best, uncertain: false };
+  const pick = (B && B.v && !lowConf) ? B : (C && C.v ? C : cands[0]);
+  return { chosen: pick, uncertain: true };
+}
+// Подмена кусков текста (цепочек телефонов) на уточнённые, со сдвигом диапазонов подсветки.
+function ocrApplyReplacements(text, lowRanges, reps){
+  reps.sort((a, b) => b.s - a.s);
+  for(const r of reps){
+    const delta = r.str.length - (r.e - r.s);
+    text = text.slice(0, r.s) + r.str + text.slice(r.e);
+    lowRanges = lowRanges
+      .filter(q => !(q.end > r.s && q.start < r.e))
+      .map(q => q.start >= r.e ? { start: q.start + delta, end: q.end + delta } : q);
+    if(r.mark) lowRanges.push({ start: r.s, end: r.s + r.str.length });
+  }
+  return { text, lowRanges };
+}
+
+// ---- Адреса ----
+const OCR_ADDR_LABEL_SRC = '(?:адрес\\s*(?:погрузки|выгрузки)?|место\\s*(?:погрузки|выгрузки))';
+const OCR_ADDR_STOP_WORD = /^(?:тел|телефон\w*|контакт\w*|водител\w*|прораб\w*|фио|ф\.и\.о\.?|груз|дата|время|вес|объ[её]м|заказчик|перевозчик)[:.,;]?$/i;
+function ocrCleanAddress(s){
+  let t = (s || '').replace(/\s*\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  t = t.replace(new RegExp('^' + OCR_ADDR_LABEL_SRC + '\\s*[:\\-–—]?\\s*', 'i'), '');
+  // обрезаем по стоп-словам (телефон/контакт/ФИО…) и по длинной цепочке цифр (телефон)
+  const stop = /(?:^|\s)(?:тел\.?|телефон\w*|контакт\w*|водител\w*|прораб\w*|ф\.?\s?и\.?\s?о\.?)(?=[\s:.,;]|$)/i;
+  const ms = stop.exec(t);
+  if(ms && ms.index > 0) t = t.slice(0, ms.index);
+  else if(ms && ms.index === 0) t = '';
+  const phoneRe = /[+]?[78]?[ \-()]*\d(?:[\d \-()]{8,16})\d/g;
+  let pm;
+  while((pm = phoneRe.exec(t))){
+    if(pm[0].replace(/\D/g, '').length >= 10){ t = t.slice(0, pm.index); break; }
+  }
+  t = t.replace(/^[\s:;,.\-–—]+|[\s:;,\-–—]+$/g, '').trim();
+  const letters = (t.match(/[А-Яа-яЁё]/g) || []).length;
+  return (t.length >= 6 && letters >= 4) ? t : '';
+}
+async function ocrExtractAddresses(worker, imgEl, lines){
+  const labelRe = new RegExp(OCR_ADDR_LABEL_SRC, 'ig');
+  const sorted = lines.filter(l => l.b && l.w.length).slice().sort((a, b) => a.b.y0 - b.b.y0);
+  const found = [];
+  const seenRegion = new Set();
+  for(const ln of sorted){
+    // слова строки и позиции в склеенной строке — чтобы найти слова, которые заняла подпись
+    let joined = '';
+    const starts = [];
+    ln.w.forEach((w, i) => { starts.push(joined.length); joined += w.t + ' '; });
+    const wordAt = (pos) => { let k = 0; for(let i = 0; i < starts.length; i++){ if(starts[i] <= pos) k = i; } return k; };
+    const matches = [];
+    let m;
+    labelRe.lastIndex = 0;
+    while((m = labelRe.exec(joined))){
+      matches.push({ first: wordAt(m.index), last: wordAt(m.index + m[0].length - 1), text: m[0].toLowerCase() });
+      if(m.index === labelRe.lastIndex) labelRe.lastIndex++;
+    }
+    for(let mi = 0; mi < matches.length && found.length < 4; mi++){
+      const lab = matches[mi];
+      const lh = Math.max(8, ln.b.y1 - ln.b.y0);
+      const nextFirst = mi + 1 < matches.length ? matches[mi + 1].first : ln.w.length;
+      const labW = ln.w[lab.first];
+      const rx0 = labW.b.x0 - lh * 0.5;
+      const rx1 = nextFirst < ln.w.length ? ln.w[nextFirst].b.x0 - 1 : ln.b.x1 + lh;
+      const key = Math.round(labW.b.x0 / 10) + ':' + Math.round(ln.b.y0 / 10);
+      if(seenRegion.has(key)) continue;
+      seenRegion.add(key);
+      const picked = []; // слова значения в порядке чтения
+      const rows = [];   // тексты строк значения
+      // 1) значение на той же строке, после подписи (и разделителя «:»)
+      const sameRow = [];
+      for(let i = lab.last + 1; i < nextFirst; i++){
+        const w = ln.w[i];
+        if(OCR_ADDR_STOP_WORD.test(w.t.trim())) break;
+        if(ocrPhoneWordKind(w.t) === 'num' && (w.t.match(OCR_LOOK_G) || []).length >= 7) break;
+        sameRow.push(w);
+      }
+      if(sameRow.length){ picked.push(...sameRow); rows.push(sameRow.map(w => w.t).join(' ')); }
+      // 2) до двух следующих строк в той же колонке
+      let curBottom = ln.b.y1, curH = lh, taken = 0;
+      for(const nb of sorted){
+        if(taken >= 2) break;
+        if(nb === ln || nb.b.y0 < curBottom - curH * 0.5) continue;
+        if(nb.b.y0 - curBottom > curH * 1.8) break;
+        const inCol = nb.w.filter(w => {
+          const cx = (w.b.x0 + w.b.x1) / 2;
+          return cx >= rx0 && cx <= rx1;
+        });
+        if(!inCol.length) continue;
+        if(/^(?:адрес|место)/i.test(inCol[0].t.trim())) break; // началась следующая подпись
+        const keep = [];
+        for(const w of inCol){
+          if(OCR_ADDR_STOP_WORD.test(w.t.trim())) break;
+          if(ocrPhoneWordKind(w.t) === 'num' && (w.t.match(OCR_LOOK_G) || []).length >= 7) break;
+          keep.push(w);
+        }
+        if(!keep.length) break;
+        picked.push(...keep);
+        rows.push(keep.map(w => w.t).join(' '));
+        curBottom = Math.max(...keep.map(w => w.b.y1));
+        curH = Math.max(8, nb.b.y1 - nb.b.y0);
+        taken++;
+      }
+      if(!picked.length) continue;
+      let text = ocrCleanAddress(rows.join(' '));
+      if(imgEl){
+        const box = ocrUnionBox(picked.map(w => w.b));
+        const bh = Math.max(8, box.y1 - box.y0);
+        const re = await ocrRecognizeCrop(worker, imgEl, box, Math.max(8, bh * 0.25), Math.max(4, bh * 0.15), 2);
+        if(re && re.text){
+          const cleaned = ocrCleanAddress(re.text);
+          // принимаем уточнённый вариант, только если он не сильно короче основного
+          if(cleaned && (!text || cleaned.length >= text.length * 0.6)) text = cleaned;
+        }
+      }
+      if(!text) continue;
+      const kind = /погруз/.test(lab.text) ? 'Погрузка' : (/выгруз/.test(lab.text) ? 'Выгрузка' : 'Адрес');
+      if(found.some(f => f.text.toLowerCase() === text.toLowerCase())) continue;
+      found.push({ kind, text });
+    }
+  }
+  return found;
+}
+
+// ---- Этапы 1 и 2 ----
+async function ocrStage1(worker, dataUrl, refineLine){
+  const processedUrl = await preprocessImageForOcr(dataUrl);
+  const result = await worker.recognize(processedUrl);
+  const data = result.data;
+  if(!data.lines || !data.lines.length){
+    return { text: data.text, lowRanges: [], lines: [], processedUrl, refined: true, phones: [], addresses: [] };
+  }
+  let imgEl = null;
+  if(refineLine){ try{ imgEl = await loadImageElCors(processedUrl); } catch(e){} }
+  const built = await buildTextFast(worker, imgEl, data, refineLine);
+  return { text: built.text, lowRanges: built.lowRanges, lines: built.lines, processedUrl, refined: false, phones: [], addresses: [] };
+}
+async function ocrStage2(worker, entry){
+  const lines = entry.lines || [];
+  let text = entry.text || '';
+  let lowRanges = entry.lowRanges || [];
+  const phones = [];
+  let addresses = [];
+  let imgEl = null;
+  try{ imgEl = await loadImageElCors(entry.processedUrl); } catch(e){}
+  try{
+    // --- телефоны ---
+    const runs = ocrFindPhoneRuns(lines).filter(r => !(r.ctx.neg && !r.ctx.label)).slice(0, 14);
+    if(runs.length && imgEl){
+      try{
+        await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789+()- ' });
+        for(const r of runs){
+          const bh = Math.max(6, r.bbox.y1 - r.bbox.y0);
+          const scale = bh * 2.5 < 48 ? 3 : 2.5;
+          r.line = await ocrRecognizeCrop(worker, imgEl, r.bbox, Math.max(8, bh * 0.5), Math.max(4, bh * 0.35), scale);
+        }
+      } finally {
+        try{ await worker.setParameters({ tessedit_pageseg_mode: '4', tessedit_char_whitelist: '' }); } catch(e){}
+      }
+    }
+    const budget = { n: 40 };
+    const reps = [];
+    for(const r of runs){
+      const dec = await ocrDecidePhone(worker, imgEl, r, budget);
+      if(!dec) continue;
+      if(!phones.some(p => p.tel === dec.chosen.v.tel)){
+        phones.push({ tel: dec.chosen.v.tel, display: dec.chosen.v.display, uncertain: dec.uncertain });
+      }
+      reps.push({ s: r.s, e: r.e, str: dec.chosen.str, mark: dec.uncertain });
+    }
+    if(reps.length){
+      const applied = ocrApplyReplacements(text, lowRanges, reps);
+      text = applied.text;
+      lowRanges = applied.lowRanges;
+    }
+  } catch(e){}
+  // телефоны, найденные обычным способом по всему тексту, но не попавшие в цепочки (запись слитно с буквами и т.п.)
+  try{
+    const NEG = /инн|кпп|огрн|р\/с|расч[её]т|бик|руб|дата|сумм/i;
+    const cleaned = cleanupOcrNumbers(text);
+    for(const pm of findPhoneMatches(cleaned)){
+      const nat = pm.tel.slice(2);
+      if(phones.some(p => p.tel === pm.tel || ocrNearPhone(p.tel.slice(2), nat))) continue;
+      const before = cleaned.slice(Math.max(0, pm.start - 25), pm.start);
+      if(NEG.test(before) && !/тел|конт|водител|прораб/i.test(before)) continue;
+      phones.push({ tel: pm.tel, display: ocrFmtPhone(nat), uncertain: true });
+    }
+  } catch(e){}
+  // --- адреса ---
+  try{
+    addresses = await ocrExtractAddresses(worker, imgEl, lines);
+  } catch(e){
+    try{ await worker.setParameters({ tessedit_pageseg_mode: '4', tessedit_char_whitelist: '' }); } catch(e2){}
+  }
+  entry.text = text;
+  entry.lowRanges = lowRanges;
+  entry.phones = phones;
+  entry.addresses = addresses;
+  entry.refined = true;
+  entry.lines = null;        // координаты больше не нужны — освобождаем память
+  entry.processedUrl = null;
+}
+
+// Кэш результатов на время сессии (по photoId) и защита от одновременного повторного запуска.
+const ocrCache = new Map();
+const OCR_CACHE_MAX = 6;
+const ocrInflight = new Map();
+function ocrCacheGet(id){
+  if(!id || !ocrCache.has(id)) return null;
+  const e = ocrCache.get(id);
+  ocrCache.delete(id); ocrCache.set(id, e);
+  return e;
+}
+function ocrCachePut(id, entry){
+  if(!id || !entry) return;
+  ocrCache.delete(id);
+  ocrCache.set(id, entry);
+  while(ocrCache.size > OCR_CACHE_MAX){ ocrCache.delete(ocrCache.keys().next().value); }
+}
+function ocrEnqueue(job){
+  return new Promise((resolve) => {
+    job.resolve = resolve;
+    ocrQueue.push(job);
+    processOcrQueue();
+  });
+}
+// Возвращает результат OCR фото: из кэша (мгновенно) или запускает распознавание.
+// opts: { force, stage2, refineLine, progressId }
+async function ocrObtain(dataUrl, cacheId, opts){
+  opts = opts || {};
+  const progressId = opts.progressId || cacheId || ('ocr-' + Date.now());
+  if(cacheId && !opts.force){
+    if(ocrInflight.has(cacheId)){ try{ await ocrInflight.get(cacheId); } catch(e){} }
+    const hit = ocrCacheGet(cacheId);
+    if(hit){
+      if(opts.stage2 && !hit.refined){
+        await ocrEnqueue({ mode: 'refine', entry: hit, progressId, cacheId });
+      }
+      return hit;
+    }
+  }
+  const p = ocrEnqueue({ mode: opts.stage2 ? 'full' : 'main', dataUrl, progressId, cacheId, refineLine: opts.refineLine || null });
+  if(cacheId) ocrInflight.set(cacheId, p);
+  try{
+    return await p;
+  } finally {
+    if(cacheId && ocrInflight.get(cacheId) === p) ocrInflight.delete(cacheId);
+  }
+}
+async function runOcrJob(job){
+  const worker = await getOcrWorker();
+  if(!worker) return null;
+  let entry = job.entry || null;
+  if(job.mode === 'main' || job.mode === 'full'){
+    entry = await ocrStage1(worker, job.dataUrl, job.refineLine);
+  }
+  if(entry && (job.mode === 'full' || job.mode === 'refine') && !entry.refined){
+    await ocrStage2(worker, entry);
+  }
+  return entry;
+}
+
 async function processOcrQueue(){
   if(ocrQueueBusy) return;
   ocrQueueBusy = true;
   while(ocrQueue.length){
     const job = ocrQueue.shift();
+    if(job.mode){
+      // новый быстрый OCR (кнопка Aa и проверка платёжки)
+      currentOcrPhotoId = job.progressId;
+      ocrProgressPercent[job.progressId] = 0;
+      renderEditorPhotos();
+      let entry = null;
+      try{
+        entry = await runOcrJob(job);
+      } catch(err){
+        entry = null; // тихо игнорируем — например, нет интернета для первой загрузки языкового пакета
+      }
+      delete ocrProgressPercent[job.progressId];
+      if(entry && job.cacheId) ocrCachePut(job.cacheId, entry);
+      job.resolve(entry);
+      continue;
+    }
     currentOcrPhotoId = job.photoId;
     ocrProgressPercent[job.photoId] = 0;
     renderEditorPhotos();
@@ -3763,20 +4298,53 @@ function renderOcrPreview(text, lowRanges){
 // ---- Ручное распознавание текста с конкретного фото (кнопка "Aa" на фото в заявке) —
 // показывает весь распознанный текст в одном блоке (подсветка сомнительных мест +
 // кликабельные телефоны + возможность править прямо тут же и скопировать).
-async function runManualPhotoOcr(dataUrl){
+// Блоки «Найденные телефоны» / «Найденные адреса» над полным текстом.
+function renderOcrFound(entry){
+  const box = document.getElementById('ocrFound');
+  const phones = (entry && entry.phones) || [];
+  const addrs = (entry && entry.addresses) || [];
+  if(!phones.length && !addrs.length){
+    box.innerHTML = '';
+    box.style.display = 'none';
+    box.parentNode.classList.remove('has-found');
+    return;
+  }
+  let h = '';
+  if(phones.length){
+    h += '<div class="ocr-found-title">Найденные телефоны</div>';
+    h += phones.map(p => `<div class="ocr-found-row"><a class="ocr-phone-link" href="tel:${escapeHtml(p.tel)}">${escapeHtml(p.display)}</a>${p.uncertain ? '<span class="ocr-found-warn">проверьте по фото</span>' : ''}</div>`).join('');
+  }
+  if(addrs.length){
+    h += '<div class="ocr-found-title">Найденные адреса</div>';
+    h += addrs.map(a => `<div class="ocr-found-row"><span class="ocr-found-kind">${escapeHtml(a.kind)}:</span> ${escapeHtml(a.text)}</div>`).join('');
+  }
+  box.innerHTML = h;
+  box.style.display = 'block';
+  box.parentNode.classList.add('has-found'); // даём окну больше места, пока показаны найденные телефоны/адреса
+}
+// photoId — для кэша: повторное открытие того же фото берёт результат из кэша без нового OCR.
+// force=true («Распознать заново») игнорирует кэш. Для вырезки приближенного фото photoId = null (без кэша).
+let ocrLastManual = null;
+async function runManualPhotoOcr(dataUrl, photoId, force){
   if(!window.Tesseract){
     showToast('Распознавание недоступно — нет доступа к интернету для загрузки языкового пакета');
     return;
   }
+  ocrLastManual = { dataUrl, photoId: photoId || null };
   const preview = document.getElementById('ocrPreview');
   document.getElementById('ocrResultOverlay').classList.add('show');
   preview.innerHTML = '';
   preview.setAttribute('data-placeholder', '');
   document.getElementById('ocrResultLoading').style.display = 'flex';
   document.getElementById('ocrSelectBtn').style.display = 'none';
+  document.getElementById('ocrRedoBtn').style.display = 'none';
   document.getElementById('ocrConfidenceHint').classList.remove('show');
-  const { text, lowRanges } = await recognizeQueued(dataUrl, 'manual-' + Date.now());
+  renderOcrFound(null);
+  const entry = await ocrObtain(dataUrl, photoId || null, { force: !!force, stage2: true, progressId: 'manual-' + Date.now() });
   document.getElementById('ocrResultLoading').style.display = 'none';
+  document.getElementById('ocrRedoBtn').style.display = 'block';
+  const text = entry ? entry.text : null;
+  const lowRanges = entry ? entry.lowRanges : [];
   if(!text || !text.trim()){
     preview.innerHTML = '';
     preview.setAttribute('data-placeholder', 'Не удалось распознать текст на этом фото — возможно, оно нечёткое или слишком тёмное. Можно вписать текст сюда вручную.');
@@ -3786,11 +4354,15 @@ async function runManualPhotoOcr(dataUrl){
   const cleaned = cleanupOcrNumbers(text.trim());
   const rendered = renderOcrPreview(cleaned, lowRanges);
   preview.innerHTML = rendered.html;
+  renderOcrFound(entry);
   document.getElementById('ocrSelectBtn').style.display = 'block';
   if(lowRanges && lowRanges.length){
     document.getElementById('ocrConfidenceHint').classList.add('show');
   }
 }
+document.getElementById('ocrRedoBtn').addEventListener('click', () => {
+  if(ocrLastManual) runManualPhotoOcr(ocrLastManual.dataUrl, ocrLastManual.photoId, true);
+});
 document.getElementById('ocrResultClose').addEventListener('click', () => {
   document.getElementById('ocrResultOverlay').classList.remove('show');
 });
@@ -3872,7 +4444,11 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
   ocrPendingPhotos.add(photoId);
   renderEditorPhotos();
   try{
-    const { text } = await recognizeQueued(dataUrl, photoId);
+    // Основной быстрый проход; результат ложится в общий кэш, поэтому кнопка Aa на этом фото
+    // потом не запускает полный OCR заново. Строки «поручение»/«0401…» уточняются посимвольно —
+    // как и раньше, чтобы номер платёжки читался так же надёжно.
+    const ocrEntry = await ocrObtain(dataUrl, photoId, { stage2: false, progressId: photoId, refineLine: (t) => /поручен|0401/i.test(t) });
+    const text = ocrEntry ? ocrEntry.text : null;
     // сам процесс распознавания закончен здесь — крутящийся значок снимаем сразу,
     // не дожидаясь ответа пользователя в окне "Полная/Частичная оплата" ниже
     ocrPendingPhotos.delete(photoId);
