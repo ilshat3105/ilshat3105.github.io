@@ -549,6 +549,19 @@
   .svc-card .svc-title{font-size:16px;font-weight:700;color:var(--ink);}
   .svc-card .svc-km{font-size:14px;font-weight:600;color:var(--muted);}
   .svc-card .svc-meta{font-size:12.5px;color:var(--faint);margin-top:2px;}
+  /* Статус папки ТО — считается по чек-листу, в данных не хранится. */
+  .svc-card .svc-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;}
+  .svc-status{position:relative;isolation:isolate;display:inline-block;padding:2px 9px;border-radius:999px;
+    font-size:12px;font-weight:700;line-height:1.5;white-space:nowrap;}
+  .svc-status::before{content:'';position:absolute;inset:0;border-radius:inherit;background:currentColor;
+    opacity:.12;z-index:-1;}
+  .svc-status.st-plan{color:var(--muted);}
+  .svc-status.st-work{color:var(--accent);}
+  .svc-status.st-done{color:var(--success);}
+  .svc-card.svc-card-done::before{content:'';position:absolute;inset:0;border-radius:inherit;
+    background:var(--success);opacity:.06;pointer-events:none;}
+  .svc-card.svc-card-done::after{content:'';position:absolute;inset:-1px;border-radius:inherit;
+    border:1px solid var(--success);opacity:.35;pointer-events:none;}
   .svc-handle{background:none;border:none;color:var(--faint);padding:8px;flex-shrink:0;cursor:grab;
     touch-action:none;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;}
   [data-svc-row]{transition:transform .15s ease;}
@@ -984,7 +997,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 12:38 (синхронизация: заявки, расходы и Автосервис больше не зависают в ожидании подтверждения сервера, если данные не менялись)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 14:45 (Автосервис: статус папок ТО — «В плане» / «В работе · X/Y» / «✓ Выполнено» по чек-листу)</div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -5327,14 +5340,25 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => { svcFlushLocalSave(); });
 
 // ---- отрисовка ----
+// Статус папки ТО вычисляется по чек-листу (ничего нового в данных не хранится).
+function svcFolderStatus(total, done){
+  if(!total) return null;
+  if(done >= total) return { cls: 'st-done', text: '✓ Выполнено' };
+  if(done === 0) return { cls: 'st-plan', text: 'В плане' };
+  return { cls: 'st-work', text: 'В работе · ' + done + '/' + total };
+}
 function svcFolderCardHtml(f, withHandle){
   const total = f.items.length, done = f.items.filter(i => i.done).length;
   const km = svcFormatKm(f.mileage);
   const id = escapeHtml(String(f.id));
-  return `<div class="svc-card" data-svc-row data-svc-key="${id}" data-svc-open="${id}">
+  const st = svcFolderStatus(total, done);
+  const meta = st
+    ? `<span class="svc-status ${st.cls}">${escapeHtml(st.text)}</span><span>пунктов: ${total}</span>`
+    : 'пока пусто';
+  return `<div class="svc-card${st && st.cls === 'st-done' ? ' svc-card-done' : ''}" data-svc-row data-svc-key="${id}" data-svc-open="${id}">
     <div class="svc-main">
       <div class="svc-title">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
-      <div class="svc-meta">${total ? 'пунктов: ' + total + ' · выполнено: ' + done : 'пока пусто'}</div>
+      <div class="svc-meta">${meta}</div>
     </div>
     ${withHandle ? `<button class="svc-handle" data-svc-handle type="button" aria-label="Изменить порядок">${SVC_HANDLE_SVG}</button>` : ''}
   </div>`;
