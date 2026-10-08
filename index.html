@@ -237,6 +237,14 @@
   .pdfv-ocr{position:absolute;bottom:14px;right:14px;background:rgba(37,99,235,.85);border:none;color:#fff;padding:8px 14px;
     border-radius:20px;font-size:13.5px;font-weight:700;cursor:pointer;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);
     font-family:'Inter',sans-serif;}
+  .pdfv-prep{right:74px;background:rgba(15,118,110,.88);}
+  .pdfv-prepov{position:fixed;inset:0;background:#F4F7FB;z-index:68;display:none;flex-direction:column;}
+  .pdfv-prepov.show{display:flex;}
+  .pdfv-prepinfo{padding:14px 16px 8px;font-size:12.5px;line-height:1.4;color:var(--muted);}
+  .pdfv-prepimgwrap{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:0 8px;touch-action:pan-x pan-y pinch-zoom;}
+  .pdfv-prepimgwrap img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.18);}
+  .pdfv-prepbtns{display:flex;gap:10px;padding:10px 14px calc(14px + env(safe-area-inset-bottom,0px));}
+  .pdfv-prepbtns .confirm-btn{flex:1;}
   .pdfv-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
     color:var(--muted);font-size:14px;padding:0 30px;pointer-events:none;z-index:4;}
 
@@ -1065,7 +1073,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 00:58 (OCR сканированного PDF: рендер страницы до ~3600 px)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 01:23 (эксперимент: «Скан+» — подготовка скана перед распознаванием PDF)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1251,6 +1259,15 @@
     <button class="pdfv-nav pdfv-prev" id="pdfPrev" type="button">‹</button>
     <button class="pdfv-nav pdfv-next" id="pdfNext" type="button">›</button>
     <button class="pdfv-ocr" id="pdfOcrBtn" type="button" title="Распознать текст из PDF">Aa</button>
+    <button class="pdfv-ocr pdfv-prep" id="pdfPrepBtn" type="button" title="Эксперимент: подготовить скан перед распознаванием">Скан+</button>
+    <div class="pdfv-prepov" id="pdfPrepOverlay">
+      <div class="pdfv-prepinfo" id="pdfPrepInfo"></div>
+      <div class="pdfv-prepimgwrap"><img id="pdfPrepImg" alt=""></div>
+      <div class="pdfv-prepbtns">
+        <button type="button" id="pdfPrepClose" class="confirm-btn no">Закрыть</button>
+        <button type="button" id="pdfPrepGo" class="confirm-btn yes">Распознать эту страницу</button>
+      </div>
+    </div>
     <div class="pdfv-count" id="pdfCount"></div>
   </div>
 
@@ -4506,6 +4523,147 @@ async function pdfViewerOcr(force){
   document.getElementById('ocrSelectBtn').style.display = 'none';
 }
 document.getElementById('pdfOcrBtn').addEventListener('click', () => pdfViewerOcr(false));
+
+// ---- ЭКСПЕРИМЕНТ: «Скан+» — подготовка скана перед OCR (только по кнопке, обычная Aa не меняется) ----
+// Только Canvas, без внешних библиотек: серый → выравнивание фона (бледные/неравномерные участки) →
+// умеренное усиление контраста (без жёсткого порога) → небольшой поворот, если наклон уверенно найден.
+// Страницы НЕ режутся на части: на реальном скане разбиение на 3 полосы читало цифры хуже целой страницы.
+function pdfPrepBoxFilter(src, w, h, r, mode){
+  const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
+  for(let y = 0; y < h; y++){
+    const row = y * w;
+    for(let x = 0; x < w; x++){
+      const a = Math.max(0, x - r), b = Math.min(w - 1, x + r);
+      let v = mode === 'max' ? 0 : 0;
+      for(let k = a; k <= b; k++){ const p = src[row + k]; if(mode === 'max'){ if(p > v) v = p; } else v += p; }
+      tmp[row + x] = mode === 'max' ? v : Math.round(v / (b - a + 1));
+    }
+  }
+  for(let x = 0; x < w; x++){
+    for(let y = 0; y < h; y++){
+      const a = Math.max(0, y - r), b = Math.min(h - 1, y + r);
+      let v = 0;
+      for(let k = a; k <= b; k++){ const p = tmp[k * w + x]; if(mode === 'max'){ if(p > v) v = p; } else v += p; }
+      out[y * w + x] = mode === 'max' ? v : Math.round(v / (b - a + 1));
+    }
+  }
+  return out;
+}
+function pdfPrepNormalize(gray, w, h){
+  const F = 4, sw = Math.ceil(w / F), sh = Math.ceil(h / F);
+  let bg = new Uint8Array(sw * sh);
+  for(let y = 0; y < sh; y++){
+    const y1 = Math.min(h, (y + 1) * F);
+    for(let x = 0; x < sw; x++){
+      const x1 = Math.min(w, (x + 1) * F);
+      let m = 0;
+      for(let yy = y * F; yy < y1; yy += 2){ const row = yy * w; for(let xx = x * F; xx < x1; xx += 2){ const v = gray[row + xx]; if(v > m) m = v; } }
+      bg[y * sw + x] = m;
+    }
+  }
+  bg = pdfPrepBoxFilter(bg, sw, sh, 6, 'max');   // «цвет бумаги» рядом с каждой точкой
+  bg = pdfPrepBoxFilter(bg, sw, sh, 4, 'avg');   // сглаживаем
+  const out = new Uint8Array(w * h);
+  const LO = 150, K = 255 / (255 - LO);
+  for(let y = 0; y < h; y++){
+    const brow = Math.min(sh - 1, (y / F) | 0) * sw, row = y * w;
+    for(let x = 0; x < w; x++){
+      const b = Math.max(128, bg[brow + Math.min(sw - 1, (x / F) | 0)]);
+      let v = gray[row + x] * 255 / b;
+      v = (v - LO) * K;
+      out[row + x] = v < 0 ? 0 : v > 255 ? 255 : v;
+    }
+  }
+  return out;
+}
+// Угол наклона строк (градусы, + = по часовой) по профилю тёмных точек; 0 — если уверенности нет.
+function pdfPrepSkew(gray, w, h){
+  const S = 4, pts = [];
+  for(let y = 0; y < h; y += S){ const row = y * w; for(let x = 0; x < w; x += S){ if(gray[row + x] < 110) pts.push(x / S, y / S); } }
+  if(pts.length < 400) return { angle: 0, gain: 1 };
+  const sw = w / S, sh = h / S, bins = Math.ceil(sw + sh) + 4;
+  function variance(deg){
+    const t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), hist = new Float64Array(bins), off = sw;
+    for(let i = 0; i < pts.length; i += 2){ const yy = Math.round(pts[i + 1] * c - pts[i] * s + off * 0.5); if(yy >= 0 && yy < bins) hist[yy]++; }
+    let sum = 0, sum2 = 0; for(let i = 0; i < bins; i++){ sum += hist[i]; sum2 += hist[i] * hist[i]; }
+    return sum2 / bins - (sum / bins) * (sum / bins);
+  }
+  const v0 = variance(0);
+  let best = 0, bv = v0;
+  for(let a = -2; a <= 2.001; a += 0.25){ const v = variance(a); if(v > bv){ bv = v; best = a; } }
+  return { angle: best, gain: v0 > 0 ? bv / v0 : 1 };
+}
+async function pdfPrepareScan(page){
+  const t0 = Date.now();
+  const v1 = page.getViewport({ scale: 1 });
+  const scale = Math.min(4.5, 3600 / Math.max(v1.width, v1.height));
+  const vp = page.getViewport({ scale });
+  let cv = document.createElement('canvas');
+  cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+  let ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  const w = cv.width, h = cv.height;
+  let id = ctx.getImageData(0, 0, w, h), d = id.data;
+  let gray = new Uint8Array(w * h);
+  for(let i = 0, j = 0; j < gray.length; i += 4, j++) gray[j] = (d[i] * 77 + d[i + 1] * 151 + d[i + 2] * 28) >> 8;
+  let norm = pdfPrepNormalize(gray, w, h);
+  gray = null;
+  const sk = pdfPrepSkew(norm, w, h);
+  const useAngle = (Math.abs(sk.angle) >= 0.3 && sk.gain >= 1.08) ? sk.angle : 0;
+  for(let j = 0, i = 0; j < norm.length; j++, i += 4){ d[i] = d[i + 1] = d[i + 2] = norm[j]; d[i + 3] = 255; }
+  norm = null;
+  ctx.putImageData(id, 0, 0);
+  id = null; d = null;
+  let outCv = cv;
+  if(useAngle){
+    outCv = document.createElement('canvas'); outCv.width = w; outCv.height = h;
+    const o = outCv.getContext('2d');
+    o.fillStyle = '#fff'; o.fillRect(0, 0, w, h);
+    o.translate(w / 2, h / 2); o.rotate(-useAngle * Math.PI / 180); o.drawImage(cv, -w / 2, -h / 2);
+  }
+  const dataUrl = outCv.toDataURL('image/jpeg', 0.92);
+  cv.width = cv.height = 0; outCv.width = outCv.height = 0;
+  return { dataUrl, angle: useAngle, found: sk.angle, gain: sk.gain, ms: Date.now() - t0, w, h };
+}
+let pdfPrep = null;
+async function pdfOpenPrepared(){
+  const doc = pdfV.doc;
+  if(!doc){ showToast('PDF ещё не открыт'); return; }
+  const info = document.getElementById('pdfPrepInfo');
+  document.getElementById('pdfPrepOverlay').classList.add('show');
+  document.getElementById('pdfPrepImg').removeAttribute('src');
+  document.getElementById('pdfPrepGo').disabled = true;
+  info.textContent = 'Готовлю страницу…';
+  try{
+    const page = await doc.getPage(pdfV.page);
+    const r = await pdfPrepareScan(page);
+    pdfPrep = Object.assign({ pageNum: pdfV.page, entryId: (pdfV.entries[pdfV.idx] || {}).id || 'pdf' }, r);
+    document.getElementById('pdfPrepImg').src = r.dataUrl;
+    info.textContent = 'Подготовлено за ' + (r.ms / 1000).toFixed(1) + ' с · ' + r.w + '×' + r.h + ' · наклон: ' +
+      (r.angle ? ('выровнен на ' + r.angle.toFixed(2) + '°') : ('не менялся (найдено ' + r.found.toFixed(2) + '°, уверенность ' + r.gain.toFixed(2) + ')')) +
+      '. Именно эту картинку получит распознавание.';
+    document.getElementById('pdfPrepGo').disabled = false;
+  }catch(e){
+    info.textContent = 'Не удалось подготовить страницу' + (e && e.message ? ': ' + e.message : '');
+  }
+}
+function pdfPrepRecognize(force){
+  if(!pdfPrep) return;
+  const p = pdfPrep;
+  document.getElementById('pdfPrepOverlay').classList.remove('show');
+  const pr = runManualPhotoOcr(p.dataUrl, p.entryId + '_p' + p.pageNum + '_prep', !!force);
+  if(ocrLastManual && ocrLastManual.dataUrl === p.dataUrl) ocrLastManual.pdfRedo = () => pdfPrepRecognize(true);
+  return pr.then(() => { document.getElementById('ocrSelectBtn').style.display = 'none'; });
+}
+function pdfPrepClose(){
+  document.getElementById('pdfPrepOverlay').classList.remove('show');
+  document.getElementById('pdfPrepImg').removeAttribute('src');
+  pdfPrep = null;
+}
+document.getElementById('pdfPrepBtn').addEventListener('click', pdfOpenPrepared);
+document.getElementById('pdfPrepGo').addEventListener('click', () => pdfPrepRecognize(false));
+document.getElementById('pdfPrepClose').addEventListener('click', pdfPrepClose);
 
 document.getElementById('photoBtn').addEventListener('click', () => {
   openAttachSourceSheet();
