@@ -1032,7 +1032,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 19:49 (OCR: один текст, номера внутри текста синие и нажимаемые, без верхнего блока)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 20:31 (OCR: 7 без плюса показывается как +7)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4869,6 +4869,8 @@ function renderOcrPreview(text, lowRanges){
   const lowFlag = new Array(n).fill(false);
   for(const r of (lowRanges || [])) for(let i = r.start; i < r.end && i < n; i++) lowFlag[i] = true;
   const phoneMatches = findPhoneMatches(text);
+  // ведущие пробелы/точки/дефисы не входят в ссылку (иначе подчёркивается пустое место перед номером)
+  phoneMatches.forEach((p) => { while(p.start < p.end - 1 && /[\s.\-–—]/.test(text.charAt(p.start))) p.start++; });
   const phoneFlag = new Array(n).fill(-1);
   phoneMatches.forEach((p, idx) => { for(let i = p.start; i < p.end && i < n; i++) phoneFlag[i] = idx; });
 
@@ -4892,7 +4894,13 @@ function renderOcrPreview(text, lowRanges){
           j = k;
         }
       }
-      html += `<a class="ocr-phone-link" href="tel:${phoneMatches[idx].tel}" contenteditable="false">${seg}</a>`;
+      // номер без кода страны (ровно 10 цифр, например «(3522)22-77-97») — перед ним показываем «+7 »
+      const pm = phoneMatches[idx];
+      const rawPh = text.slice(pm.start, pm.end);
+      const dPh = rawPh.replace(/\D/g, '');
+      // 10 цифр (нет кода страны) → «+7 »; 11 цифр, начинается с 7 без «+» → добавляем «+»; 8… оставляем как есть
+      const pre = dPh.length === 10 ? '+7 ' : (dPh.length === 11 && rawPh.charAt(0) === '7' ? '+' : '');
+      html += `<a class="ocr-phone-link" href="tel:${pm.tel}" contenteditable="false">${pre}${seg}</a>`;
       i = j;
     } else if(lowFlag[i]){
       let j = i, seg = '';
