@@ -1073,7 +1073,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 01:23 (эксперимент: «Скан+» — подготовка скана перед распознаванием PDF)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 02:11 (подпись «Заявка:» вместо «Заявка (фото):»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1152,7 +1152,7 @@
           <input id="clNewInput" placeholder="Добавить пункт">
         </div>
       </div>
-      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:18px 2px 4px;">Заявка (фото):</div>
+      <div style="font-size:12.5px;font-weight:600;color:var(--muted);margin:18px 2px 4px;">Заявка:</div>
       <div class="ed-photos-wrap">
         <div class="ed-photos" id="edPhotos"></div>
       </div>
@@ -4502,22 +4502,29 @@ async function pdfViewerOcr(force){
     const letters = (text.match(/[A-Za-zА-Яа-яЁё]/g) || []).length;
     if(text.replace(/\s+/g, '').length >= 80 && letters >= 30){ pdfShowTextOcr(text); return; }
   }
-  // сканированный PDF (или «Распознать заново»): страница в высоком качестве, не миниатюра
-  let dataUrl;
+  // сканированный PDF (или «Распознать заново»): страница в высоком качестве (не миниатюра), по умолчанию —
+  // с подготовкой «Скан+» (выравнивание фона, наклона). Если подготовка не получилась — обычный рендер.
+  let dataUrl, prepared = false;
+  showToast('Готовлю страницу…', 2500);
   try{
-    const v1 = page.getViewport({ scale: 1 });
-    // до ~3600 px по длинной стороне (для A4 это scale ≈ 4,3 — почти родное разрешение скана), потолок scale 4,5
-    const scale = Math.min(4.5, 3600 / Math.max(v1.width, v1.height));
-    const vp = page.getViewport({ scale });
-    const cv = document.createElement('canvas');
-    cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    dataUrl = cv.toDataURL('image/jpeg', 0.92);
-    cv.width = cv.height = 0; // сразу освобождаем память большого холста
-  }catch(e){ showToast('Не удалось подготовить страницу для распознавания'); return; }
-  const pr = runManualPhotoOcr(dataUrl, (entry.id || 'pdf') + '_p' + num, !!force);
+    dataUrl = (await pdfPrepareScan(page)).dataUrl;
+    prepared = true;
+  }catch(e){
+    console.warn('Скан+: подготовка не удалась, берём обычный рендер', e);
+    try{
+      const v1 = page.getViewport({ scale: 1 });
+      const scale = Math.min(4.5, 3600 / Math.max(v1.width, v1.height));
+      const vp = page.getViewport({ scale });
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      dataUrl = cv.toDataURL('image/jpeg', 0.92);
+      cv.width = cv.height = 0; // сразу освобождаем память большого холста
+    }catch(e2){ showToast('Не удалось подготовить страницу для распознавания'); return; }
+  }
+  const pr = runManualPhotoOcr(dataUrl, (entry.id || 'pdf') + '_p' + num + (prepared ? '_prep' : ''), !!force);
   if(ocrLastManual && ocrLastManual.dataUrl === dataUrl) ocrLastManual.pdfRedo = () => pdfViewerOcr(true);
   await pr;
   document.getElementById('ocrSelectBtn').style.display = 'none';
