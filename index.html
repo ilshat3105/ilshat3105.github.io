@@ -1031,7 +1031,8 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-07 21:27 (OCR: текст сразу, телефоны и адреса уточняются следом)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 15:59 (Фото заявок: лимит офлайн-кэша 300 МБ, архив только по открытию)</div>
+    <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
       Главная
@@ -1606,6 +1607,7 @@ function escapeHtml(s){
 }
 
 function renderContent(){
+  try{ offlineStatusUpdate(); offlineScheduleWarmup(); } catch(e){} // счётчик «Фото офлайн» и фоновая докачка (ничего не рисует)
   // ВАЖНО: saveState() здесь вызывается, только если purgeOldTrash() реально
   // что-то удалила. Раньше saveState() вызывался безусловно при КАЖДОМ рендере —
   // а значит, метка времени "обновлено только что" проставлялась даже когда
@@ -2066,7 +2068,459 @@ const PHOTO_ERROR_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<text x="60" y="76" font-size="13" text-anchor="middle" fill="#b02a37" font-family="sans-serif">загрузки!</text>' +
   '</svg>'
 );
+// =====================================================================================
+// Офлайн-кэш фотографий заявок (IndexedDB). Фото в заявке после загрузки в Firebase Storage
+// представлено только ссылкой — без интернета такая картинка не открывается. Поэтому каждое
+// фото ещё и лежит локально: база vreyseOffline, хранилище notePhotos (сами файлы), ключ
+// «uid:photoId» (данные разных аккаунтов не смешиваются), и лёгкое хранилище meta (размер,
+// время последнего открытия) — при запуске читаются только метаданные, а сами файлы поднимаются
+// по мере показа. Это ТОЛЬКО локальный кэш: в Firestore по-прежнему уходят ссылки, синхронизация,
+// editedAt и правила Storage не затронуты. Очистка кэша НИКОГДА ничего не удаляет из Firebase Storage.
+//
+// Какие фото обязаны быть офлайн: заявки не в корзине и не в архиве («активные») — они докачиваются
+// сами и никогда не вытесняются. Архивные/неактивные фото сохраняются, только когда пользователь сам
+// их открыл при интернете; лимит кэша на телефон — 300 МБ: при превышении удаляются самые давно
+// открытые локальные копии фото неактивных заявок. Если одни активные фото больше лимита —
+// ничего не удаляется, показывается ненавязчивое предупреждение.
+// =====================================================================================
+const OFFLINE_DB_NAME = 'vreyseOffline';
+const OFFLINE_STORE = 'notePhotos';
+const OFFLINE_META = 'meta';
+const OFFLINE_LIMIT_BYTES = 300 * 1024 * 1024;
+let offlineDbPromise = null;
+let offlineUid = null;                    // аккаунт, чьи фото сейчас в памяти
+let offlineHydrated = false;              // метаданные локальных копий прочитаны из IndexedDB
+const offlinePhotoUrls = new Map();       // photoId -> object URL (создаётся один раз и только для показанных фото)
+const offlineKeySet = new Set();          // photoId, у которых есть локальная копия
+const offlineMeta = new Map();            // photoId -> { size, lastAccessed, updatedAt }
+const offlineFailed = new Map();          // photoId -> причина (не скачалось); не повторяем само, пока не нажмут/не появится сеть
+const offlineLoading = new Set();         // photoId, чей файл сейчас читается из IndexedDB
+const offlineFetching = new Set();        // photoId, который сейчас скачивается
+let offlineWarnedWrite = false;
+let offlineWarnedBig = false;
+let offlineOverLimit = false;
+let offlineWarmRunning = false;
+let offlineWarmTimer = null;
+let offlineWarmAgain = false;
+let offlineRefreshTimer = null;
+let offlineEnforceTimer = null;
+function offlineDb(){
+  if(!offlineDbPromise){
+    offlineDbPromise = new Promise((resolve) => {
+      try{
+        if(!window.indexedDB){ resolve(null); return; }
+        const req = indexedDB.open(OFFLINE_DB_NAME, 2);
+        req.onupgradeneeded = (ev) => {
+          const db = req.result;
+          const tx = req.transaction;
+          const oldV = ev.oldVersion || 0;
+          if(oldV < 1){
+            const st = db.createObjectStore(OFFLINE_STORE, { keyPath: 'key' });
+            st.createIndex('uid', 'uid', { unique: false });
+          }
+          if(oldV < 2){
+            const meta = db.createObjectStore(OFFLINE_META, { keyPath: 'key' });
+            meta.createIndex('uid', 'uid', { unique: false });
+            if(oldV >= 1){
+              // версия 1 не хранила метаданные — один раз создаём их по уже сохранённым фото
+              const cur = tx.objectStore(OFFLINE_STORE).openCursor();
+              cur.onsuccess = () => {
+                const c = cur.result;
+                if(!c) return;
+                const v = c.value || {};
+                meta.put({ key: v.key, uid: v.uid, photoId: v.photoId, size: (v.blob && v.blob.size) || 0, lastAccessed: v.updatedAt || Date.now(), updatedAt: v.updatedAt || Date.now() });
+                c.continue();
+              };
+            }
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      } catch(e){ resolve(null); }
+    });
+  }
+  return offlineDbPromise;
+}
+async function offlineIdbPut(uid, photoId, blob){
+  const db = await offlineDb();
+  if(!db) throw new Error('IndexedDB недоступна');
+  const now = Date.now();
+  const key = uid + ':' + photoId;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([OFFLINE_STORE, OFFLINE_META], 'readwrite');
+    tx.objectStore(OFFLINE_STORE).put({ key, uid, photoId, blob, updatedAt: now });
+    tx.objectStore(OFFLINE_META).put({ key, uid, photoId, size: blob.size || 0, lastAccessed: now, updatedAt: now });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('запись не удалась'));
+    tx.onabort = () => reject(tx.error || new Error('запись отменена'));
+  });
+}
+async function offlineIdbDelete(uid, photoId){
+  const db = await offlineDb();
+  if(!db) return;
+  return new Promise((resolve) => {
+    const tx = db.transaction([OFFLINE_STORE, OFFLINE_META], 'readwrite');
+    tx.objectStore(OFFLINE_STORE).delete(uid + ':' + photoId);
+    tx.objectStore(OFFLINE_META).delete(uid + ':' + photoId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+    tx.onabort = () => resolve();
+  });
+}
+// Только лёгкие метаданные (без файлов) — это всё, что читается при запуске.
+async function offlineIdbMetaForUid(uid){
+  const db = await offlineDb();
+  if(!db) return [];
+  return new Promise((resolve) => {
+    try{
+      const tx = db.transaction(OFFLINE_META, 'readonly');
+      const req = tx.objectStore(OFFLINE_META).index('uid').getAll(IDBKeyRange.only(uid));
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch(e){ resolve([]); }
+  });
+}
+async function offlineIdbGetBlob(uid, photoId){
+  const db = await offlineDb();
+  if(!db) return null;
+  return new Promise((resolve) => {
+    try{
+      const tx = db.transaction(OFFLINE_STORE, 'readonly');
+      const req = tx.objectStore(OFFLINE_STORE).get(uid + ':' + photoId);
+      req.onsuccess = () => resolve(req.result && req.result.blob ? req.result.blob : null);
+      req.onerror = () => resolve(null);
+    } catch(e){ resolve(null); }
+  });
+}
+async function offlineIdbTouch(uid, photoId, when){
+  const db = await offlineDb();
+  if(!db) return;
+  return new Promise((resolve) => {
+    try{
+      const tx = db.transaction(OFFLINE_META, 'readwrite');
+      const st = tx.objectStore(OFFLINE_META);
+      const g = st.get(uid + ':' + photoId);
+      g.onsuccess = () => { const m = g.result; if(m){ m.lastAccessed = when; st.put(m); } };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    } catch(e){ resolve(); }
+  });
+}
+function offlineWarnWriteOnce(){
+  if(offlineWarnedWrite) return;
+  offlineWarnedWrite = true;
+  try{ showToast('Не удалось сохранить часть фото для офлайн-доступа'); } catch(e){}
+}
+function offlineAttachBlob(photoId, blob){
+  if(offlinePhotoUrls.has(photoId)) return;
+  try{ offlinePhotoUrls.set(photoId, URL.createObjectURL(blob)); } catch(e){}
+}
+// Активные заявки: не в корзине и не в архиве. protect — фото, которые нельзя вытеснять ни при каких условиях
+// (единственная копия — ещё не загруженный base64; открытый сейчас редактор/просмотр).
+function offlineClassify(){
+  const active = new Set(), protect = new Set();
+  try{
+    for(const n of notes){
+      if(!n || !Array.isArray(n.photoIds) || !Array.isArray(n.photos)) continue;
+      const isActive = !n.trashed && !n.archived;
+      n.photoIds.forEach((id, i) => {
+        if(!id) return;
+        if(isActive) active.add(id);
+        if(isDataUrlPhoto(n.photos[i])) protect.add(id);
+      });
+    }
+    if(editingNote && Array.isArray(editingNote.photoIds)) editingNote.photoIds.forEach((id) => { if(id) protect.add(id); });
+    if(lightboxPhotoIds) lightboxPhotoIds.forEach((id) => { if(id) protect.add(id); });
+  } catch(e){}
+  return { active, protect };
+}
+// Сохраняет локальную копию фото (Blob). Повторно не пишет. Ошибка записи не ломает ни заявку, ни загрузку в Firebase.
+async function offlinePhotoStore(uid, photoId, blob){
+  if(!uid || !photoId || !blob) return false;
+  if(uid === offlineUid && offlineKeySet.has(photoId)) return true;
+  try{
+    await offlineIdbPut(uid, photoId, blob);
+  } catch(e){
+    offlineWarnWriteOnce();
+    return false;
+  }
+  if(uid === offlineUid){
+    offlineKeySet.add(photoId);
+    offlineMeta.set(photoId, { size: blob.size || 0, lastAccessed: Date.now(), updatedAt: Date.now() });
+    offlineFailed.delete(photoId);
+    offlineAttachBlob(photoId, blob);
+    offlineStatusUpdate();
+    offlineScheduleEnforce();
+  }
+  return true;
+}
+// Реальное удаление фото из заявки (или вытеснение из кэша) — убираем только ЛОКАЛЬНУЮ копию.
+// Из Firebase Storage эта функция ничего не удаляет; отсутствие связи ничего не удаляет.
+function offlinePhotoRemove(photoId){
+  if(!photoId) return;
+  const url = offlinePhotoUrls.get(photoId);
+  if(url){ try{ URL.revokeObjectURL(url); } catch(e){} }
+  offlinePhotoUrls.delete(photoId);
+  offlineKeySet.delete(photoId);
+  offlineMeta.delete(photoId);
+  offlineFailed.delete(photoId);
+  if(offlineUid) offlineIdbDelete(offlineUid, photoId);
+  offlineStatusUpdate();
+}
+// Смена/выход из аккаунта: object URL прежнего аккаунта освобождаем (сами файлы в IndexedDB остаются).
+function offlineReset(){
+  offlinePhotoUrls.forEach((u) => { try{ URL.revokeObjectURL(u); } catch(e){} });
+  offlinePhotoUrls.clear();
+  offlineKeySet.clear();
+  offlineMeta.clear();
+  offlineFailed.clear();
+  offlineLoading.clear();
+  offlineFetching.clear();
+  offlineUid = null;
+  offlineHydrated = false;
+  offlineOverLimit = false;
+  clearTimeout(offlineWarmTimer);
+  clearTimeout(offlineRefreshTimer);
+  clearTimeout(offlineEnforceTimer);
+  offlineStatusUpdate();
+}
+// Вход в аккаунт: читаем ТОЛЬКО метаданные локальных фото; файлы поднимаются лениво, по мере показа.
+async function offlineInit(uid){
+  offlineReset();
+  offlineUid = uid;
+  try{
+    if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  } catch(e){}
+  const rows = await offlineIdbMetaForUid(uid);
+  if(offlineUid !== uid) return; // за это время сменился аккаунт
+  rows.forEach((r) => {
+    if(!r || !r.photoId) return;
+    offlineKeySet.add(r.photoId);
+    offlineMeta.set(r.photoId, { size: r.size || 0, lastAccessed: r.lastAccessed || r.updatedAt || 0, updatedAt: r.updatedAt || 0 });
+  });
+  offlineHydrated = true;
+  offlineRefreshViews();
+  offlineStatusUpdate();
+  offlineScheduleWarmup(300);
+}
+// Поднимает файл фото из IndexedDB в память (object URL) и перерисовывает экран.
+function offlineLazyLoad(photoId){
+  if(!offlineUid || offlineLoading.has(photoId)) return;
+  offlineLoading.add(photoId);
+  const uid = offlineUid;
+  offlineIdbGetBlob(uid, photoId).then((blob) => {
+    offlineLoading.delete(photoId);
+    if(uid !== offlineUid) return;
+    if(blob) offlineAttachBlob(photoId, blob);
+    else { offlineKeySet.delete(photoId); offlineMeta.delete(photoId); } // записи нет — дальше покажем ссылку
+    offlineScheduleRefresh();
+  });
+}
+function offlineScheduleRefresh(){
+  clearTimeout(offlineRefreshTimer);
+  offlineRefreshTimer = setTimeout(offlineRefreshViews, 120);
+}
+// Картинки уже на экране — заменяем заглушки/ссылки на локальные копии (не сбрасывая масштаб в lightbox).
+function offlineRefreshViews(){
+  try{ renderContent(); } catch(e){}
+  try{ if(editingNote) renderEditorPhotos(); } catch(e){}
+  try{
+    const lb = document.getElementById('lightbox');
+    if(lb && lb.classList.contains('show')){
+      const photos = lightboxPhotos || (editingNote ? editingNote.photos : null) || [];
+      const ids = lightboxPhotoIds || (editingNote ? editingNote.photoIds : null) || [];
+      const src = photoSrcById(photos[lbIndex], ids[lbIndex]);
+      const img = document.getElementById('lbImg');
+      if(img && src && img.getAttribute('src') !== src) img.src = src;
+    }
+  } catch(e){}
+}
+// Фото активных заявок (не в корзине и не в архиве) — именно они должны быть доступны офлайн автоматически.
+function offlinePhotoTargets(){
+  const out = [];
+  try{
+    for(const n of notes){
+      if(!n || n.trashed || n.archived || !Array.isArray(n.photoIds) || !Array.isArray(n.photos)) continue;
+      n.photoIds.forEach((id, i) => { const p = n.photos[i]; if(id && p) out.push({ id, p }); });
+    }
+  } catch(e){}
+  return out;
+}
+function offlineStatusUpdate(){
+  const el = document.getElementById('offlinePhotoStatus');
+  if(!el) return;
+  if(!offlineUid){ el.style.display = 'none'; return; }
+  const targets = offlinePhotoTargets();
+  const seen = new Set();
+  let total = 0, have = 0, failed = 0;
+  targets.forEach((t) => {
+    if(seen.has(t.id)) return;
+    seen.add(t.id);
+    total++;
+    if(offlineKeySet.has(t.id)) have++;
+    else if(offlineFailed.has(t.id)) failed++;
+  });
+  if(!total){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  let txt = 'Фото офлайн: ' + have + '/' + total;
+  if(have < total && failed) txt += ' · нажмите, чтобы повторить';
+  else if(offlineOverLimit) txt += ' · хранилище больше 300 МБ';
+  el.textContent = txt;
+  el.style.color = ((have < total && failed) || offlineOverLimit) ? '#b45309' : 'var(--muted)';
+}
+function offlineFetchBlob(url){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  return fetch(url, { signal: ctrl.signal }).then((r) => {
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return r.blob();
+  }).then((b) => {
+    if(!b || !b.size) throw new Error('пустой файл');
+    return b.type && b.type.indexOf('image/') === 0 ? b : new Blob([b], { type: 'image/jpeg' });
+  }).finally(() => clearTimeout(timer));
+}
+// Фоновая докачка ТОЛЬКО для активных заявок: фото, которые есть только как ссылка, скачиваем и кладём в
+// IndexedDB (до 2 одновременно, ошибка одного фото не останавливает остальные). Фото-base64 (ещё не загруженные)
+// сохраняем без сети. Архив массово не качаем.
+async function offlineWarmup(){
+  if(offlineWarmRunning){ offlineWarmAgain = true; return; }
+  if(!offlineUid || !offlineHydrated) return;
+  offlineWarmRunning = true;
+  const uid = offlineUid;
+  try{
+    const targets = offlinePhotoTargets();
+    for(const t of targets){
+      if(offlineUid !== uid) return;
+      if(!offlineKeySet.has(t.id) && isDataUrlPhoto(t.p)){
+        try{ await offlinePhotoStore(uid, t.id, dataURItoBlob(t.p)); } catch(e){}
+      }
+    }
+    if(navigator.onLine !== false){
+      const seen = new Set();
+      const todo = targets.filter((t) => {
+        if(seen.has(t.id)) return false;
+        seen.add(t.id);
+        return !offlineKeySet.has(t.id) && !offlineFailed.has(t.id) && typeof t.p === 'string' && /^https?:/i.test(t.p);
+      });
+      let next = 0;
+      const lane = async () => {
+        while(next < todo.length){
+          const t = todo[next++];
+          if(offlineUid !== uid) return;
+          try{
+            const blob = await offlineFetchBlob(t.p);
+            const ok = await offlinePhotoStore(uid, t.id, blob);
+            if(!ok) offlineFailed.set(t.id, 'не записалось в память телефона');
+          } catch(e){
+            offlineFailed.set(t.id, (e && e.name === 'AbortError') ? 'долго нет ответа' : ((e && e.message) || 'не скачалось'));
+          }
+          offlineStatusUpdate();
+        }
+      };
+      await Promise.all([lane(), lane()]);
+    }
+  } finally {
+    offlineWarmRunning = false;
+    offlineStatusUpdate();
+    offlineScheduleEnforce();
+    if(offlineWarmAgain){ offlineWarmAgain = false; offlineScheduleWarmup(500); }
+  }
+}
+function offlineScheduleWarmup(delay){
+  try{
+    if(!offlineUid || !offlineHydrated) return;
+    clearTimeout(offlineWarmTimer);
+    offlineWarmTimer = setTimeout(() => { offlineWarmup().catch(() => {}); }, delay == null ? 1500 : delay);
+  } catch(e){}
+}
+// Лимит кэша. Размер считаем по СВОИМ записям (а не по navigator.storage.estimate(), который включает
+// и кэш сайта, и запас системы). Вытесняем только локальные копии фото неактивных заявок — самые давно
+// открытые первыми. Активные и «защищённые» не трогаем никогда. Вытеснение — только когда облако уже
+// подтвердило список заявок в этой сессии (иначе пустой список мог бы сделать «неактивным» всё).
+function offlineScheduleEnforce(){
+  clearTimeout(offlineEnforceTimer);
+  offlineEnforceTimer = setTimeout(() => { try{ offlineEnforceLimit(); } catch(e){} }, 2000);
+}
+function offlineEnforceLimit(){
+  if(!offlineUid) return;
+  let total = 0;
+  offlineMeta.forEach((m) => { total += m.size || 0; });
+  if(total <= OFFLINE_LIMIT_BYTES){ offlineOverLimit = false; offlineStatusUpdate(); return; }
+  let baselineOk = false;
+  try{ baselineOk = initialCloudBaselineReady === true; } catch(e){}
+  if(baselineOk){
+    const { active, protect } = offlineClassify();
+    const cand = [];
+    offlineMeta.forEach((m, id) => { if(!active.has(id) && !protect.has(id)) cand.push([id, m]); });
+    cand.sort((a, b) => (a[1].lastAccessed || a[1].updatedAt || 0) - (b[1].lastAccessed || b[1].updatedAt || 0));
+    const target = OFFLINE_LIMIT_BYTES * 0.9;
+    for(const [id, m] of cand){
+      if(total <= target) break;
+      total -= m.size || 0;
+      offlinePhotoRemove(id); // только локальная копия
+    }
+  }
+  offlineOverLimit = total > OFFLINE_LIMIT_BYTES;
+  if(offlineOverLimit && !offlineWarnedBig){
+    offlineWarnedBig = true;
+    try{ showToast('Офлайн-хранилище фото больше 300 МБ — фото активных заявок сохранены полностью'); } catch(e){}
+  }
+  offlineStatusUpdate();
+}
+// Пользователь реально открыл фото (просмотр/листание). Обновляем «последнее открытие»; если копии нет и есть
+// интернет (например, старая архивная заявка) — сохраняем фото локально.
+function offlineOnPhotoOpened(photoId, p){
+  try{
+    if(!photoId || !offlineUid || !offlineHydrated) return;
+    const uid = offlineUid;
+    if(offlineKeySet.has(photoId)){
+      const m = offlineMeta.get(photoId);
+      const now = Date.now();
+      if(m && now - (m.lastAccessed || 0) > 10 * 60 * 1000){ m.lastAccessed = now; offlineIdbTouch(uid, photoId, now); }
+      return;
+    }
+    if(offlineOverLimit || offlineFetching.has(photoId) || navigator.onLine === false) return;
+    if(typeof p !== 'string' || !/^https?:/i.test(p)) return;
+    offlineFetching.add(photoId);
+    offlineFetchBlob(p).then((blob) => offlinePhotoStore(uid, photoId, blob)).catch(() => {}).then(() => { offlineFetching.delete(photoId); });
+  } catch(e){}
+}
+// Нажатие на «Фото офлайн: X/Y» — повторить недостающие.
+function offlineRetryMissing(){
+  if(navigator.onLine === false){ showToast('Нет связи — докачаю фото, когда появится интернет'); return; }
+  offlineFailed.clear();
+  showToast('Докачиваю фото для работы без интернета…');
+  offlineStatusUpdate();
+  offlineScheduleWarmup(50);
+}
+document.getElementById('offlinePhotoStatus').addEventListener('click', offlineRetryMissing);
+// Источник фото для распознавания (Aa / выделение области): локальная копия, иначе то, что есть.
+function photoOcrSrc(p, photoId){
+  return (photoId && offlinePhotoUrls.get(photoId)) || p;
+}
+const NO_COPY_PHOTO_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">' +
+  '<rect width="120" height="120" fill="#e4e4e4"/>' +
+  '<text x="60" y="54" font-size="12" text-anchor="middle" fill="#777777" font-family="sans-serif">Нет копии</text>' +
+  '<text x="60" y="70" font-size="12" text-anchor="middle" fill="#777777" font-family="sans-serif">без интернета</text>' +
+  '</svg>'
+);
 function photoSrcById(p, photoId){
+  if(photoId){
+    const local = offlinePhotoUrls.get(photoId);
+    if(local) return local;
+    if(typeof p === 'string' && /^https?:/i.test(p)){
+      // пока метаданные кэша не прочитаны (доли секунды после запуска) ссылку не подставляем: иначе браузер полез бы
+      // в сеть за уже сохранённым фото, а без сети на миг мелькнула бы сломанная картинка
+      if(!offlineHydrated) return PENDING_PHOTO_PLACEHOLDER;
+      // копия есть, но файл ещё не поднят из IndexedDB — поднимаем и пока показываем нейтральную заглушку
+      if(offlineKeySet.has(photoId)){ offlineLazyLoad(photoId); return PENDING_PHOTO_PLACEHOLDER; }
+      // копии нет и сети нет — понятная заглушка вместо сломанной картинки
+      if(navigator.onLine === false) return NO_COPY_PHOTO_PLACEHOLDER;
+    }
+  }
   if(!p && photoId && photoUploadErrorMsg.has(photoId)) return PHOTO_ERROR_PLACEHOLDER;
   return photoSrc(p);
 }
@@ -2257,6 +2711,9 @@ async function uploadPhotoAndReplace(note, photoId, dataUrl){
     renderContent();
     return;
   }
+  // Локальная копия в IndexedDB — ДО отправки в Storage и навсегда (после успешной загрузки не удаляется).
+  // Ошибка записи сюда не влияет на загрузку в Firebase.
+  try{ await offlinePhotoStore(uploadUID, photoId, blob); } catch(offErr){}
   setPhotoStage(photoId, 'uploading-storage');
   // У storage.put() нет своего таймаута — если запрос на нестабильной связи
   // просто зависает (не завершается НИ успехом, НИ ошибкой), promise мог не
@@ -2431,6 +2888,7 @@ function queueStorageDeletePath(path){
 }
 function deletePhotoFromStorage(photoId){
   if(!currentUID || !photoId) return;
+  offlinePhotoRemove(photoId); // реальное удаление — убираем и локальную копию
   queueStorageDeletePath('users/' + currentUID + '/photos/' + photoId + '.jpg');
 }
 function retryPendingPhotoDeletes(){
@@ -3106,6 +3564,7 @@ function openLightbox(i, photosArr, photoIdsArr){
 function renderLightbox(){
   const photos = lightboxPhotos || (editingNote ? editingNote.photos : null) || [];
   const lbIds = lightboxPhotoIds || (editingNote ? editingNote.photoIds : null) || [];
+  offlineOnPhotoOpened(lbIds[lbIndex], photos[lbIndex]); // реальное открытие фото: «последнее открытие» и сохранение копии
   document.getElementById('lbImg').src = photoSrcById(photos[lbIndex], lbIds[lbIndex]);
   document.getElementById('lbCount').textContent = `${lbIndex+1} / ${photos.length}`;
   const multi = photos.length > 1;
@@ -3162,7 +3621,8 @@ function cropVisibleLightboxRegion(dataUrl, screenBox){
 }
 document.getElementById('lbOcrBtn').addEventListener('click', async () => {
   const photos = lightboxPhotos || editingNote.photos || [];
-  const dataUrl = photos[lbIndex];
+  const idsForSrc = lightboxPhotoIds || (editingNote ? editingNote.photoIds : null) || [];
+  const dataUrl = photoOcrSrc(photos[lbIndex], idsForSrc[lbIndex]); // локальная копия, если есть (работает без сети)
   if(!dataUrl) return;
   // Приближено (щипком) больше, чем чуть-чуть — вырезаем видимую область;
   // иначе распознаём фото целиком, как обычно.
@@ -3219,7 +3679,8 @@ lbSelectOverlay.addEventListener('touchend', async (e) => {
     return;
   }
   const photos = lightboxPhotos || editingNote.photos || [];
-  const dataUrl = photos[lbIndex];
+  const idsForSrc2 = lightboxPhotoIds || (editingNote ? editingNote.photoIds : null) || [];
+  const dataUrl = photoOcrSrc(photos[lbIndex], idsForSrc2[lbIndex]);
   if(!dataUrl) return;
   const cropped = await cropVisibleLightboxRegion(dataUrl, rect);
   document.getElementById('ocrResultOverlay').classList.add('show');
@@ -3470,10 +3931,26 @@ function getOcrWorker(){
       // печатный текст), чем режим "разметка страницы" по умолчанию.
       try { await worker.setParameters({ tessedit_pageseg_mode: '4' }); } catch(e){}
       return worker;
+    }).catch((e) => {
+      // не загрузился (нет сети, не скачался языковой пакет и т.п.) — следующий вызов создаст worker заново
+      ocrWorkerPromise = null;
+      throw e;
     });
   }
   return ocrWorkerPromise;
 }
+// Сбрасывает worker (если он «сломался» после ошибки) — следующий getOcrWorker() создаст новый.
+async function resetOcrWorker(){
+  const pr = ocrWorkerPromise;
+  ocrWorkerPromise = null;
+  if(pr){ try{ const w = await pr; await w.terminate(); } catch(e){} }
+}
+function ocrErrText(e){
+  let m = '';
+  try{ m = (e && (e.message || e.toString())) || String(e); } catch(x){ m = 'неизвестная ошибка'; }
+  return String(m).replace(/\s+/g, ' ').slice(0, 160);
+}
+let ocrLastError = '';
 // Готовит фото документа для распознавания: увеличивает мелкий текст до разумного
 // разрешения и переводит в чёрно-белое по адаптивному порогу (метод Оцу) — для
 // фото бумажных бланков с рамками и мелким шрифтом это ощутимо точнее, чем просто
@@ -4003,17 +4480,46 @@ async function ocrExtractAddresses(worker, imgEl, lines){
 }
 
 // ---- Этапы 1 и 2 ----
+// Основной проход. Сначала обработанная картинка (увеличение + Оцу); если это упало или дало
+// пустой/почти пустой результат — один раз повторяем на исходном фото без бинаризации
+// (для чётких скриншотов оно часто лучше). Больше двух попыток не делаем.
+const ocrMeaningful = (d) => (((d && d.text) || '').replace(/[^0-9A-Za-zА-Яа-яЁё]/g, '').length >= 5);
 async function ocrStage1(worker, dataUrl, refineLine){
-  const processedUrl = await preprocessImageForOcr(dataUrl);
-  const result = await worker.recognize(processedUrl);
-  const data = result.data;
-  if(!data.lines || !data.lines.length){
-    return { text: data.text, lowRanges: [], lines: [], processedUrl, refined: true, phones: [], addresses: [] };
+  let data = null, usedUrl = null;
+  const diag = [];
+  let firstErr = null;
+  try{
+    const processedUrl = await preprocessImageForOcr(dataUrl);
+    const r = await worker.recognize(processedUrl);
+    data = r.data; usedUrl = processedUrl;
+    if(!ocrMeaningful(data)) diag.push('обработанное фото: пусто');
+  } catch(e){
+    firstErr = e;
+    diag.push('обработанное фото: ' + ocrErrText(e));
   }
+  if(!ocrMeaningful(data)){
+    try{
+      if(firstErr){ await resetOcrWorker(); worker = await getOcrWorker(); } // после ошибки worker мог сломаться
+      if(!worker) throw new Error('движок распознавания не загрузился');
+      const r2 = await worker.recognize(dataUrl);
+      const d2 = r2.data;
+      if(ocrMeaningful(d2) || !data){ data = d2; usedUrl = dataUrl; }
+      if(!ocrMeaningful(d2)) diag.push('исходное фото: пусто');
+    } catch(e2){
+      diag.push('исходное фото: ' + ocrErrText(e2));
+      if(!data) throw new Error(diag.join('; '));
+    }
+  }
+  const noLines = { text: data.text || '', lowRanges: [], lines: [], processedUrl: usedUrl, refined: true, phones: [], addresses: [], diag: diag.join('; ') };
+  if(!data.lines || !data.lines.length) return noLines;
   let imgEl = null;
-  if(refineLine){ try{ imgEl = await loadImageElCors(processedUrl); } catch(e){} }
-  const built = await buildTextFast(worker, imgEl, data, refineLine);
-  return { text: built.text, lowRanges: built.lowRanges, lines: built.lines, processedUrl, refined: false, phones: [], addresses: [] };
+  if(refineLine){ try{ imgEl = await loadImageElCors(usedUrl); } catch(e){} }
+  try{
+    const built = await buildTextFast(worker, imgEl, data, refineLine);
+    return { text: built.text, lowRanges: built.lowRanges, lines: built.lines, processedUrl: usedUrl, refined: false, phones: [], addresses: [], diag: diag.join('; ') };
+  } catch(e){
+    return noLines; // сборка с координатами не удалась — показываем хотя бы простой текст
+  }
 }
 async function ocrStage2(worker, entry){
   const lines = entry.lines || [];
@@ -4150,7 +4656,7 @@ async function runOcrJob(job){
     entry = await ocrStage1(worker, job.dataUrl, job.refineLine);
   }
   if(entry && (job.mode === 'full' || job.mode === 'refine') && !entry.refined){
-    await ocrStage2(worker, entry);
+    await ocrStage2((await getOcrWorker()) || worker, entry); // worker мог быть пересоздан на этапе 1
   }
   return entry;
 }
@@ -4166,10 +4672,13 @@ async function processOcrQueue(){
       ocrProgressPercent[job.progressId] = 0;
       renderEditorPhotos();
       let entry = null;
+      ocrLastError = '';
       try{
         entry = await runOcrJob(job);
       } catch(err){
-        entry = null; // тихо игнорируем — например, нет интернета для первой загрузки языкового пакета
+        entry = null;
+        ocrLastError = ocrErrText(err); // показываем причину в окне OCR вместо полного молчания
+        try{ console.warn('OCR error:', err); } catch(x){}
       }
       delete ocrProgressPercent[job.progressId];
       if(entry && job.cacheId) ocrCachePut(job.cacheId, entry);
@@ -4381,7 +4890,8 @@ async function runManualPhotoOcr(dataUrl, photoId, force){
   document.getElementById('ocrRedoBtn').style.display = 'block';
   if(!entry || !entry.text || !entry.text.trim()){
     preview.innerHTML = '';
-    preview.setAttribute('data-placeholder', 'Не удалось распознать текст на этом фото — возможно, оно нечёткое или слишком тёмное. Можно вписать текст сюда вручную.');
+    const why = entry ? (entry.diag || 'пустой результат') : (ocrLastError || 'неизвестная ошибка');
+    preview.setAttribute('data-placeholder', 'Не удалось распознать текст на этом фото — возможно, оно нечёткое или слишком тёмное. Можно вписать текст сюда вручную.\n\nOCR ошибка: ' + why);
     document.getElementById('ocrSelectBtn').style.display = 'block';
     return;
   }
@@ -8302,6 +8812,8 @@ syncBadgeEl.addEventListener('click', () => {
 // Как только связь физически появилась — сразу пробуем отправить то, что не
 // дошло, не дожидаясь отдельного таймера повтора.
 window.addEventListener('online', () => {
+  offlineFailed.clear();
+  offlineScheduleWarmup(1500);
   if(currentUID && (cloudSyncStatus === 'error' || cloudSyncStatus === 'pending')){
     flushCloudSave();
   }
@@ -9172,10 +9684,12 @@ auth.onAuthStateChanged(user => {
     if(versionCheckReconciled){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); }catch(e){}
     }
+    offlineInit(currentUID); // локальные копии фото этого аккаунта + фоновая докачка
     loadFromCloud();
     registerPushToken();
   } else {
     unsubscribeCloud();
+    offlineReset();
     currentUID = null;
     notesPendingVersionCheck = new Map(); // очередь на диске под прежним UID остаётся нетронутой
     notesUnderTransaction = new Map();
