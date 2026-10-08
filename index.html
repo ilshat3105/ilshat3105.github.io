@@ -149,6 +149,7 @@
   .ocr-preview:empty:before{content:attr(data-placeholder);color:var(--muted);}
   .ocr-preview mark{background:#fde68a;color:#92400e;border-radius:3px;padding:0 1px;font-weight:700;}
   .ocr-preview a.ocr-phone-link{color:#2563eb;font-weight:700;text-decoration:underline;cursor:pointer;}
+  .ocr-preview a.ocr-phone-link mark{background:#fef3c7;color:inherit;font-weight:700;}
   .ocr-found{display:none;flex:0 0 auto;max-height:26vh;overflow-y:auto;margin-bottom:8px;padding:8px 12px;box-sizing:border-box;width:100%;
     background:var(--tint-blue-bg);border:1px solid var(--tint-blue-border);border-radius:10px;font-size:14px;line-height:1.55;color:var(--ink);user-select:text;-webkit-user-select:text;}
   .ocr-found-title{font-size:12px;font-weight:700;color:var(--muted);margin-top:2px;}
@@ -1031,7 +1032,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 17:32 (Фото офлайн: убрана подробная диагностика)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 19:49 (OCR: один текст, номера внутри текста синие и нажимаемые, без верхнего блока)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4207,6 +4208,18 @@ function ocrNearPhone(a, b){
   for(let i = 0; i < a.length; i++) if(a[i] !== b[i]) d++;
   return d <= 2;
 }
+// Явный телефонный формат: 7 / 8 / +7, затем код города или оператора в скобках (3–5 цифр) и остальные цифры
+// (с дефисами/пробелами) — например «7 (34782) 7-19-46», «8 (3522) 22-77-97», «+7 (927) 927-43-21».
+// Такая запись — сильный кандидат даже без слова «тел» рядом и даже рядом с «дата/сумма/ИНН».
+const OCR_STRONG_PHONE_RE = /(?:\+?\s*7|8)\s*\(\s*\d{3,5}\s*\)\s*\d[\d\s\-–—]{3,12}\d/;
+function ocrIsStrongPhone(s){
+  const t = String(s || '');
+  if(/\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/.test(t)) return false;
+  const m = OCR_STRONG_PHONE_RE.exec(t);
+  if(!m) return false;
+  const n = m[0].replace(/\D/g, '').length;
+  return n === 11;
+}
 // Проверка правдоподобности номера. ctx.label — рядом слова тел/контакт/водитель/прораб,
 // ctx.neg — рядом ИНН/КПП/ОГРН/р/с/БИК/руб/дата/сумма. Возвращает { tel: '+7XXXXXXXXXX', display } или null.
 // 8… и +7… дают один и тот же tel (так одинаковые номера не дублируются).
@@ -4215,7 +4228,8 @@ function ocrValidatePhone(str, ctx){
   if(!raw) return null;
   if(/\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/.test(raw)) return null; // дата
   const label = !!(ctx && ctx.label);
-  if(ctx && ctx.neg && !label) return null; // рядом ИНН/сумма/реквизиты, а слов «тел» нет
+  const strong = !!(ctx && ctx.strong) || ocrIsStrongPhone(raw);
+  if(ctx && ctx.neg && !label && !strong) return null; // рядом ИНН/сумма/реквизиты, а слов «тел» нет
   const digits = raw.replace(/\D/g, '');
   const hasPlus = raw.charAt(0) === '+';
   const groups = (raw.match(/\d+/g) || []).length;
@@ -4364,13 +4378,15 @@ function ocrFindPhoneRuns(lines){
         const atStart = before.trim().length < 3; // номер в начале строки: подпись может быть строкой выше
         const label = LABEL.test(before.slice(-25)) || (atStart && LABEL.test(prevT));
         const neg = NEG.test(before.slice(-25)) || NEG.test(after.slice(0, 12)) || (atStart && NEG.test(prevT));
-        const ok = (digitish >= 9 && digitish <= 13) || (label && digitish >= 6 && digitish <= 13);
+        const baseStr = ws.map(w => w.t).join(' ');
+        const strong = ocrIsStrongPhone(baseStr);
+        const ok = strong || (digitish >= 9 && digitish <= 13) || (label && digitish >= 6 && digitish <= 13);
         if(ok){
           runs.push({
             li, words: ws, s: ws[0].s, e: ws[ws.length - 1].e,
             base: ws.map(w => w.t).join(' '),
             bbox: ocrUnionBox(ws.map(w => w.b)),
-            ctx: { label, neg }
+            ctx: { label, neg: strong ? false : neg, strong }
           });
         }
       }
@@ -4604,7 +4620,7 @@ async function ocrStage2(worker, entry){
   try{
     // --- телефоны ---
     // не больше 8 самых вероятных цепочек: сначала с подписью (тел/контакт/…), потом с телефонной записью
-    const scoreRun = (r) => (r.ctx.label ? 2 : 0) + ((/[+()\-–—]/.test(r.base) || (r.base.match(/\d+/g) || []).length >= 3) ? 1 : 0);
+    const scoreRun = (r) => (r.ctx.strong ? 4 : 0) + (r.ctx.label ? 2 : 0) + ((/[+()\-–—]/.test(r.base) || (r.base.match(/\d+/g) || []).length >= 3) ? 1 : 0);
     const runs = ocrFindPhoneRuns(lines).filter(r => !(r.ctx.neg && !r.ctx.label))
       .map((r, k) => ({ r, k, sc: scoreRun(r) }))
       .sort((a, b) => b.sc - a.sc || a.k - b.k).slice(0, 8)
@@ -4648,7 +4664,7 @@ async function ocrStage2(worker, entry){
       const nat = pm.tel.slice(2);
       if(phones.some(p => p.tel === pm.tel || ocrNearPhone(p.tel.slice(2), nat))) continue;
       const before = cleaned.slice(Math.max(0, pm.start - 25), pm.start);
-      if(NEG.test(before) && !/тел|конт|водител|прораб/i.test(before)) continue;
+      if(NEG.test(before) && !/тел|конт|водител|прораб/i.test(before) && !ocrIsStrongPhone(cleaned.slice(pm.start, pm.end))) continue;
       phones.push({ tel: pm.tel, display: ocrFmtPhone(nat), uncertain: true });
     }
   } catch(e){}
@@ -4897,28 +4913,14 @@ function renderOcrPreview(text, lowRanges){
 // кликабельные телефоны + возможность править прямо тут же и скопировать).
 // Блоки «Найденные телефоны» / «Найденные адреса» над полным текстом. busy — идёт уточнение.
 function renderOcrFound(entry, busy){
+  // Отдельный верхний блок «Найденные телефоны / адреса» больше не показываем: всё в одном тексте,
+  // а номера внутри него — синие, жирные, подчёркнутые и нажимаемые (см. renderOcrPreview).
+  // Функция оставлена как «пустышка», чтобы не трогать логику поиска и уточнения.
   const box = document.getElementById('ocrFound');
-  const phones = (entry && entry.phones) || [];
-  const addrs = (entry && entry.addresses) || [];
-  if(!phones.length && !addrs.length && !busy){
-    box.innerHTML = '';
-    box.style.display = 'none';
-    box.parentNode.classList.remove('has-found');
-    return;
-  }
-  let h = '';
-  if(phones.length){
-    h += '<div class="ocr-found-title">Найденные телефоны</div>';
-    h += phones.map(p => `<div class="ocr-found-row"><a class="ocr-phone-link" href="tel:${escapeHtml(p.tel)}">${escapeHtml(p.display)}</a>${p.uncertain ? '<span class="ocr-found-warn">проверьте по фото</span>' : ''}</div>`).join('');
-  }
-  if(addrs.length){
-    h += '<div class="ocr-found-title">Найденные адреса</div>';
-    h += addrs.map(a => `<div class="ocr-found-row"><span class="ocr-found-kind">${escapeHtml(a.kind)}:</span> ${escapeHtml(a.text)}</div>`).join('');
-  }
-  if(busy) h += '<div class="ocr-found-title">Уточняю телефоны и адреса…</div>';
-  box.innerHTML = h;
-  box.style.display = 'block';
-  box.parentNode.classList.toggle('has-found', phones.length > 0 || addrs.length > 0); // больше места, пока есть что показать
+  if(!box) return;
+  box.innerHTML = '';
+  box.style.display = 'none';
+  if(box.parentNode) box.parentNode.classList.remove('has-found');
 }
 // photoId — для кэша: повторное открытие того же фото берёт результат из кэша без нового OCR.
 // force=true («Распознать заново») игнорирует кэш. Для вырезки приближенного фото photoId = null (без кэша).
