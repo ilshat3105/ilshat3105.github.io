@@ -1032,7 +1032,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 20:31 (OCR: 7 без плюса показывается как +7)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 21:40 (OCR: контрольное чтение сомнительных телефонов, 2 из 3)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4433,10 +4433,10 @@ async function ocrDecidePhone(worker, imgEl, run, budget){
   if(B) B.v = ocrValidatePhone(B.str, run.ctx);
   const aOk = !!A.v, bOk = !!(B && B.v);
   if(bOk){
-    if(aOk && A.v.tel === B.v.tel) return { chosen: B, uncertain: false };
-    return { chosen: B, uncertain: aOk || B.conf < 50 };
+    if(aOk && A.v.tel === B.v.tel) return { chosen: B, uncertain: false, A, B };
+    return { chosen: B, uncertain: aOk || B.conf < 50, A, B, disagree: aOk };
   }
-  if(aOk) return { chosen: A, uncertain: true };
+  if(aOk) return { chosen: A, uncertain: true, A, B, disagree: true };
   if(imgEl && run.ctx.label && budget.n > 0){
     let doubtful = 0;
     for(const w of run.words) for(const y of w.y) if(AMBIGUOUS_CHARS.test(y.t) && y.c < CONF_THRESHOLD) doubtful++;
@@ -4446,6 +4446,31 @@ async function ocrDecidePhone(worker, imgEl, run, budget){
       if(C.v) return { chosen: C, uncertain: true };
     }
   }
+  return null;
+}
+// Третий (контрольный) проход по цепочке телефона: тот же участок фото, но другой масштаб и поля, PSM 7, только цифры.
+// Вызывать, когда параметры PSM 7 + whitelist цифр уже выставлены (см. ocrStage2).
+async function ocrControlRead(worker, imgEl, run){
+  const bh = Math.max(6, run.bbox.y1 - run.bbox.y0);
+  const scale = bh * 4 < 64 ? 4 : 3.5;
+  const t = await ocrRecognizeCrop(worker, imgEl, run.bbox, Math.max(14, bh * 0.9), Math.max(6, bh * 0.55), scale);
+  if(!t || !t.text) return null;
+  const str = ocrCleanPhoneStr(t.text);
+  const v = ocrValidatePhone(str, run.ctx);
+  return v ? { str, v, conf: t.conf } : null;
+}
+// Голосование «2 из 3» по одной цепочке. Возвращает подтверждённый вариант или null.
+// repeatedCertain — номера, которые в документе уже подтверждены дважды и больше (карта tel → число раз): если контрольное
+// чтение совпало с таким номером, а большинства нет, берём его. Без собственного контрольного чтения ничего не исправляем.
+function ocrVotePhone(dec, C, repeatedCertain){
+  const srcs = [];
+  if(dec.B && dec.B.v) srcs.push(dec.B);
+  if(C) srcs.push(C);
+  if(dec.A && dec.A.v) srcs.push(dec.A);
+  const cnt = new Map();
+  srcs.forEach(x => cnt.set(x.v.tel, (cnt.get(x.v.tel) || 0) + 1));
+  for(const x of srcs){ if(cnt.get(x.v.tel) >= 2) return x; }
+  if(C && repeatedCertain && repeatedCertain.get(C.v.tel) >= 2) return C;
   return null;
 }
 // Подмена кусков текста (цепочек телефонов) на уточнённые, со сдвигом диапазонов подсветки.
@@ -4639,9 +4664,47 @@ async function ocrStage2(worker, entry){
     }
     const budget = { n: 6 };
     const reps = [];
+    const decs = [];
     for(const r of runs){
       const dec = await ocrDecidePhone(worker, imgEl, r, budget);
-      if(!dec) continue;
+      if(dec) decs.push({ r, dec });
+    }
+    // Контрольные чтения (не больше 4 на документ) — только для номеров, которые остались сомнительными:
+    // сначала где два чтения разошлись, затем одиночный рядом с уже подтверждённым повторяющимся похожим, затем прочие похожие.
+    // Подтверждённые (два чтения совпали) не трогаем; похожие номера не объединяем и не «исправляем по похожести».
+    try{
+      if(imgEl){
+        const certainCnt = new Map();
+        decs.forEach(d => { if(!d.dec.uncertain) certainCnt.set(d.dec.chosen.v.tel, (certainCnt.get(d.dec.chosen.v.tel) || 0) + 1); });
+        const repeatedCertain = new Map([...certainCnt].filter(([, n]) => n >= 2));
+        const nearOf = (d) => decs.filter(o => o !== d && o.dec.chosen.v.tel !== d.dec.chosen.v.tel && ocrNearPhone(o.dec.chosen.v.tel.slice(2), d.dec.chosen.v.tel.slice(2)));
+        const cands = [];
+        decs.forEach(d => {
+          if(!d.dec.uncertain) return;
+          const nr = nearOf(d);
+          let rank = 99;
+          if(d.dec.disagree) rank = 0;
+          else if(nr.some(o => !o.dec.uncertain && repeatedCertain.has(o.dec.chosen.v.tel))) rank = 1;
+          else if(nr.length) rank = 2;
+          if(rank < 99) cands.push({ d, rank });
+        });
+        cands.sort((a, b) => a.rank - b.rank);
+        const todoC = cands.slice(0, 4);
+        if(todoC.length){
+          try{
+            await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789+()- ' });
+            for(const c of todoC){
+              const C = await ocrControlRead(worker, imgEl, c.d.r);
+              const win = ocrVotePhone(c.d.dec, C, repeatedCertain);
+              if(win){ c.d.dec.chosen = win; c.d.dec.uncertain = false; }
+            }
+          } finally {
+            try{ await worker.setParameters({ tessedit_pageseg_mode: '4', tessedit_char_whitelist: '' }); } catch(e){}
+          }
+        }
+      }
+    } catch(e){}
+    for(const { r, dec } of decs){
       if(!phones.some(p => p.tel === dec.chosen.v.tel)){
         phones.push({ tel: dec.chosen.v.tel, display: dec.chosen.v.display, uncertain: dec.uncertain });
       }
