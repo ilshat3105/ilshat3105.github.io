@@ -158,6 +158,11 @@
   .ocr-found a.ocr-phone-link{color:#2563eb;font-weight:700;text-decoration:underline;}
   .ocr-found-kind{font-weight:700;}
   .ocr-found-warn{font-size:11px;color:#b45309;margin-left:4px;}
+  .ocr-diag-btn{align-self:flex-start;font-size:12px;color:var(--muted);background:none;border:1px solid var(--card-line);border-radius:8px;padding:3px 9px;margin-bottom:6px;cursor:pointer;font-family:inherit;}
+  .ocr-diag-item{padding:6px 0;border-top:1px dashed var(--card-line);font-size:12.5px;line-height:1.45;}
+  .ocr-diag-item:first-child{border-top:none;}
+  .ocr-diag-item.conflict .ocr-found-title{color:#b45309;}
+  .ocr-diag-crop{display:block;max-width:100%;max-height:60px;margin:4px 0;border:1px solid var(--card-line);border-radius:4px;background:#fff;}
   .ocr-zoom-hint{font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.4;
     background:var(--tint-blue-bg);border:1px solid var(--tint-blue-border);border-radius:8px;padding:8px 10px;}
   .ed-photo-checking{position:absolute;inset:0;background:rgba(0,0,0,.45);
@@ -1032,7 +1037,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 21:40 (OCR: контрольное чтение сомнительных телефонов, 2 из 3)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 22:39 (OCR: проверка уверенно ошибочных похожих номеров, кнопка «Проверка OCR»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1295,6 +1300,7 @@
       <span class="spinner"></span> Распознаю текст…
     </div>
     <div class="ocr-confidence-hint" id="ocrConfidenceHint"><span class="dot"></span>Жёлтым — места, где программа сама не уверена в цифре/символе. Проверьте их глазами по фото.</div>
+    <button type="button" class="ocr-diag-btn" id="ocrDiagBtn" style="display:none;"></button>
     <div class="ocr-found" id="ocrFound"></div>
     <div class="ocr-preview ocr-result-body" id="ocrPreview" contenteditable="true"></div>
     <div class="ocr-btn-row">
@@ -4459,19 +4465,35 @@ async function ocrControlRead(worker, imgEl, run){
   const v = ocrValidatePhone(str, run.ctx);
   return v ? { str, v, conf: t.conf } : null;
 }
-// Голосование «2 из 3» по одной цепочке. Возвращает подтверждённый вариант или null.
-// repeatedCertain — номера, которые в документе уже подтверждены дважды и больше (карта tel → число раз): если контрольное
-// чтение совпало с таким номером, а большинства нет, берём его. Без собственного контрольного чтения ничего не исправляем.
-function ocrVotePhone(dec, C, repeatedCertain){
+// Голосование «2 из 3» по одной цепочке. Возвращает { win, reason }: win — выбранный вариант или null.
+// repeated — номера, которые встречаются в документе 2 раза и больше (карта tel → число раз; жёлтая пометка не важна).
+// loneNearDup — одиночный номер, похожий на повторяющийся (поводом для проверки): здесь контрольное чтение главнее
+// совпавших двух первых: если оно дало повторяющийся номер — заменяем на него; если снова свой — оставляем (подтверждён);
+// если третий вариант или контрольное не прочиталось — оставляем, но номер остаётся сомнительным.
+function ocrVotePhone(dec, C, repeated, loneNearDup){
+  if(loneNearDup){
+    const own = dec.chosen.v.tel;
+    if(C && C.v.tel !== own && repeated && repeated.get(C.v.tel) >= 2) return { win: C, reason: 'контрольное чтение совпало с номером, который повторяется в документе (×' + repeated.get(C.v.tel) + ')' };
+    if(C){
+      const m = [dec.chosen, dec.B && dec.B.v ? dec.B : null, dec.A && dec.A.v ? dec.A : null].filter(Boolean).find(x => x.v.tel === C.v.tel);
+      if(m) return { win: m, reason: m === dec.chosen ? 'контрольное чтение подтвердило этот номер' : 'контрольное чтение совпало с другим прочтением этого номера (2 из 3)' };
+    }
+    return { win: null, reason: C ? 'контрольное чтение дало третий вариант' : 'контрольное чтение не прочиталось' };
+  }
   const srcs = [];
-  if(dec.B && dec.B.v) srcs.push(dec.B);
-  if(C) srcs.push(C);
-  if(dec.A && dec.A.v) srcs.push(dec.A);
+  if(dec.B && dec.B.v) srcs.push({ x: dec.B, n: 'B' });
+  if(C) srcs.push({ x: C, n: 'C' });
+  if(dec.A && dec.A.v) srcs.push({ x: dec.A, n: 'A' });
   const cnt = new Map();
-  srcs.forEach(x => cnt.set(x.v.tel, (cnt.get(x.v.tel) || 0) + 1));
-  for(const x of srcs){ if(cnt.get(x.v.tel) >= 2) return x; }
-  if(C && repeatedCertain && repeatedCertain.get(C.v.tel) >= 2) return C;
-  return null;
+  srcs.forEach(o => cnt.set(o.x.v.tel, (cnt.get(o.x.v.tel) || 0) + 1));
+  for(const o of srcs){
+    if(cnt.get(o.x.v.tel) >= 2){
+      const names = srcs.filter(q => q.x.v.tel === o.x.v.tel).map(q => q.n).sort().join('=');
+      return { win: o.x, reason: '2 из 3 чтений совпали (' + names + ')' };
+    }
+  }
+  if(C && repeated && repeated.get(C.v.tel) >= 2) return { win: C, reason: 'контрольное чтение совпало с номером, который повторяется в документе (×' + repeated.get(C.v.tel) + ')' };
+  return { win: null, reason: 'нет большинства' };
 }
 // Подмена кусков текста (цепочек телефонов) на уточнённые, со сдвигом диапазонов подсветки.
 function ocrApplyReplacements(text, lowRanges, reps){
@@ -4669,23 +4691,26 @@ async function ocrStage2(worker, entry){
       const dec = await ocrDecidePhone(worker, imgEl, r, budget);
       if(dec) decs.push({ r, dec });
     }
-    // Контрольные чтения (не больше 4 на документ) — только для номеров, которые остались сомнительными:
-    // сначала где два чтения разошлись, затем одиночный рядом с уже подтверждённым повторяющимся похожим, затем прочие похожие.
-    // Подтверждённые (два чтения совпали) не трогаем; похожие номера не объединяем и не «исправляем по похожести».
+    // Контрольные чтения (не больше 4 на документ). Приоритет: 1) одиночный номер, похожий (1–2 цифры) на номер,
+    // который встречается в документе 2+ раза — перечитываем ДАЖЕ если два первых чтения совпали; 2) разошедшиеся
+    // чтения A/B; 3) прочие сомнительные похожие. Это только повод для проверки: номера не объединяются, исправление —
+    // лишь по собственному контрольному чтению этого номера.
+    const telOf = (d) => d.dec.chosen.v.tel;
+    const cntAll = new Map();
+    decs.forEach(d => cntAll.set(telOf(d), (cntAll.get(telOf(d)) || 0) + 1));
+    const repeated = new Map([...cntAll].filter(([, n]) => n >= 2));
+    const nearOf = (d) => decs.filter(o => o !== d && telOf(o) !== telOf(d) && ocrNearPhone(telOf(o).slice(2), telOf(d).slice(2)));
     try{
       if(imgEl){
-        const certainCnt = new Map();
-        decs.forEach(d => { if(!d.dec.uncertain) certainCnt.set(d.dec.chosen.v.tel, (certainCnt.get(d.dec.chosen.v.tel) || 0) + 1); });
-        const repeatedCertain = new Map([...certainCnt].filter(([, n]) => n >= 2));
-        const nearOf = (d) => decs.filter(o => o !== d && o.dec.chosen.v.tel !== d.dec.chosen.v.tel && ocrNearPhone(o.dec.chosen.v.tel.slice(2), d.dec.chosen.v.tel.slice(2)));
         const cands = [];
         decs.forEach(d => {
-          if(!d.dec.uncertain) return;
           const nr = nearOf(d);
+          const lone = cntAll.get(telOf(d)) === 1 && nr.some(o => repeated.has(telOf(o)));
+          d.lone = lone;
           let rank = 99;
-          if(d.dec.disagree) rank = 0;
-          else if(nr.some(o => !o.dec.uncertain && repeatedCertain.has(o.dec.chosen.v.tel))) rank = 1;
-          else if(nr.length) rank = 2;
+          if(lone) rank = 0;
+          else if(d.dec.uncertain && d.dec.disagree) rank = 1;
+          else if(d.dec.uncertain && nr.length) rank = 2;
           if(rank < 99) cands.push({ d, rank });
         });
         cands.sort((a, b) => a.rank - b.rank);
@@ -4694,9 +4719,14 @@ async function ocrStage2(worker, entry){
           try{
             await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: '0123456789+()- ' });
             for(const c of todoC){
-              const C = await ocrControlRead(worker, imgEl, c.d.r);
-              const win = ocrVotePhone(c.d.dec, C, repeatedCertain);
-              if(win){ c.d.dec.chosen = win; c.d.dec.uncertain = false; }
+              const d = c.d;
+              d.ctrlRan = true;
+              const C = await ocrControlRead(worker, imgEl, d.r);
+              d.C = C;
+              const v = ocrVotePhone(d.dec, C, repeated, d.lone);
+              d.reason = v.reason;
+              if(v.win){ d.dec.chosen = v.win; d.dec.uncertain = false; }
+              else if(d.lone) d.dec.uncertain = true; // подозрительный одиночный номер, который не подтвердился
             }
           } finally {
             try{ await worker.setParameters({ tessedit_pageseg_mode: '4', tessedit_char_whitelist: '' }); } catch(e){}
@@ -4704,6 +4734,34 @@ async function ocrStage2(worker, entry){
         }
       }
     } catch(e){}
+    // данные для кнопки «Проверка OCR» (на распознавание не влияют)
+    try{
+      const fin = new Map();
+      decs.forEach(d => fin.set(telOf(d), (fin.get(telOf(d)) || 0) + 1));
+      entry.phoneDiag = decs.map((d) => {
+        const dec = d.dec;
+        const sim = [...new Set(nearOf(d).map(o => o.dec.chosen.v.display))];
+        const conflict = !!(d.ctrlRan || dec.uncertain || sim.length);
+        let crop = '';
+        if(conflict && imgEl){
+          try{
+            const bh = Math.max(6, d.r.bbox.y1 - d.r.bbox.y0);
+            crop = ocrCropDataUrl(imgEl, d.r.bbox, Math.max(8, bh * 0.5), Math.max(4, bh * 0.35), 2) || '';
+          } catch(e){}
+        }
+        return {
+          final: dec.chosen.v.display,
+          a: dec.A ? (dec.A.v ? dec.A.str : dec.A.str + ' (не похоже на номер)') : '',
+          b: dec.B ? (dec.B.v ? dec.B.str : dec.B.str + ' (не похоже на номер)') : 'не читалось',
+          c: d.ctrlRan ? (d.C ? d.C.str : 'не прочиталось') : 'не запускался',
+          uncertain: !!dec.uncertain,
+          repeats: fin.get(telOf(d)) || 1,
+          similar: sim,
+          reason: d.reason || (dec.A && dec.B && dec.A.v && dec.B.v && dec.A.v.tel === dec.B.v.tel ? 'основной и построчный проход совпали' : (dec.uncertain ? 'проверка ограничена (лимит или нет похожих номеров)' : 'номер принят')),
+          conflict, crop
+        };
+      });
+    } catch(e){ entry.phoneDiag = []; }
     for(const { r, dec } of decs){
       if(!phones.some(p => p.tel === dec.chosen.v.tel)){
         phones.push({ tel: dec.chosen.v.tel, display: dec.chosen.v.display, uncertain: dec.uncertain });
@@ -4983,16 +5041,47 @@ function renderOcrPreview(text, lowRanges){
 // показывает весь распознанный текст в одном блоке (подсветка сомнительных мест +
 // кликабельные телефоны + возможность править прямо тут же и скопировать).
 // Блоки «Найденные телефоны» / «Найденные адреса» над полным текстом. busy — идёт уточнение.
+let ocrDiagOpen = false;
 function renderOcrFound(entry, busy){
-  // Отдельный верхний блок «Найденные телефоны / адреса» больше не показываем: всё в одном тексте,
-  // а номера внутри него — синие, жирные, подчёркнутые и нажимаемые (см. renderOcrPreview).
-  // Функция оставлена как «пустышка», чтобы не трогать логику поиска и уточнения.
+  // Отдельный верхний блок «Найденные телефоны / адреса» не показываем: всё в одном тексте, а номера внутри него —
+  // синие, жирные, подчёркнутые и нажимаемые (см. renderOcrPreview). Тот же контейнер используется для
+  // кнопки-диагностики «Проверка OCR» (по нажатию показывает, как прочитан каждый телефон).
   const box = document.getElementById('ocrFound');
+  const btn = document.getElementById('ocrDiagBtn');
   if(!box) return;
-  box.innerHTML = '';
-  box.style.display = 'none';
+  const diag = (entry && !busy && entry.phoneDiag) || [];
+  if(btn){
+    if(diag.length){
+      const nConf = diag.filter(d => d.conflict).length;
+      btn.textContent = (nConf ? '⚠ ' : '') + 'Проверка OCR' + (nConf ? ' · ' + nConf : '');
+      btn.style.display = 'inline-block';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
   if(box.parentNode) box.parentNode.classList.remove('has-found');
+  if(!(ocrDiagOpen && diag.length)){
+    box.innerHTML = '';
+    box.style.display = 'none';
+    return;
+  }
+  const row = (k, v) => `<div class="ocr-found-row"><span class="ocr-found-kind">${k}:</span> ${escapeHtml(v)}</div>`;
+  box.innerHTML = diag.map((d) =>
+    `<div class="ocr-diag-item${d.conflict ? ' conflict' : ''}">` +
+      `<div class="ocr-found-title">Телефон: ${escapeHtml(d.final)}</div>` +
+      (d.crop ? `<img class="ocr-diag-crop" src="${d.crop}" alt="">` : '') +
+      row('Основной OCR', d.a) + row('Строковый OCR', d.b) + row('Контрольный OCR', d.c) +
+      row('Повторы в документе', '×' + d.repeats) +
+      (d.similar.length ? row('Похожие номера', d.similar.join(', ')) : '') +
+      row('Жёлтый', d.uncertain ? 'да' : 'нет') + row('Причина', d.reason) +
+    '</div>').join('');
+  box.style.display = 'block';
 }
+document.getElementById('ocrDiagBtn').addEventListener('click', () => {
+  ocrDiagOpen = !ocrDiagOpen;
+  const ent = ocrLastManual && ocrLastManual.entry;
+  renderOcrFound(ent || null, false);
+});
 // photoId — для кэша: повторное открытие того же фото берёт результат из кэша без нового OCR.
 // force=true («Распознать заново») игнорирует кэш. Для вырезки приближенного фото photoId = null (без кэша).
 // Полный текст показывается СРАЗУ после основного прохода; телефоны и адреса доуточняются
@@ -5016,7 +5105,8 @@ async function runManualPhotoOcr(dataUrl, photoId, force){
     showToast('Распознавание недоступно — нет доступа к интернету для загрузки языкового пакета');
     return;
   }
-  ocrLastManual = { dataUrl, photoId: photoId || null };
+  ocrLastManual = { dataUrl, photoId: photoId || null, entry: null };
+  ocrDiagOpen = false;
   const token = ++ocrRunToken;
   const preview = document.getElementById('ocrPreview');
   document.getElementById('ocrResultOverlay').classList.add('show');
@@ -5031,6 +5121,7 @@ async function runManualPhotoOcr(dataUrl, photoId, force){
   const progressId = 'manual-' + Date.now();
   const entry = await ocrObtain(dataUrl, photoId || null, { force: !!force, stage2: false, progressId });
   if(token !== ocrRunToken) return; // за это время открыли другое фото или нажали «Заново»
+  if(ocrLastManual) ocrLastManual.entry = entry || null;
   document.getElementById('ocrResultLoading').style.display = 'none';
   document.getElementById('ocrRedoBtn').style.display = 'block';
   if(!entry || !entry.text || !entry.text.trim()){
