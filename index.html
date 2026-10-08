@@ -1037,7 +1037,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 22:39 (OCR: проверка уверенно ошибочных похожих номеров, кнопка «Проверка OCR»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-08 22:56 (OCR: исправление одиночного ...61 по повторам, отсев ложных телефонов)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4392,7 +4392,7 @@ function ocrFindPhoneRuns(lines){
             li, words: ws, s: ws[0].s, e: ws[ws.length - 1].e,
             base: ws.map(w => w.t).join(' '),
             bbox: ocrUnionBox(ws.map(w => w.b)),
-            ctx: { label, neg: strong ? false : neg, strong }
+            ctx: { label, neg: strong ? false : neg, strong, labelSame: LABEL.test(before.slice(-25)) }
           });
         }
       }
@@ -4442,7 +4442,12 @@ async function ocrDecidePhone(worker, imgEl, run, budget){
     if(aOk && A.v.tel === B.v.tel) return { chosen: B, uncertain: false, A, B };
     return { chosen: B, uncertain: aOk || B.conf < 50, A, B, disagree: aOk };
   }
-  if(aOk) return { chosen: A, uncertain: true, A, B, disagree: true };
+  if(aOk){
+    // слабый кандидат: только основной проход дал «номер», нет подписи тел/контакт и нет сильного телефонного формата
+    // (+, скобки, 2+ дефиса, 11 цифр с 7/8) — похоже на серию/номер документа; решается позже, после контрольного чтения
+    const strongFmt = /[+()]/.test(A.str) || (A.str.match(/-/g) || []).length >= 2 || /^[78]\d{10}$/.test(A.str.replace(/\D/g, ''));
+    return { chosen: A, uncertain: true, A, B, disagree: true, weak: !run.ctx.labelSame && !strongFmt };
+  }
   if(imgEl && run.ctx.label && budget.n > 0){
     let doubtful = 0;
     for(const w of run.words) for(const y of w.y) if(AMBIGUOUS_CHARS.test(y.t) && y.c < CONF_THRESHOLD) doubtful++;
@@ -4470,13 +4475,27 @@ async function ocrControlRead(worker, imgEl, run){
 // loneNearDup — одиночный номер, похожий на повторяющийся (поводом для проверки): здесь контрольное чтение главнее
 // совпавших двух первых: если оно дало повторяющийся номер — заменяем на него; если снова свой — оставляем (подтверждён);
 // если третий вариант или контрольное не прочиталось — оставляем, но номер остаётся сомнительным.
-function ocrVotePhone(dec, C, repeated, loneNearDup){
+function ocrDigitDiff(a, b){
+  if(a.length !== b.length) return 99;
+  let d = 0;
+  for(let i = 0; i < a.length; i++) if(a[i] !== b[i]) d++;
+  return d;
+}
+function ocrVotePhone(dec, C, repeated, loneNearDup, repeatedSrc){
   if(loneNearDup){
     const own = dec.chosen.v.tel;
     if(C && C.v.tel !== own && repeated && repeated.get(C.v.tel) >= 2) return { win: C, reason: 'контрольное чтение совпало с номером, который повторяется в документе (×' + repeated.get(C.v.tel) + ')' };
     if(C){
       const m = [dec.chosen, dec.B && dec.B.v ? dec.B : null, dec.A && dec.A.v ? dec.A : null].filter(Boolean).find(x => x.v.tel === C.v.tel);
       if(m) return { win: m, reason: m === dec.chosen ? 'контрольное чтение подтвердило этот номер' : 'контрольное чтение совпало с другим прочтением этого номера (2 из 3)' };
+    }
+    // контрольное чтение не удалось: исправляем по повторам в документе, но только при строгих условиях —
+    // единственный повторяющийся (2+ раза) номер, отличающийся максимум на 1 цифру, и нет второго похожего повторяющегося
+    if(!C && repeated && repeatedSrc){
+      const rt = [...repeated.keys()].filter(t => ocrDigitDiff(t.slice(2), own.slice(2)) <= 2);
+      if(rt.length === 1 && ocrDigitDiff(rt[0].slice(2), own.slice(2)) === 1 && repeatedSrc.get(rt[0])){
+        return { win: repeatedSrc.get(rt[0]), reason: 'исправлено по повторам номера в документе (×' + repeated.get(rt[0]) + '); контрольное чтение не удалось' };
+      }
     }
     return { win: null, reason: C ? 'контрольное чтение дало третий вариант' : 'контрольное чтение не прочиталось' };
   }
@@ -4661,6 +4680,7 @@ async function ocrStage2(worker, entry){
   let text = entry.text || '';
   let lowRanges = entry.lowRanges || [];
   const phones = [];
+  const excludedTels = [];
   let addresses = [];
   let imgEl = null;
   try{ imgEl = await loadImageElCors(entry.processedUrl); } catch(e){}
@@ -4699,6 +4719,8 @@ async function ocrStage2(worker, entry){
     const cntAll = new Map();
     decs.forEach(d => cntAll.set(telOf(d), (cntAll.get(telOf(d)) || 0) + 1));
     const repeated = new Map([...cntAll].filter(([, n]) => n >= 2));
+    const repeatedSrc = new Map();
+    decs.forEach(d => { if(repeated.has(telOf(d)) && !repeatedSrc.has(telOf(d))) repeatedSrc.set(telOf(d), d.dec.chosen); });
     const nearOf = (d) => decs.filter(o => o !== d && telOf(o) !== telOf(d) && ocrNearPhone(telOf(o).slice(2), telOf(d).slice(2)));
     try{
       if(imgEl){
@@ -4723,7 +4745,7 @@ async function ocrStage2(worker, entry){
               d.ctrlRan = true;
               const C = await ocrControlRead(worker, imgEl, d.r);
               d.C = C;
-              const v = ocrVotePhone(d.dec, C, repeated, d.lone);
+              const v = ocrVotePhone(d.dec, C, repeated, d.lone, repeatedSrc);
               d.reason = v.reason;
               if(v.win){ d.dec.chosen = v.win; d.dec.uncertain = false; }
               else if(d.lone) d.dec.uncertain = true; // подозрительный одиночный номер, который не подтвердился
@@ -4731,6 +4753,22 @@ async function ocrStage2(worker, entry){
           } finally {
             try{ await worker.setParameters({ tessedit_pageseg_mode: '4', tessedit_char_whitelist: '' }); } catch(e){}
           }
+        }
+      }
+    } catch(e){}
+    // ложные телефоны: слабый кандидат (см. weak в ocrDecidePhone), который не подтвердился контрольным чтением
+    const droppedDiag = [];
+    try{
+      for(let i = decs.length - 1; i >= 0; i--){
+        const d = decs[i];
+        if(d.dec.weak && !(d.C && d.C.v) && cntAll.get(telOf(d)) === 1){
+          excludedTels.push(telOf(d));
+          droppedDiag.unshift({
+            final: 'исключено: ' + d.dec.chosen.str, a: d.dec.A ? d.dec.A.str : '', b: d.dec.B ? (d.dec.B.v ? d.dec.B.str : d.dec.B.str + ' (не похоже на номер)') : 'не читалось',
+            c: d.ctrlRan ? 'не прочиталось' : 'не запускался', uncertain: false, repeats: 1, similar: [],
+            reason: 'не телефон: один раз, нет подписи «тел» и телефонной записи, строковое и контрольное чтение не подтвердили', conflict: true, crop: '', dropped: true
+          });
+          decs.splice(i, 1);
         }
       }
     } catch(e){}
@@ -4760,7 +4798,7 @@ async function ocrStage2(worker, entry){
           reason: d.reason || (dec.A && dec.B && dec.A.v && dec.B.v && dec.A.v.tel === dec.B.v.tel ? 'основной и построчный проход совпали' : (dec.uncertain ? 'проверка ограничена (лимит или нет похожих номеров)' : 'номер принят')),
           conflict, crop
         };
-      });
+      }).concat(droppedDiag);
     } catch(e){ entry.phoneDiag = []; }
     for(const { r, dec } of decs){
       if(!phones.some(p => p.tel === dec.chosen.v.tel)){
@@ -4783,6 +4821,7 @@ async function ocrStage2(worker, entry){
     const cleaned = cleanupOcrNumbers(text);
     for(const pm of findPhoneMatches(cleaned)){
       const nat = pm.tel.slice(2);
+      if(excludedTels.indexOf(pm.tel) !== -1) continue;
       if(phones.some(p => p.tel === pm.tel || ocrNearPhone(p.tel.slice(2), nat))) continue;
       const before = cleaned.slice(Math.max(0, pm.start - 25), pm.start);
       if(NEG.test(before) && !/тел|конт|водител|прораб/i.test(before) && !ocrIsStrongPhone(cleaned.slice(pm.start, pm.end))) continue;
@@ -4798,6 +4837,7 @@ async function ocrStage2(worker, entry){
   entry.text = text;
   entry.lowRanges = lowRanges;
   entry.phones = phones;
+  entry.excludedTels = excludedTels;
   entry.addresses = addresses;
   entry.refined = true;
   entry.lines = null;        // координаты больше не нужны — освобождаем память
@@ -4985,11 +5025,11 @@ function findPhoneMatches(text){
 // и превращает похожие на телефон куски в синие кликабельные ссылки для звонка.
 // Диапазоны могут пересекаться (сомнительная цифра внутри номера телефона) — тогда
 // ссылка снаружи, подсветка внутри неё.
-function renderOcrPreview(text, lowRanges){
+function renderOcrPreview(text, lowRanges, skipTels){
   const n = text.length;
   const lowFlag = new Array(n).fill(false);
   for(const r of (lowRanges || [])) for(let i = r.start; i < r.end && i < n; i++) lowFlag[i] = true;
-  const phoneMatches = findPhoneMatches(text);
+  const phoneMatches = findPhoneMatches(text).filter(m => !(skipTels && skipTels.indexOf(m.tel) !== -1));
   // ведущие пробелы/точки/дефисы не входят в ссылку (иначе подчёркивается пустое место перед номером)
   phoneMatches.forEach((p) => { while(p.start < p.end - 1 && /[\s.\-–—]/.test(text.charAt(p.start))) p.start++; });
   const phoneFlag = new Array(n).fill(-1);
@@ -5068,7 +5108,7 @@ function renderOcrFound(entry, busy){
   const row = (k, v) => `<div class="ocr-found-row"><span class="ocr-found-kind">${k}:</span> ${escapeHtml(v)}</div>`;
   box.innerHTML = diag.map((d) =>
     `<div class="ocr-diag-item${d.conflict ? ' conflict' : ''}">` +
-      `<div class="ocr-found-title">Телефон: ${escapeHtml(d.final)}</div>` +
+      `<div class="ocr-found-title">${d.dropped ? '' : 'Телефон: '}${escapeHtml(d.final)}</div>` +
       (d.crop ? `<img class="ocr-diag-crop" src="${d.crop}" alt="">` : '') +
       row('Основной OCR', d.a) + row('Строковый OCR', d.b) + row('Контрольный OCR', d.c) +
       row('Повторы в документе', '×' + d.repeats) +
@@ -5093,7 +5133,7 @@ document.getElementById('ocrPreview').addEventListener('input', () => { ocrPrevi
 function ocrShowText(entry){
   const preview = document.getElementById('ocrPreview');
   const cleaned = cleanupOcrNumbers(entry.text.trim());
-  const rendered = renderOcrPreview(cleaned, entry.lowRanges);
+  const rendered = renderOcrPreview(cleaned, entry.lowRanges, entry.excludedTels);
   const top = preview.scrollTop;
   preview.innerHTML = rendered.html;
   preview.scrollTop = top;
