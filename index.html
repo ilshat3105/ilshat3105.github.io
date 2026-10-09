@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 18:58 (Автосервис: карточка «🚛 Перед рейсом» — чек-лист и «Новый рейс»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 21:41 (фото Автосервиса и «Мой автомобиль»: удаление из хранилища через 30 дней)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -3139,8 +3139,85 @@ function deletePhotoFromStorage(photoId){
   queueStorageDeletePath('users/' + currentUID + '/photos/' + photoId + '.jpg');
 }
 function retryPendingPhotoDeletes(){
+  svcpqRun(); // отложенная очередь фото Автосервиса / «Мой автомобиль» (30 дней)
   if(!pendingPhotoDeletePaths.length) return;
   pendingPhotoDeletePaths.slice().forEach(attemptStorageDelete);
+}
+
+// Отложенное (на 30 дней) физическое удаление фото Автосервиса и «Мой автомобиль».
+// Общая очередь выше (заявки, PDF, брошенные загрузки) не менялась и удаляет сразу.
+// Запись: { photoId, path, deletedAt, deleteAfter }. Хранится на диске отдельно для каждого
+// UID, переживает перезапуск и отсутствие сети. Перед настоящим удалением файла ещё раз
+// проверяем, что фото нигде не используется; если оно снова появилось в данных
+// (например, после восстановления копии) — запись снимается, а файл остаётся.
+const SVC_PHOTO_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
+let svcPhotoQueue = [];
+const svcpqInFlight = new Set();
+function svcpqKey(uid){ return 'vreyse_svcPhotoQueue_' + uid; }
+function svcpqSave(){
+  if(!currentUID) return;
+  try{ localStorage.setItem(svcpqKey(currentUID), JSON.stringify(svcPhotoQueue)); }catch(e){}
+}
+function svcpqLoad(uid){
+  try{
+    const arr = JSON.parse(localStorage.getItem(svcpqKey(uid)) || '[]');
+    svcPhotoQueue = Array.isArray(arr) ? arr.filter(e => e && e.path && e.photoId != null && typeof e.deleteAfter === 'number') : [];
+  }catch(e){ svcPhotoQueue = []; }
+  // Миграция: старые записи прежней очереди, относящиеся к фото Автосервиса / «Мой автомобиль»
+  // (файлы svc_*.jpg), не удаляем сразу, а переводим на отсрочку «сейчас + 30 дней».
+  const pre = '/photos/svc_';
+  const old = (pendingPhotoDeletePaths || []).filter(pt => typeof pt === 'string' && pt.indexOf(pre) !== -1 && /\.jpg$/.test(pt));
+  if(old.length){
+    const now = Date.now();
+    old.forEach(pt => {
+      if(svcPhotoQueue.some(e => e.path === pt)) return;
+      const photoId = pt.slice(pt.indexOf(pre) + pre.length).replace(/\.jpg$/, '');
+      svcPhotoQueue.push({ photoId, path: pt, deletedAt: now, deleteAfter: now + SVC_PHOTO_GRACE_MS });
+    });
+    pendingPhotoDeletePaths = pendingPhotoDeletePaths.filter(pt => old.indexOf(pt) === -1);
+    savePendingPhotoDeletes();
+    svcpqSave();
+  }
+}
+function svcpqAdd(photoId){
+  if(!currentUID || photoId == null) return;
+  const path = svcPhotoPath(currentUID, photoId);
+  if(svcPhotoQueue.some(e => e.path === path)) return;
+  const now = Date.now();
+  svcPhotoQueue.push({ photoId: String(photoId), path, deletedAt: now, deleteAfter: now + SVC_PHOTO_GRACE_MS });
+  svcpqSave();
+}
+function svcpqUsedIds(){
+  const used = new Set();
+  serviceFolders.forEach(f => (f.items || []).forEach(it => (it.photos || []).forEach(p => { if(p && p.id != null) used.add(String(p.id)); })));
+  serviceCarNotes.forEach(e => (e.photos || []).forEach(p => { if(p && p.id != null) used.add(String(p.id)); }));
+  notes.forEach(n => { if(n && Array.isArray(n.photoIds)) n.photoIds.forEach(id => { if(id != null) used.add(String(id)); }); });
+  return used;
+}
+function svcpqRun(){
+  if(!currentUID || !svcPhotoQueue.length) return;
+  // Пока данные Автосервиса и «Мой автомобиль» не подтверждены сервером, "не используется"
+  // проверить нельзя — ничего не трогаем.
+  if(!serviceBaselineReady || !carBaselineReady) return;
+  const used = svcpqUsedIds();
+  const before = svcPhotoQueue.length;
+  svcPhotoQueue = svcPhotoQueue.filter(e => !used.has(String(e.photoId))); // фото вернулось — не удаляем
+  if(svcPhotoQueue.length !== before) svcpqSave();
+  const now = Date.now();
+  svcPhotoQueue.filter(e => e.deleteAfter <= now).forEach(e => {
+    if(svcpqInFlight.has(e.path)) return;
+    svcpqInFlight.add(e.path);
+    const uid = currentUID;
+    const drop = () => {
+      if(currentUID !== uid) return;
+      svcPhotoQueue = svcPhotoQueue.filter(x => x.path !== e.path);
+      svcpqSave();
+    };
+    storage.ref(e.path).delete()
+      .then(drop)
+      .catch(err => { if(err && err.code === 'storage/object-not-found') drop(); /* иначе остаётся в очереди */ })
+      .then(() => svcpqInFlight.delete(e.path));
+  });
 }
 
 // Та же идея, что и у очереди удаления фото выше: ID заявок, окончательное
@@ -8077,6 +8154,7 @@ function svcSetSyncError(code){
 function renderService(){
   const body = document.getElementById('svcBody');
   if(!body) return;
+  if(svcPhotoQueue.length) svcpqRun();
   svcRenderSyncNote();
   const q = (searchQuery || '').trim();
   if(q){
@@ -8598,7 +8676,7 @@ function svcQueuePhotoDelete(photo){
   if(!currentUID || !photo || photo.id == null) return;
   // Через общую постоянную очередь удаления: не потеряется при обрыве связи.
   // Если файла ещё нет (не успел загрузиться) — "not found" тихо снимает запись из очереди.
-  queueStorageDeletePath(svcPhotoPath(currentUID, photo.id));
+  svcpqAdd(photo.id); // отложенное удаление через 30 дней (svcpqRun)
 }
 // kind говорит, чьё это фото: 'service' (пункт папки ТО) или 'car' (запись «Мой автомобиль»),
 // чтобы результат загрузки сохранялся именно в тот объект и тем способом, которым нужно.
@@ -8651,8 +8729,8 @@ function svcApplyUploadedUrl(photoId, uid, gen, path, url){
   if(currentUID !== uid || authGeneration !== gen) return; // сменился аккаунт — ничего не трогаем
   const found = svcFindPhoto(photoId);
   if(!found){
-    // Фото (или пункт/папку) успели удалить, пока файл грузился — теперь он никому не нужен.
-    queueStorageDeletePath(path);
+    // Фото (или пункт/папку) успели удалить, пока файл грузился — удаляем так же, с отсрочкой 30 дней.
+    svcpqAdd(photoId);
     return;
   }
   if(found.p.url) return;
@@ -9125,6 +9203,7 @@ function svcSubscribe(userRef, writesAllowed){
         svcSetSyncError('');
         flushServiceFolders(); // накопленные до готовности локальные правки
         svcRetryPendingUploads(); // фото, не успевшие загрузиться до закрытия приложения
+        svcpqRun();
       }
     }
     if(touched){
@@ -9818,6 +9897,7 @@ function carSubscribe(userRef, writesAllowed){
         carSetSyncError('');
         flushCarNotes(); // накопленные до готовности локальные правки
         svcRetryPendingUploads(); // фото, не успевшие загрузиться до закрытия приложения
+        svcpqRun();
       }
     }
     if(touched){
@@ -10920,6 +11000,7 @@ auth.onAuthStateChanged(user => {
     loadSvcPendingDeletedForUID(currentUID);
     loadCarPendingDeletedForUID(currentUID);
     loadPendingPhotoDeletesForUID(currentUID);
+    svcpqLoad(currentUID);
     loadPendingDeletedNoteIdsForUID(currentUID); // именно СЕЙЧАС, когда currentUID уже точно известен — не раньше (см. комментарий у функции)
     let cacheOwner = null;
     try{ cacheOwner = localStorage.getItem(CACHE_OWNER_KEY); }catch(e){}
@@ -10977,6 +11058,7 @@ auth.onAuthStateChanged(user => {
     notesPendingVersionCheck = new Map(); // очередь на диске под прежним UID остаётся нетронутой
     notesUnderTransaction = new Map();
     pendingPhotoDeletePaths = []; // сама очередь на диске под прежним UID остаётся нетронутой
+    svcPhotoQueue = []; // отложенная очередь фото Автосервиса на диске остаётся
     pendingDeletedNoteIds = []; // очередь удаления заявок на диске под прежним UID тоже остаётся нетронутой
     svcPendingDeletedIds = []; // то же для папок Автосервиса (на диске остаётся)
     carPendingDeletedIds = []; // и для «Мой автомобиль»
