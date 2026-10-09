@@ -1087,7 +1087,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 15:51 (стороны свайпа: ★/🗑 слева от карточки, ✓ Груз доставлен справа)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 16:07 (кнопка «Загрузить платёжку» всегда видна рядом с «Загрузить заявку»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -3742,9 +3742,7 @@ function renderEditorPhotos(){
       <button class="ed-rm" data-edpdfrm="${i}">×</button>
     </div>
     ${f.url ? '' : `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">загрузка…</div>`}
-    </div>` : '').join('') + (() => { const total = photos.length + (editingNote.pdfFiles || []).length; return `<button class="ed-add-photo${total < 2 ? ' labeled' : ''}" id="edAddPhotoBtn">${
-    total === 0 ? 'Загрузить заявку' : total === 1 ? 'Загрузить платёжку' : '+'
-  }</button>`; })();
+    </div>` : '').join('') + `<button class="ed-add-photo labeled" id="edAddPhotoBtn" type="button">Загрузить заявку</button><button class="ed-add-photo labeled" id="edAddReceiptBtn" type="button">Загрузить платёжку</button>`
 }
 document.getElementById('editorOverlay').addEventListener('click', (e) => {
   const pdfRm = e.target.closest('[data-edpdfrm]');
@@ -3765,6 +3763,8 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
   if(view){ openLightbox(parseInt(view.getAttribute('data-viewphoto'))); return; }
   const add = e.target.closest('#edAddPhotoBtn');
   if(add){ openAttachSourceSheet(); return; }
+  // «Загрузить платёжку» — всегда доступна, независимо от того, есть ли вложение заявки (то же, что кнопка в «Оплате»).
+  if(e.target.closest('#edAddReceiptBtn')){ document.getElementById('photoInput').click(); return; }
   const rm = e.target.closest('[data-edphotorm]');
   if(rm){
     const idx = parseInt(rm.getAttribute('data-edphotorm'), 10);
