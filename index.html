@@ -77,6 +77,15 @@
     padding:16px 18px 16px 18px;cursor:pointer;position:relative;
     height:180px;overflow:hidden;display:flex;flex-direction:column;
     transition:transform .15s ease;touch-action:pan-y;}
+  .deliv-tag{align-self:flex-start;margin:0 0 4px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;
+    color:#15803d;background:rgba(22,163,74,.14);}
+  .swp-bg{position:absolute;border-radius:18px;overflow:hidden;background:#cbd5e1;pointer-events:none;
+    transition:background-color .18s ease,opacity .2s ease;}
+  .swp-bg.z1{background:#f59e0b;}
+  .swp-bg.z2{background:#16a34a;}
+  .swp-lab{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:flex-end;gap:8px;
+    padding-right:18px;color:#fff;font-weight:800;font-size:14px;white-space:nowrap;font-family:'Inter',sans-serif;}
+  .swp-ic{font-size:22px;line-height:1;transform-origin:center;}
   .drag-handle{position:absolute;top:50%;right:2px;transform:translateY(-50%);background:none;border:none;
     color:var(--faint);padding:10px;cursor:grab;touch-action:none;z-index:5;
     -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
@@ -1076,7 +1085,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 02:53 (в PDF добавлена кнопка «▭ Область»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 11:21 (свайп влево по заявке: ★ Избранное / ✓ Груз доставлен)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1659,6 +1668,7 @@ function noteCardHtml(n, favInfo){
     ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
     ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? `top:${(n.noNds || n.cash) ? '60px' : '38px'};` : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
     ${numberBlockHtml}
+    ${n.delivered ? '<div class="deliv-tag">✓ Доставлен</div>' : ''}
     ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
     ${n.title ? `<h4>${escapeHtml(n.title)}</h4>` : ''}
     ${body}
@@ -1863,6 +1873,55 @@ let swipedNoteId = null;
 let cardGesture = null;
 let longPressTimer = null;
 const LONG_PRESS_MS = 380;
+// ---- Свайп влево по заявке: свободное следование за пальцем + две зоны действий ----
+// Зоны по ширине карточки W: ★ Избранное — от max(64px, 22% W), ✓ Груз доставлен — от 50% W; сдвиг до 80% W.
+// Пока палец на экране, ничего не сохраняется: действие выполняется только при отпускании.
+function swpEnsure(g){
+  if(g.bg) return;
+  const card = g.card, n = notes.find(x => x.id == g.id) || {};
+  g.W = card.offsetWidth || 300;
+  g.T1 = Math.max(64, g.W * 0.22); g.T2 = g.W * 0.5; g.MAX = g.W * 0.8;
+  const bg = document.createElement('div');
+  bg.className = 'swp-bg';
+  bg.style.left = card.offsetLeft + 'px'; bg.style.top = card.offsetTop + 'px';
+  bg.style.width = card.offsetWidth + 'px'; bg.style.height = card.offsetHeight + 'px';
+  bg.innerHTML = '<div class="swp-lab"><span class="swp-txt"></span><span class="swp-ic"></span></div>';
+  g.t1 = n.favorite ? 'Из избранного' : 'Избранное';
+  g.t2 = n.delivered ? 'Снять «доставлен»' : 'Груз доставлен';
+  card.parentNode.insertBefore(bg, card);
+  g.bg = bg; g.zone = 0;
+}
+function swpUpdate(g, dx){
+  swpEnsure(g);
+  const d = Math.min(g.MAX, -dx);
+  g.card.style.transform = `translateX(${-d}px)`;
+  const zone = d >= g.T2 ? 2 : (d >= g.T1 ? 1 : 0);
+  if(zone !== g.zone){
+    g.zone = zone;
+    if(zone > 0 && navigator.vibrate) { try{ navigator.vibrate(10); }catch(_){} }
+    g.bg.classList.toggle('z1', zone === 1);
+    g.bg.classList.toggle('z2', zone === 2);
+  }
+  // подпись показываем для ближайшей/активной зоны, иконка плавно растёт по мере приближения к порогу
+  const showZ = d >= g.T2 ? 2 : 1;
+  const target = showZ === 2 ? g.T2 : g.T1;
+  const prog = Math.max(0, Math.min(1, d / target));
+  const lab = g.bg.firstChild;
+  lab.querySelector('.swp-txt').textContent = showZ === 2 ? g.t2 : g.t1;
+  const ic = lab.querySelector('.swp-ic');
+  ic.textContent = showZ === 2 ? '✓' : '★';
+  ic.style.transform = `scale(${(0.8 + 0.4 * prog).toFixed(3)})`;
+  lab.style.opacity = String(Math.min(1, d / 40).toFixed(2));
+  lab.style.width = Math.max(0, d) + 'px';
+  lab.style.left = 'auto';
+}
+function swpFinish(g, apply){
+  const card = g.card, bg = g.bg;
+  card.style.transition = 'transform .2s ease';
+  card.style.transform = '';
+  if(bg){ bg.style.opacity = '0'; }
+  setTimeout(() => { card.style.transition = ''; if(bg && bg.parentNode) bg.parentNode.removeChild(bg); }, 230);
+}
 document.getElementById('content').addEventListener('touchstart', (e) => {
   if(view !== 'notes') return;
   const card = e.target.closest('.note');
@@ -1903,8 +1962,14 @@ document.getElementById('content').addEventListener('touchmove', (e) => {
   }
   if(cardGesture.mode === 'swipe'){
     cardGesture.dx = dx;
-    const clamped = Math.max(-90, Math.min(90, dx));
     cardGesture.card.style.transition = 'none';
+    if(dx < 0){
+      // Свайп влево: карточка едет ровно за пальцем (до 80% ширины), под ней открываются зоны действий.
+      e.preventDefault();
+      swpUpdate(cardGesture, dx);
+      return;
+    }
+    const clamped = Math.min(90, dx); // вправо — удаление, как раньше
     cardGesture.card.style.transform = `translateX(${clamped}px)`;
     return;
   }
@@ -1935,11 +2000,40 @@ function showConfirm(text, onYes, onNo){
   yesBtn.addEventListener('click', onYesClick);
   noBtn.addEventListener('click', onNoClick);
 }
-function finishCardGesture(){
+function finishCardGesture(e){
   clearTimeout(longPressTimer);
   if(!cardGesture) return;
-  const { card, dx, mode, id, siblings, hoverIndex } = cardGesture;
+  const g = cardGesture;
+  const { card, dx, mode, id, siblings, hoverIndex } = g;
   cardGesture = null;
+  if(mode === 'swipe' && dx < 0){
+    const zone = (e && e.type === 'touchcancel') ? 0 : (g.zone || 0);
+    swpFinish(g);
+    if(zone === 0) return;
+    const n = notes.find(x => x.id == id);
+    if(!n) return;
+    swipedNoteId = id; // клик сразу после свайпа не должен открывать редактор
+    setTimeout(() => { if(swipedNoteId === id) swipedNoteId = null; }, 400);
+    if(zone === 1){
+      n.favorite = !n.favorite;
+      if(n.favorite){
+        const maxOrder = notes.reduce((m,x) => (x.favorite && x.id !== n.id) ? Math.max(m, x.favoriteOrder||0) : m, 0);
+        n.favoriteOrder = maxOrder + 1;
+      }
+      n.editedAt = Date.now();
+      saveState();
+      renderContent();
+      showToast(n.favorite ? 'Добавлено в избранное' : 'Убрано из избранного');
+    } else {
+      n.delivered = !n.delivered;
+      n.deliveredAt = n.delivered ? Date.now() : null;
+      n.editedAt = Date.now();
+      saveState();
+      renderContent();
+      showToast(n.delivered ? 'Груз доставлен' : 'Отметка «доставлен» снята');
+    }
+    return;
+  }
   card.style.transition = '';
   card.style.transform = '';
   if(mode === 'swipe'){
