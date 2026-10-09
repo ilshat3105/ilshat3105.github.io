@@ -113,6 +113,9 @@
   .paid-dot-inline.gray{background:#9aa0a6;}
   .paid-dot-inline.partial{background:var(--warning);}
   .paid-dot-inline.over{background:#8d6748;}
+  .note .flag-tag.pay-word.full{color:#1e7e34;}
+  .note .flag-tag.pay-word.partial{color:var(--tint-warn-text);}
+  .inc-card .inc-return{background:none;border:1px solid var(--card-line);border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;color:#2563eb;cursor:pointer;font-family:'Inter',sans-serif;}
   .paid-check-inline{width:15px;height:15px;flex-shrink:0;color:#2f7de1;}
   .note .flag-tags{position:absolute;top:34px;right:14px;display:flex;gap:4px;}
   .note .flag-tag{font-size:10px;font-weight:700;color:var(--muted);white-space:nowrap;}
@@ -1087,7 +1090,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 16:07 (кнопка «Загрузить платёжку» всегда видна рядом с «Загрузить заявку»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 18:13 (доставленные без суммы тоже уходят с главной в «Доходы»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1543,7 +1546,8 @@ function filtered(){
   let list = notes.filter(n => {
     if(view === 'trash') return n.trashed;
     if(view === 'archive') return n.archived && !n.trashed;
-    return !n.archived && !n.trashed;
+    // главная = только активные (недоставленные) заявки; доставленные — всегда в «Доходах» (даже без суммы)
+    return !n.archived && !n.trashed && !n.delivered;
   });
   if(searchQuery.trim()){
     const q = searchQuery.trim().toLowerCase();
@@ -1622,6 +1626,11 @@ function isOverdue(n){
   return !!(dueAt && dueAt < Date.now() && getPaymentStatus(n) !== 'full');
 }
 
+// Статус оплаты словами (цветная точка — только дополнительная подсказка).
+function paymentWord(n){
+  const st = getPaymentStatus(n);
+  return st === 'full' ? 'оплачено' : st === 'partial' ? 'частично оплачено' : 'не оплачено';
+}
 function noteCardHtml(n, favInfo){
   const photos = n.photos || [];
   const pdfs = (n.pdfFiles || []).filter(Boolean);
@@ -1665,10 +1674,10 @@ function noteCardHtml(n, favInfo){
     ${n.favorite ? `<button class="drag-handle" data-drag="${n.id}" aria-label="Изменить порядок в избранном">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
     </button>` : ''}
-    ${n.pinned ? `<span class="pin" style="${n.amount ? `top:${(n.noNds || n.cash) ? '54px' : '34px'};` : ''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l1.5 5.5L19 9l-5 3 1 6-3-3-3 3 1-6-5-3 5.5-1.5z"/></svg></span>` : ''}
+    ${n.pinned ? `<span class="pin" style="${n.amount ? 'top:54px;' : ''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l1.5 5.5L19 9l-5 3 1 6-3-3-3 3 1-6-5-3 5.5-1.5z"/></svg></span>` : ''}
     ${n.amount ? `<div class="amount-badge"><span class="paid-dot-inline ${payColor}"></span>${formatAmount(n.amount)}</div>` : ''}
-    ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
-    ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? `top:${(n.noNds || n.cash) ? '60px' : '38px'};` : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
+    ${(n.amount || n.noNds || n.cash) ? `<div class="flag-tags">${n.amount ? `<span class="flag-tag pay-word ${getPaymentStatus(n)}">${paymentWord(n)}</span>` : ''}${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
+    ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? 'top:60px;' : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
     ${numberBlockHtml}
     ${n.delivered ? '<div class="deliv-tag">✓ Доставлен</div>' : ''}
     ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
@@ -2043,7 +2052,7 @@ function finishCardGesture(e){
       n.editedAt = Date.now();
       saveState();
       renderContent();
-      showToast(n.delivered ? 'Груз доставлен' : 'Отметка «доставлен» снята');
+      showToast(n.delivered ? 'Груз доставлен — заявка перенесена в «Доходы»' : 'Отметка «доставлен» снята');
     }
     return;
   }
@@ -7039,14 +7048,18 @@ function computeIncomeMonth(offset){
   const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
   const key = offset ? monthKeyShift(nowKey, offset) : nowKey;
   const list = notes.filter(n => {
-    if(n.trashed || n.archived || !n.amount || !n.createdAt) return false;
+    // без суммы показываем только доставленные (иначе они бы нигде не были видны); в денежные итоги они не входят
+    if(n.trashed || n.archived || !(n.amount || n.delivered)) return false;
+    if(n.amount && !n.createdAt) return false;
     if(incShowAllTime) return true;
+    if(!n.createdAt) return false;
     const d = new Date(n.createdAt);
     return (d.getFullYear() + '-' + (d.getMonth() + 1)) === key;
   });
   let total = 0, paidTotal = 0, unpaidTotal = 0, partialTotal = 0;
   let fullCount = 0, partialCount = 0, noneCount = 0;
   list.forEach(n => {
+    if(!n.amount){ noneCount++; return; } // доставлена, а сумма не указана — в итоги не входит
     total += n.amount;
     const status = getPaymentStatus(n);
     if(status === 'full'){ paidTotal += n.amount; fullCount++; }
@@ -7118,35 +7131,52 @@ function renderIncome(){
   document.getElementById('incOverdueBtn').classList.toggle('has-overdue', hasOverdue);
   const { list } = computeIncomeMonth(viewedIncMonthOffset);
   const filtered = incFilter === 'all' ? list
-    : incFilter === 'overdue' ? list.filter(n => isOverdue(n))
+    : incFilter === 'overdue' ? list.filter(n => n.amount && isOverdue(n))
     : list.filter(n => getPaymentStatus(n) === incFilter);
   const el = document.getElementById('incList');
   if(!filtered.length){
     el.innerHTML = `<div class="empty">Заявок по этому фильтру ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
     return;
   }
-  const sorted = filtered.slice().sort((a,b) => b.createdAt - a.createdAt);
+  const sorted = filtered.slice().sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
   el.innerHTML = sorted.map(n => {
     const status = getPaymentStatus(n);
-    const statusLabel = status === 'full' ? 'оплачено' : status === 'partial' ? 'частично' : 'не оплачено';
+    const payLabel = status === 'full' ? 'Оплачено' : status === 'partial' ? 'Частично оплачено' : 'Не оплачено';
+    const statusLabel = n.delivered ? 'Доставлено · ' + payLabel : payLabel;
     const route = n.title || (n.text || '').split('\n')[0].replace(/^Груз:\s*/, '') || 'Без названия';
-    const amountLine = status === 'partial'
+    const amountLine = !n.amount ? '<span style="font-size:12.5px;font-weight:600;color:var(--muted);">Сумма не указана</span>'
+      : status === 'partial'
       ? `${formatAmount(n.paidAmount || 0)} из ${formatAmount(n.amount)}`
       : formatAmount(n.amount);
     return `
       <div class="inc-card" data-incopen="${n.id}">
         <div class="inc-main">
           <span class="inc-route">${escapeHtml(route)}</span>
-          <span class="inc-meta">${n.number ? '№' + n.number + ' · ' : ''}${formatNoteDate(n.createdAt)}</span>
+          <span class="inc-meta">${n.number ? '№' + n.number + ' · ' : ''}${n.createdAt ? formatNoteDate(n.createdAt) : ''}</span>
         </div>
         <div class="inc-right">
           <span class="inc-amount">${amountLine}</span>
           <span class="inc-status ${status}">${statusLabel}</span>
+          ${n.delivered ? `<button type="button" class="inc-return" data-increturn="${n.id}">↩ Вернуть в Заявки</button>` : ''}
         </div>
       </div>`;
   }).join('');
 }
 document.getElementById('incList').addEventListener('click', (e) => {
+  const ret = e.target.closest('[data-increturn]');
+  if(ret){
+    // Возврат в «Заявки»: только снимаем отметку — фото, PDF, суммы, оплаты, сроки и статус оплаты не трогаем.
+    const rn = notes.find(x => x.id == ret.getAttribute('data-increturn'));
+    if(rn){
+      rn.delivered = false;
+      rn.deliveredAt = null;
+      rn.editedAt = Date.now();
+      saveState();
+      renderIncome();
+      showToast('Заявка возвращена в «Заявки»');
+    }
+    return;
+  }
   const card = e.target.closest('[data-incopen]');
   if(!card) return;
   const n = notes.find(x => x.id == card.getAttribute('data-incopen'));
