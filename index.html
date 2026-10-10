@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-09 21:41 (фото Автосервиса и «Мой автомобиль»: удаление из хранилища через 30 дней)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-10 21:48 (карточки «Заявки»: убраны зелёная точка и подпись «оплачено»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1667,7 +1667,6 @@ function noteCardHtml(n, favInfo){
     </div>`;
   }
 
-  const payColor = getPaymentColorClass(n);
   const favNum = favInfo ? favInfo.rank : null;
   const numberBlockHtml = n.favorite
     ? `<div class="note-num fav-row">
@@ -1681,8 +1680,8 @@ function noteCardHtml(n, favInfo){
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
     </button>` : ''}
     ${n.pinned ? `<span class="pin" style="${n.amount ? 'top:54px;' : ''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l1.5 5.5L19 9l-5 3 1 6-3-3-3 3 1-6-5-3 5.5-1.5z"/></svg></span>` : ''}
-    ${n.amount ? `<div class="amount-badge"><span class="paid-dot-inline ${payColor}"></span>${formatAmount(n.amount)}</div>` : ''}
-    ${(n.amount || n.noNds || n.cash) ? `<div class="flag-tags">${n.amount ? `<span class="flag-tag pay-word ${getPaymentStatus(n)}">${paymentWord(n)}</span>` : ''}${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
+    ${n.amount ? `<div class="amount-badge">${formatAmount(n.amount)}</div>` : ''}
+    ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
     ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? 'top:60px;' : ''}${n.favorite ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
     ${numberBlockHtml}
     ${n.delivered ? '<div class="deliv-tag">✓ Доставлен</div>' : ''}
