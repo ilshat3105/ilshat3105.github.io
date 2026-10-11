@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-11 20:22 (PDF-платёжка: сумма из поля «Сумма» подставляется в окно подтверждения)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-11 21:20 (PDF-платёжка: сумма берётся по положению рядом с подписью «Сумма» — настоящие банковские бланки)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4487,12 +4487,44 @@ function extractPaymentAmountFromPdfText(text){
   }
   return found.size === 1 ? Array.from(found)[0] : null;
 }
+// То же по ПОЛОЖЕНИЮ слов на странице (настоящие банковские PDF: подпись «Сумма» стоит в рамке слева-снизу,
+// а число «5000-00» лежит правее и чуть выше неё — в текстовом порядке число оказывается ДО подписи).
+// items: [{ str, x, y, w }] из page.getTextContent(). Ищем подпись «Сумма» (не «Сумма прописью» / «Сумма НДС»)
+// и числовой элемент справа от неё в пределах ~25 пунктов по высоте. Больше 8 цифр, даты и 0 — не сумма.
+// Один уверенный ответ → целые рубли, иначе null.
+function extractPaymentAmountFromPdfItems(items){
+  const norm = (x) => String(x == null ? '' : x).toLowerCase().replace(/ё/g, 'е').replace(/[\u00a0\u202f\u2009]/g, ' ').trim();
+  const list = (items || []).filter(it => it && typeof it.str === 'string' && it.str.trim() && isFinite(it.x) && isFinite(it.y));
+  const NUM = /^(\d{1,3}(?: \d{3})+|\d+)(?:\s*[-=–—.,]\s*(\d{2}))?\s*=?$/;
+  const found = new Set();
+  list.forEach(lb => {
+    if(norm(lb.str).replace(/[:.]$/, '') !== 'сумма') return;
+    const w = lb.w || 25;
+    // «Сумма прописью» / «Сумма НДС» / «Сумма налога»: рядом (справа или прямо под подписью) стоит такое слово
+    const isOther = list.some(o => o !== lb && /^(прописью|ндс|налога)/.test(norm(o.str)) &&
+      o.x >= lb.x - 5 && o.x <= lb.x + w + 120 && o.y <= lb.y + 6 && o.y >= lb.y - 18);
+    if(isOther) return;
+    list.forEach(c => {
+      if(c === lb) return;
+      const m = NUM.exec(norm(c.str));
+      if(!m) return;
+      if(c.x < lb.x + w * 0.5 || c.x > lb.x + w + 160) return;   // правее подписи, но не в соседней колонке
+      if(Math.abs(c.y - lb.y) > 25) return;                       // примерно на той же строке рамки
+      const intStr = m[1].replace(/ /g, '');
+      if(intStr.length > 8) return;
+      const val = parseInt(intStr, 10);
+      if(!(val >= 1 && val <= 50000000)) return;
+      found.add(val);
+    });
+  });
+  return found.size === 1 ? Array.from(found)[0] : null;
+}
 async function pdfReceiptRecognize(id, buf){
   const noteRef = editingNote;
   if(!noteRef) return;
   ocrPendingPhotos.add(id);
   renderEditorPhotos();
-  let text = null, viaText = false;
+  let text = null, viaText = false, amountItems = null;
   try{
     const lib = await loadPdfJs();
     const doc = await lib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
@@ -4501,7 +4533,14 @@ async function pdfReceiptRecognize(id, buf){
       let t = '';
       try{ t = await pdfPageText(page); }catch(e){}
       const letters = (t.match(/[A-Za-zА-Яа-яЁё]/g) || []).length;
-      if(t.replace(/\s+/g, '').length >= 80 && letters >= 30){ text = t; viaText = true; }
+      if(t.replace(/\s+/g, '').length >= 80 && letters >= 30){
+        text = t; viaText = true;
+        try{
+          const tc = await page.getTextContent();
+          amountItems = (tc.items || []).filter(it => it && typeof it.str === 'string' && it.transform)
+            .map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0 }));
+        }catch(e){}
+      }
       else if(window.Tesseract){
         let dataUrl;
         try{ dataUrl = (await pdfPrepareScan(page)).dataUrl; }
@@ -4517,9 +4556,9 @@ async function pdfReceiptRecognize(id, buf){
   }
   if(editingNote !== noteRef) return;
   if(text == null){ showToast('Не удалось распознать платёжку — сумму можно ввести в «Оплате»', 4500); return; }
-  await pdfReceiptApply(text, id, noteRef, viaText);
+  await pdfReceiptApply(text, id, noteRef, viaText, amountItems);
 }
-async function pdfReceiptApply(text, id, noteRef, viaText){
+async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
   const findF = () => (editingNote === noteRef ? (editingNote.pdfFiles || []).findIndex(x => x && x.id === id) : -1);
   let k = findF();
   if(k === -1) return; // файл успели удалить, пока шло распознавание
@@ -4542,7 +4581,12 @@ async function pdfReceiptApply(text, id, noteRef, viaText){
   }
   // Сумма из текстового слоя PDF только ПОДСТАВЛЯЕТСЯ в окно — в «Расчёт» она попадает лишь после подтверждения пользователем.
   // Не нашли уверенно (или это скан, где текст неточный) — как раньше, остаток по заявке.
-  const suggested = viaText ? extractPaymentAmountFromPdfText(text) : null;
+  // Сначала по положению слов (настоящие банковские бланки), затем по порядку текста («Сумма 16000=» подряд).
+  let suggested = null;
+  if(viaText){
+    suggested = extractPaymentAmountFromPdfItems(amountItems);
+    if(suggested == null) suggested = extractPaymentAmountFromPdfText(text);
+  }
   const choice = await askPaymentChoice(suggested);
   k = findF();
   if(choice && k !== -1){
