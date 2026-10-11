@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-11 18:11 (PDF-платёжка: «Платёжное поручение» через «ё» теперь распознаётся)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-11 20:22 (PDF-платёжка: сумма из поля «Сумма» подставляется в окно подтверждения)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4467,12 +4467,32 @@ function pdfRenderPlainPage(page){
     const url = cv.toDataURL('image/jpeg', 0.92); cv.width = cv.height = 0; return url;
   });
 }
+// Сумма платёжки из ТЕКСТОВОГО слоя PDF. Ищем число только сразу после слова «Сумма» (поле платёжного поручения):
+// «Сумма 16000=», «Сумма: 16 000», «Сумма 16000-00». Не берём «Сумма прописью» / «Сумма НДС» / «Сумма налога»,
+// длинные числа (ИНН, КПП, БИК, счета — больше 8 цифр) и даты. Если кандидатов несколько и они разные,
+// или сумма явно странная — возвращаем null (вызывающий код тогда подставляет остаток по заявке).
+// Возвращает целые рубли (как parseExactAmount) или null.
+function extractPaymentAmountFromPdfText(text){
+  const t = String(text || '').toLowerCase().replace(/ё/g, 'е').replace(/[   ]/g, ' ');
+  // «сумма» [:] число [= | -00 | .00]; число — с пробелами-разрядами или без; после числа не должно идти ни цифры, ни продолжения даты
+  const re = /(?:^|[^а-яa-z])сумма(?!\s*(?:прописью|налога|ндс|в\s*т\.?\s*ч))\s*[:.]?\s*(\d{1,3}(?: \d{3})+|\d+)(?![.\/]\d{1,2}[.\/]\d{2,4})(?:\s*[-=–—.,]\s*\d{2})?(?!\d)/g;
+  const found = new Set();
+  let m;
+  while((m = re.exec(t))){
+    const intStr = m[1].replace(/ /g, '');
+    if(intStr.length > 8) continue; // ИНН / КПП / БИК / счёт, а не сумма
+    const val = parseInt(intStr, 10);
+    if(!(val >= 1 && val <= 50000000)) continue; // нулевая или явно странная сумма
+    found.add(val);
+  }
+  return found.size === 1 ? Array.from(found)[0] : null;
+}
 async function pdfReceiptRecognize(id, buf){
   const noteRef = editingNote;
   if(!noteRef) return;
   ocrPendingPhotos.add(id);
   renderEditorPhotos();
-  let text = null;
+  let text = null, viaText = false;
   try{
     const lib = await loadPdfJs();
     const doc = await lib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise;
@@ -4481,7 +4501,7 @@ async function pdfReceiptRecognize(id, buf){
       let t = '';
       try{ t = await pdfPageText(page); }catch(e){}
       const letters = (t.match(/[A-Za-zА-Яа-яЁё]/g) || []).length;
-      if(t.replace(/\s+/g, '').length >= 80 && letters >= 30){ text = t; }
+      if(t.replace(/\s+/g, '').length >= 80 && letters >= 30){ text = t; viaText = true; }
       else if(window.Tesseract){
         let dataUrl;
         try{ dataUrl = (await pdfPrepareScan(page)).dataUrl; }
@@ -4497,9 +4517,9 @@ async function pdfReceiptRecognize(id, buf){
   }
   if(editingNote !== noteRef) return;
   if(text == null){ showToast('Не удалось распознать платёжку — сумму можно ввести в «Оплате»', 4500); return; }
-  await pdfReceiptApply(text, id, noteRef);
+  await pdfReceiptApply(text, id, noteRef, viaText);
 }
-async function pdfReceiptApply(text, id, noteRef){
+async function pdfReceiptApply(text, id, noteRef, viaText){
   const findF = () => (editingNote === noteRef ? (editingNote.pdfFiles || []).findIndex(x => x && x.id === id) : -1);
   let k = findF();
   if(k === -1) return; // файл успели удалить, пока шло распознавание
@@ -4520,8 +4540,10 @@ async function pdfReceiptApply(text, id, noteRef){
     }
     editingNote.pdfFiles[k].number = orderNumber;
   }
-  // Сумму, как и для фото, автоматически не берём — её подтверждает сам пользователь.
-  const choice = await askPaymentChoice();
+  // Сумма из текстового слоя PDF только ПОДСТАВЛЯЕТСЯ в окно — в «Расчёт» она попадает лишь после подтверждения пользователем.
+  // Не нашли уверенно (или это скан, где текст неточный) — как раньше, остаток по заявке.
+  const suggested = viaText ? extractPaymentAmountFromPdfText(text) : null;
+  const choice = await askPaymentChoice(suggested);
   k = findF();
   if(choice && k !== -1){
     editingNote.paymentAuto = false;
@@ -6276,13 +6298,13 @@ function extractOrderNumberFromOcrText(text){
 // Если сразу несколько фото подряд определились как платёжки, окна выбора не должны
 // накладываться друг на друга — показываем их строго по очереди, одно за другим.
 let payChoiceChain = Promise.resolve();
-function askPaymentChoice(){
+function askPaymentChoice(suggestedAmount){
   const run = () => new Promise((resolve) => {
     const overlay = document.getElementById('payChoiceOverlay');
     overlay.classList.add('show');
     const amountInput = document.getElementById('payChoiceAmountInput');
     const remaining = editingNote.amount ? Math.max(editingNote.amount - sumPayments(editingNote), 0) : null;
-    amountInput.value = remaining || '';
+    amountInput.value = suggestedAmount || remaining || '';
     const cleanup = (result) => {
       overlay.classList.remove('show');
       amountConfirmBtn.removeEventListener('click', onAmountConfirm);
