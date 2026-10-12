@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 13:49 (платёжки — фото и PDF — теперь в списке оплат рядом с суммой)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 17:42 (повторы загрузки PDF: редкие, с нарастающей паузой, не в офлайне)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1629,12 +1629,11 @@ function renderPaymentEntryList(){
   const thumbHtml = (r) => r.t === 'photo'
     ? `<div style="${TH}"><img src="${photoSrcById(photos[r.i], ids[r.i])}" data-viewphoto="${r.i}" style="width:100%;height:100%;object-fit:cover;"><button type="button" data-edphotorm="${r.i}" style="${X}" aria-label="Удалить платёжку">×</button></div>`
     : `<div style="${TH}" data-viewpdf="${r.k}">${pdfs[r.k].thumb ? `<img src="${pdfs[r.k].thumb}" style="width:100%;height:100%;object-fit:cover;">` : '<div class="pdf-ph">PDF</div>'}<span class="pdf-badge">PDF</span><button type="button" data-edpdfrm="${r.k}" style="${X}" aria-label="Удалить платёжку">×</button></div>`;
-  const numOf = (r) => { const n = r.t === 'photo' ? nums[r.i] : (pdfs[r.k] || {}).number; return n ? 'платёжка № ' + escapeHtml(String(n)) : 'платёжка'; };
+  const numOf = (r) => { const n = r.t === 'photo' ? nums[r.i] : (pdfs[r.k] || {}).number; return (n ? 'платёжка № ' + escapeHtml(String(n)) : 'платёжка') + ((r.t === 'pdf' && !pdfs[r.k].url) ? ' · ⏳ ждёт загрузки в облако' : ''); };
   const statusOf = (r) => {
     const id = r.t === 'photo' ? ids[r.i] : (pdfs[r.k] || {}).id;
     if(ocrPendingPhotos.has(id)) return 'распознаю…';
-    if(r.t === 'pdf' && !pdfs[r.k].url) return 'загрузка…';
-    return 'сумма не указана';
+        return 'сумма не указана';
   };
   const ROW = 'display:flex;align-items:center;gap:12px;padding:6px 2px;border-bottom:1px solid var(--card-line, #eceff2);';
   const linked = new Set(payments.map(pm => pm.photoId).filter(Boolean));
@@ -3880,7 +3879,7 @@ function renderEditorPhotos(){
       <span class="pdf-badge">PDF</span>
       <button class="ed-rm" data-edpdfrm="${i}">×</button>
     </div>
-    ${f.url ? '' : `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">загрузка…</div>`}
+    ${f.url ? '' : `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">⏳ ждёт загрузки в облако</div>`}
     ${ocrPendingPhotos.has(f.id) ? `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">распознаю…</div>` : (f.kind === 'receipt' ? `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">платёжка</div>` : '')}
     </div>` : '').join('') + `<button class="ed-add-photo labeled" id="edAddPhotoBtn" type="button">Загрузить заявку</button>`;
   renderPaymentEntryList();
@@ -4364,9 +4363,16 @@ function pdfDbPut(uid, id, blob){ return pdfDbOp('readwrite', st => st.put(blob,
 function pdfDbGet(uid, id){ return pdfDbOp('readonly', st => st.get(pdfDbKey(uid, id))).then(v => (v && v !== true) ? v : null); }
 function pdfDbDel(uid, id){ return pdfDbOp('readwrite', st => st.delete(pdfDbKey(uid, id))); }
 
+function pdfLocalOwnerUid(){
+  if(currentUID) return currentUID;
+  try{ return localStorage.getItem(CACHE_OWNER_KEY) || null; }catch(e){ return null; }
+}
+
 // ---- удаление ----
 function deletePdfFromStorage(id){
-  if(!currentUID || !id) return;
+  if(!id) return;
+  pdfClearRetry(id); pdfUploadTries.delete(id);
+  if(!currentUID){ const o = pdfLocalOwnerUid(); if(o) pdfDbDel(o, id); return; } // вход не подтверждён: файл в облаке ещё не мог появиться (url нет) — убираем только локальную копию
   pdfDbDel(currentUID, id);
   queueStorageDeletePath('users/' + currentUID + '/photos/' + id + '.pdf');
 }
@@ -4374,8 +4380,25 @@ function deletePdfFromStorage(id){
 // ---- загрузка в Storage ----
 const pdfPendingUpload = new Set();
 const pdfUploadTries = new Map();
+// Периодический повтор после неудачи — редкий, с нарастающей паузой: 5 → 15 → 30 → дальше раз в час.
+// Основной упор на события (запуск, возврат сети, подтверждение входа): они пробуют сразу и обнуляют паузу.
+const pdfRetryTimers = new Map();
+function pdfBackoffMs(tries){ return [5, 15, 30, 60][Math.min(Math.max(tries, 1), 4) - 1] * 60000; }
+function pdfClearRetry(id){ const t = pdfRetryTimers.get(id); if(t){ clearTimeout(t); pdfRetryTimers.delete(id); } }
+function pdfScheduleRetry(id, uid, tries){
+  pdfClearRetry(id);
+  const delay = pdfBackoffMs(tries);
+  const t = setTimeout(() => {
+    pdfRetryTimers.delete(id);
+    if(currentUID !== uid) return;                            // аккаунт сменился / вышли — файл останется до подтверждения владельца
+    if(typeof navigator !== 'undefined' && navigator.onLine === false){ pdfScheduleRetry(id, uid, tries); return; } // офлайн: ничего не отправляем, пауза не растёт
+    uploadPdf(id);
+  }, delay);
+  pdfRetryTimers.set(id, t);
+}
 async function uploadPdf(id){
   if(!currentUID || !id || pdfPendingUpload.has(id)) return;
+  pdfClearRetry(id);
   pdfPendingUpload.add(id);
   const uid = currentUID;
   const path = 'users/' + uid + '/photos/' + id + '.pdf';
@@ -4398,7 +4421,7 @@ async function uploadPdf(id){
     console.warn('PDF не загрузился в облако (осталось локально):', err);
     const tries = (pdfUploadTries.get(id) || 0) + 1;
     pdfUploadTries.set(id, tries);
-    if(tries < 6) setTimeout(() => { if(currentUID === uid) uploadPdf(id); }, 15000);
+    pdfScheduleRetry(id, uid, tries); // без предела числа попыток, но с нарастающей паузой (плюс события: запуск, сеть, вход)
   } finally {
     pdfPendingUpload.delete(id);
   }
@@ -4421,14 +4444,17 @@ function applyUploadedPdfUrl(id, uid, path, url){
   });
   if(editingNote) (editingNote.pdfFiles || []).forEach(f => { if(f && f.id === id){ found = true; f.url = url; } });
   if(!found){ queueStorageDeletePath(path); pdfDbDel(uid, id); return; } // PDF успели убрать из заявки
-  pdfUploadTries.delete(id);
+  pdfUploadTries.delete(id); pdfClearRetry(id); // успех: пауза обнулена
   if(changed){ saveState(); scheduleCloudSave(); }
   renderContent();
   if(editingNote) renderEditorPhotos();
 }
 function retryPendingPdfUploads(){
   if(!currentUID) return;
-  notes.forEach(n => (n && n.pdfFiles || []).forEach(f => { if(f && f.id && !f.url){ pdfUploadTries.delete(f.id); uploadPdf(f.id); } }));
+  const seen = new Set();
+  const go = (f) => { if(f && f.id && !f.url && !seen.has(f.id)){ seen.add(f.id); pdfUploadTries.delete(f.id); uploadPdf(f.id); } };
+  notes.forEach(n => (n && n.pdfFiles || []).forEach(go));
+  if(editingNote) (editingNote.pdfFiles || []).forEach(go); // заявка ещё открыта в редакторе
 }
 
 // ---- получение байтов PDF (локально, иначе по ссылке) ----
@@ -4465,7 +4491,11 @@ async function addPdfFromFile(file, kind){
   const list = editingNote.pdfFiles = editingNote.pdfFiles || [];
   if(list.length >= PDF_MAX_FILES){ showToast('Не больше ' + PDF_MAX_FILES + ' PDF в заявке'); return; }
   if(file.size > PDF_MAX_BYTES){ showToast('PDF больше 25 МБ — слишком большой'); return; }
-  if(!currentUID){ showToast('Войдите в аккаунт, чтобы сохранить PDF'); return; }
+  // Firebase Auth без сети подтверждает вход долго — currentUID ещё null. Владельца локальной копии берём из владельца
+  // локального кэша заявок (CACHE_OWNER_KEY). Это только локальная привязка файла: в облако он уйдёт лишь когда Firebase
+  // реально подтвердит ТОГО ЖЕ пользователя (uploadPdf требует currentUID, а копия лежит под ключом uid:id).
+  const ownerUid = pdfLocalOwnerUid();
+  if(!ownerUid){ showToast('Нужен вход в аккаунт. Подключитесь к интернету один раз.', 4000); return; }
   showToast('Обрабатываю PDF…', 2500);
   let buf;
   try{ buf = await file.arrayBuffer(); }catch(e){ showToast('Не удалось прочитать файл'); return; }
@@ -4481,7 +4511,8 @@ async function addPdfFromFile(file, kind){
     try{ doc.destroy(); }catch(e){}
   }catch(e){ noPreview = true; console.warn('PDF: превью не получилось', e); }
   if(!editingNote) return; // редактор закрыли, пока обрабатывали
-  const uid = currentUID;
+  const uid = pdfLocalOwnerUid();
+  if(!uid){ showToast('Нужен вход в аккаунт. Подключитесь к интернету один раз.', 4000); return; }
   await pdfDbPut(uid, id, new Blob([buf], { type: 'application/pdf' }));
   editingNote.pdfFiles = editingNote.pdfFiles || [];
   const entry = { id, name: String(file.name || 'document.pdf').slice(0, 120), size: file.size, pages, url: null, thumb };
