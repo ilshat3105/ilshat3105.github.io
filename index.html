@@ -204,6 +204,7 @@
     display:flex;align-items:center;justify-content:center;z-index:5;box-shadow:0 2px 8px rgba(0,0,0,.35);}
   .lightbox .lb-prev{left:10px;}
   .lightbox .lb-next{right:10px;}
+  .lightbox .lb-caption{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);max-width:84%;color:#fff;font-size:15px;font-weight:600;text-align:center;background:rgba(0,0,0,.6);padding:6px 12px;border-radius:12px;z-index:5;display:none;word-break:break-word;}
   .lightbox .lb-count{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
     color:#fff;font-size:12.5px;background:rgba(0,0,0,.55);padding:4px 10px;border-radius:10px;z-index:5;}
   .lightbox .lb-ocr-btn{position:absolute;bottom:14px;right:14px;background:rgba(37,99,235,.85);
@@ -733,6 +734,11 @@
   .svc-ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer;}
   .svc-ph-rm{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:13px;border:none;
     background:rgba(0,0,0,.6);color:#fff;font-size:16px;line-height:1;cursor:pointer;padding:0;}
+  .svc-phcell{min-width:0;}
+  .svc-ph-cap{font-size:12px;line-height:1.25;color:var(--ink);margin-top:3px;word-break:break-word;text-align:center;}
+  .svc-ph-edit{position:absolute;top:4px;left:4px;width:26px;height:26px;border-radius:13px;border:none;
+    background:rgba(0,0,0,.6);color:#fff;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;}
+  .svc-ph-edit svg{width:14px;height:14px;}
   .svc-ph-st{position:absolute;left:0;right:0;bottom:0;font-size:11px;text-align:center;padding:3px 2px;
     background:rgba(0,0,0,.55);color:#fff;}
   .svc-ph-st.err{background:rgba(176,42,55,.9);}
@@ -1098,7 +1104,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 20:23 («Мой автомобиль» → Файлы: название документа отдельно от имени файла)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 20:50 («Мой автомобиль»: название у фото — окно, подпись, ✎, просмотр, поиск)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1269,6 +1275,7 @@
     <button class="lb-ocr-btn" id="lbOcrBtn" title="Распознать текст с фото">Aa</button>
     <div class="lb-lens-hint" id="lbLensHint">Долгое нажатие на фото → «Найти через Google Объектив» — так текст распознаётся точнее всего</div>
     <div class="lb-select-hint" id="lbSelectHint">Проведите пальцем прямоугольник по нужному участку фото</div>
+    <div class="lb-caption" id="lbCaption"></div>
     <div class="lb-count" id="lbCount"></div>
   </div>
 
@@ -1290,6 +1297,7 @@
   <div class="confirm-overlay" id="fileTitleOverlay">
     <div class="confirm-card">
       <h4 id="fileTitleHead">Название документа</h4>
+      <img id="fileTitlePreview" alt="" style="display:none;max-height:150px;max-width:100%;border-radius:10px;align-self:center;object-fit:contain;">
       <input id="fileTitleInput" class="svc-dfield" maxlength="120" autocomplete="off" enterkeyhint="done" placeholder="Например, «Схема пневмоподвески»" style="text-align:left;">
       <div class="confirm-btns">
         <button class="confirm-btn no" id="fileTitleNo" type="button">Отмена</button>
@@ -3973,8 +3981,10 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
 let lbIndex = 0;
 let lightboxPhotos = null;
 let lightboxPhotoIds = null;
-function openLightbox(i, photosArr, photoIdsArr){
+let lightboxCaptions = null; // подписи к фото (по индексам), если есть; иначе null
+function openLightbox(i, photosArr, photoIdsArr, captionsArr){
   lbIndex = i;
+  lightboxCaptions = captionsArr || null;
   lightboxPhotos = photosArr || null;
   // Открытие фото прямо с главного списка (карточка заявки) идёт без открытия
   // самого редактора — editingNote в этот момент равен null. Раньше renderLightbox()
@@ -3995,6 +4005,9 @@ function renderLightbox(){
   offlineOnPhotoOpened(lbIds[lbIndex], photos[lbIndex]); // реальное открытие фото: «последнее открытие» и сохранение копии
   document.getElementById('lbImg').src = photoSrcById(photos[lbIndex], lbIds[lbIndex]);
   document.getElementById('lbCount').textContent = `${lbIndex+1} / ${photos.length}`;
+  const capEl = document.getElementById('lbCaption');
+  const cap = lightboxCaptions && lightboxCaptions[lbIndex] ? String(lightboxCaptions[lbIndex]) : '';
+  capEl.textContent = cap; capEl.style.display = cap ? 'block' : 'none';
   const multi = photos.length > 1;
   document.getElementById('lbPrev').style.display = multi ? 'flex' : 'none';
   document.getElementById('lbNext').style.display = multi ? 'flex' : 'none';
@@ -4004,6 +4017,7 @@ document.getElementById('lbClose').addEventListener('click', () => {
   document.getElementById('lightbox').classList.remove('show');
   lightboxPhotos = null;
   lightboxPhotoIds = null;
+  lightboxCaptions = null;
 });
 // Если фото приблизили пальцами (щипком) перед распознаванием — вырезаем именно ту
 // область, что видна на экране прямо сейчас, а не всё фото целиком. Меньше лишнего
@@ -7930,6 +7944,8 @@ function svcSanitizePhotos(raw){
     seen.add(id);
     const ph = { id, url };
     if(local) ph.local = local;
+    const ti = typeof p.title === 'string' ? p.title.trim().slice(0, 120) : '';
+    if(ti) ph.title = ti; // подпись фото «Мой автомобиль» (ключ только когда она есть — Firestore не принимает undefined)
     out.push(ph);
   });
   return out;
@@ -9168,7 +9184,7 @@ function svcDetailTarget(){
   const it = f && f.items.find(i => i.id === svcDetail.itemId);
   return it ? { f, it } : null;
 }
-function svcPhotosHtml(it){
+function svcPhotosHtml(it, withTitles){
   const ps = it.photos || [];
   if(!ps.length) return '';
   return '<div class="svc-photos">' + ps.map(p => {
@@ -9177,6 +9193,10 @@ function svcPhotosHtml(it){
     const st = p.url ? '' : (svcPhotoError.has(p.id)
       ? `<div class="svc-ph-st err" title="${escapeHtml(svcPhotoError.get(p.id))}">ошибка загрузки</div>`
       : '<div class="svc-ph-st">загружается…</div>');
+    if(withTitles){
+      // «Мой автомобиль»: ✎ — изменить название; подпись под миниатюрой только если она есть
+      return `<div class="svc-phcell"><div class="svc-ph"><img src="${escapeHtml(src)}" data-det-photo="${id}" alt=""><button class="svc-ph-edit" type="button" data-det-phtitle="${id}" aria-label="Изменить название фото">${SVC_EDIT_SVG}</button><button class="svc-ph-rm" type="button" data-det-phrm="${id}" aria-label="Удалить фото">×</button>${st}</div>${p.title ? `<div class="svc-ph-cap">${escapeHtml(p.title)}</div>` : ''}</div>`;
+    }
     return `<div class="svc-ph"><img src="${escapeHtml(src)}" data-det-photo="${id}" alt=""><button class="svc-ph-rm" type="button" data-det-phrm="${id}" aria-label="Удалить фото">×</button>${st}</div>`;
   }).join('') + '</div>';
 }
@@ -9308,7 +9328,7 @@ function svcOpenPhotoViewer(it, photoId){
   const ps = it.photos || [];
   const idx = ps.findIndex(p => p.id === photoId);
   if(idx === -1) return;
-  openLightbox(idx, ps.map(p => p.url || p.local || ''), ps.map(p => p.id));
+  openLightbox(idx, ps.map(p => p.url || p.local || ''), ps.map(p => p.id), ps.map(p => p.title || ''));
   // Распознавание текста и выделение области — для документов заявок, здесь не нужны.
   ['lbOcrBtn', 'lbSelectBtn'].forEach(id => { const b = document.getElementById(id); if(b) b.style.display = 'none'; });
   document.getElementById('lbLensHint').classList.remove('show');
@@ -9630,7 +9650,7 @@ function carSanitizeEntry(raw){
 // Копия записи для Firestore/резервной копии: без base64 и без ещё не загруженных фото.
 function carEntryForCloud(e){
   const c = JSON.parse(JSON.stringify(e));
-  c.photos = (c.photos || []).filter(p => p && p.url).map(p => ({ id: p.id, url: p.url }));
+  c.photos = (c.photos || []).filter(p => p && p.url).map(p => { const o = { id: p.id, url: p.url }; if(p.title) o.title = p.title; return o; });
   c.files = (c.files || []).filter(f => f && f.url).map(f => { const o = { id: f.id, name: f.name, size: f.size || 0, url: f.url, type: 'pdf' }; if(f.title) o.title = f.title; return o; }); // ещё не загруженные файлы в облако не уходят
   return c;
 }
@@ -9858,7 +9878,9 @@ function carSearch(stems){
     const linkWords = [].concat.apply([], linkTitles.map(svcWords));
     const fileNames = [].concat.apply([], (e.files || []).map(f => [f.title || '', f.name || ''])).filter(Boolean);
     const fileWords = [].concat.apply([], fileNames.map(svcWords));
-    const score = svcCountMatches(titleWords.concat(noteWords, linkWords, fileWords), stems);
+    const photoTitles = (e.photos || []).map(p => p.title || '').filter(Boolean);
+    const photoWords = [].concat.apply([], photoTitles.map(svcWords));
+    const score = svcCountMatches(titleWords.concat(noteWords, linkWords, fileWords, photoWords), stems);
     if(score < need) return;
     let snippet = '';
     if(svcCountMatches(titleWords, stems) < score){
@@ -9870,6 +9892,10 @@ function carSearch(stems){
         else {
           const ft = fileNames.filter(t => stems.some(st => svcWords(t).some(w => w.indexOf(st) === 0)));
           if(ft.length) snippet = '📄 ' + ft.join(', ');
+          else {
+            const pt = photoTitles.filter(t => stems.some(st => svcWords(t).some(w => w.indexOf(st) === 0)));
+            if(pt.length) snippet = '📷 ' + pt.join(', ');
+          }
         }
       }
     }
@@ -9929,7 +9955,7 @@ function carDetailRefreshMedia(){
   const e = carTarget();
   const ph = document.getElementById('carDetPhotos');
   if(!e || !ph) return;
-  ph.innerHTML = svcPhotosHtml(e);
+  ph.innerHTML = svcPhotosHtml(e, true);
   document.getElementById('carDetPhotosLabel').textContent = 'Фото · ' + (e.photos || []).length + '/' + SVC_MAX_PHOTOS;
   const fl = document.getElementById('carDetFiles');
   if(fl){
@@ -10008,8 +10034,15 @@ async function carAddPhotosFromFiles(files){
     e = carEntryAny(eid); // пока сжималось, запись могли удалить
     if(!e) return;
     if((e.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото в записи'); return; }
+    // название фото (необязательное): «Отмена» — эта фотография не добавляется
+    const phTitle = await carAskFileTitle('', 'Название фото', { preview: dataUrl, placeholder: 'Например, «Передний баллон»' });
+    if(phTitle === null) continue;
+    e = carEntryAny(eid); // пока вводилось название, запись могли удалить
+    if(!e) return;
+    if((e.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото в записи'); return; }
     carEnsureCommitted(e);
     const photo = { id: 'car_' + newPhotoId(), url: null, local: dataUrl };
+    if(phTitle) photo.title = phTitle;
     e.photos.push(photo);
     carTouch(e);
     // Фото должно оказаться на диске ДО начала загрузки — иначе закрытие приложения его потеряет.
@@ -10028,16 +10061,20 @@ async function carAddPhotosFromFiles(files){
   }
 }
 // Небольшое окно «Название документа»: resolve(строка) — «Сохранить» (может быть пустой), resolve(null) — «Отмена».
-function carAskFileTitle(initial, head){
+function carAskFileTitle(initial, head, opts){
   return new Promise((resolve) => {
     const ov = document.getElementById('fileTitleOverlay');
     const inp = document.getElementById('fileTitleInput');
     document.getElementById('fileTitleHead').textContent = head || 'Название документа';
     inp.value = initial || '';
+    inp.placeholder = (opts && opts.placeholder) || 'Например, «Схема пневмоподвески»';
+    const pv = document.getElementById('fileTitlePreview');
+    if(opts && opts.preview){ pv.src = opts.preview; pv.style.display = 'block'; } else { pv.removeAttribute('src'); pv.style.display = 'none'; }
     ov.classList.add('show');
     const yes = document.getElementById('fileTitleYes'), no = document.getElementById('fileTitleNo');
     const done = (val) => {
       ov.classList.remove('show');
+      pv.removeAttribute('src');
       yes.removeEventListener('click', onYes); no.removeEventListener('click', onNo); inp.removeEventListener('keydown', onKey);
       if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
       resolve(val);
@@ -10165,6 +10202,23 @@ carDetailEl.addEventListener('click', (ev) => {
       if(idx === -1) return;
       const gone = cur.files.splice(idx, 1)[0];
       carQueueFileDelete(gone);
+      carTouch(cur);
+      carSave();
+      carDetailRefreshMedia();
+    });
+    return;
+  }
+  const editPh = t.closest('[data-det-phtitle]');
+  if(editPh){
+    const pid = editPh.getAttribute('data-det-phtitle');
+    const pp = (e.photos || []).find(x => x.id === pid);
+    if(!pp) return;
+    carAskFileTitle(pp.title || '', 'Название фото', { preview: pp.url || pp.local || '', placeholder: 'Например, «Передний баллон»' }).then(val => {
+      if(val === null) return;
+      const cur = carTarget();
+      const ph = cur && (cur.photos || []).find(x => x.id === pid);
+      if(!ph) return;
+      if(val) ph.title = val; else delete ph.title; // пусто — подпись убирается
       carTouch(cur);
       carSave();
       carDetailRefreshMedia();
@@ -10325,7 +10379,7 @@ function carCarryPendingPhotos(incoming, local){
   (local.photos || []).forEach(p => {
     if(p.url || !p.local) return;
     if(incoming.photos.some(x => x.id === p.id)) return;
-    if(incoming.photos.length < SVC_MAX_PHOTOS) incoming.photos.push({ id: p.id, url: null, local: p.local });
+    if(incoming.photos.length < SVC_MAX_PHOTOS){ const o = { id: p.id, url: null, local: p.local }; if(p.title) o.title = p.title; incoming.photos.push(o); }
   });
   // файлы, лежащие только на этом телефоне (ещё без ссылки), тоже не должны пропасть при замене версией из облака
   if(!incoming.files) incoming.files = [];
