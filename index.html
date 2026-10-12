@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 17:42 (повторы загрузки PDF: редкие, с нарастающей паузой, не в офлайне)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 18:16 (жёсткая защита от повторной платёжки: тот же номер не удваивает расчёт)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -4631,6 +4631,25 @@ async function pdfReceiptRecognize(id, buf){
   if(text == null){ showToast('Не удалось распознать платёжку — сумму можно ввести в «Оплате»', 4500); return; }
   await pdfReceiptApply(text, id, noteRef, viaText, amountItems);
 }
+// Жёсткая защита от повторной платёжки: тот же номер уже есть в этой заявке (фото или PDF).
+// Возвращает найденную платёжку { id, kind, amount } или null; amount — сумма, уже стоящая в «Расчёте» для неё (null — суммы нет).
+function findReceiptDuplicate(note, orderNumber, selfId){
+  if(!note || !orderNumber) return null;
+  const ids = note.photoIds || [], nums = note.photoNumbers || [];
+  let ex = null;
+  nums.forEach((n, i) => { if(!ex && n === orderNumber && ids[i] !== selfId) ex = { id: ids[i], kind: 'photo' }; });
+  if(!ex) (note.pdfFiles || []).forEach(f => { if(!ex && f && f.id !== selfId && f.kind === 'receipt' && f.number === orderNumber) ex = { id: f.id, kind: 'pdf' }; });
+  if(!ex) return null;
+  const pays = (note.payments || []).filter(pm => pm && pm.photoId === ex.id);
+  ex.amount = pays.length ? pays.reduce((sum, pm) => sum + (Number(pm.amount) || 0), 0) : null;
+  return ex;
+}
+// 'none' — не повтор; 'dup' — точный повтор (или сумма новой неизвестна: номер совпал — это та же платёжка); 'conflict' — номер тот же, сумма другая.
+function receiptDupVerdict(dup, incomingAmount){
+  if(!dup) return 'none';
+  if(incomingAmount != null && dup.amount != null && incomingAmount !== dup.amount) return 'conflict';
+  return 'dup';
+}
 async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
   const findF = () => (editingNote === noteRef ? (editingNote.pdfFiles || []).findIndex(x => x && x.id === id) : -1);
   let k = findF();
@@ -4639,19 +4658,6 @@ async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
   const isPayment = (t.includes('платежн') && t.includes('поручен')) || t.includes('0401060'); // то же правило, что у фото
   if(!isPayment){ showToast('Не похоже на платёжное поручение — сумму можно ввести в «Оплате»', 4500); return; }
   const orderNumber = extractOrderNumberFromOcrText(text);
-  if(orderNumber){
-    const dup = (editingNote.photoNumbers || []).indexOf(orderNumber) !== -1 ||
-      (editingNote.pdfFiles || []).some(x => x && x.id !== id && x.kind === 'receipt' && x.number === orderNumber);
-    if(dup && window.confirm('Похоже, это дубликат платёжки № ' + orderNumber + ' — она уже прикреплена к этой заявке.\nУбрать повторный файл?')){
-      editingNote.pdfFiles.splice(k, 1);
-      deletePdfFromStorage(id);
-      renderEditorPhotos();
-      pushHistory();
-      showToast('Дубликат удалён');
-      return;
-    }
-    editingNote.pdfFiles[k].number = orderNumber;
-  }
   // Сумма из текстового слоя PDF только ПОДСТАВЛЯЕТСЯ в окно — в «Расчёт» она попадает лишь после подтверждения пользователем.
   // Не нашли уверенно (или это скан, где текст неточный) — как раньше, остаток по заявке.
   // Сначала по положению слов (настоящие банковские бланки), затем по порядку текста («Сумма 16000=» подряд).
@@ -4659,6 +4665,35 @@ async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
   if(viaText){
     suggested = extractPaymentAmountFromPdfItems(amountItems);
     if(suggested == null) suggested = extractPaymentAmountFromPdfText(text);
+  }
+  if(orderNumber){
+    // проверка ДО окна суммы и до добавления в «Расчёт»: повтор не может удвоить сумму
+    const dupInfo = findReceiptDuplicate(editingNote, orderNumber, id);
+    const verdict = receiptDupVerdict(dupInfo, suggested);
+    if(verdict === 'dup'){
+      editingNote.pdfFiles.splice(k, 1);
+      deletePdfFromStorage(id);
+      renderEditorPhotos();
+      pushHistory();
+      showToast('Платёжка №' + orderNumber + ' уже добавлена', 4000);
+      return;
+    }
+    if(verdict === 'conflict'){
+      const drop = window.confirm('Платёжка № ' + orderNumber + ' с таким номером уже есть, но сумма отличается (в расчёте ' + formatAmount(dupInfo.amount) + ', в новом файле ' + formatAmount(suggested) + ').\nРасчёт не менялся.\n\nУбрать новый файл? («Отмена» — оставить файл, но в расчёт он не добавится.)');
+      if(drop){
+        editingNote.pdfFiles.splice(k, 1);
+        deletePdfFromStorage(id);
+        renderEditorPhotos();
+        pushHistory();
+        showToast('Новый файл убран, расчёт не менялся', 4000);
+      } else {
+        showToast('Файл оставлен, в расчёт не добавлен — сумму можно ввести вручную', 4500);
+        renderEditorPhotos();
+        pushHistory();
+      }
+      return;
+    }
+    editingNote.pdfFiles[k].number = orderNumber;
   }
   const choice = await askPaymentChoice(suggested);
   k = findF();
@@ -6482,25 +6517,21 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
 
       if(!editingNote.photoNumbers) editingNote.photoNumbers = [];
       if(orderNumber){
-        const dupIndex = editingNote.photoNumbers.findIndex((n, idx) => idx !== photoIndex && n === orderNumber);
-        if(dupIndex !== -1){
-          const remove = window.confirm(
-            'Похоже, это дубликат платёжки № ' + orderNumber + ' — она уже прикреплена к этой заявке.\nУбрать повторное фото?'
-          );
-          if(remove){
-            deletePhotoFromStorage(editingNote.photoIds[photoIndex]);
-            editingNote.photos.splice(photoIndex, 1);
-            editingNote.photoAmounts.splice(photoIndex, 1);
-            editingNote.photoDates.splice(photoIndex, 1);
-            editingNote.photoIds.splice(photoIndex, 1);
-            editingNote.photoNumbers.splice(photoIndex, 1);
-            renderEditorPhotos();
-            recomputePaymentStatus(editingNote);
-            updatePaidBadge();
-            pushHistory();
-            showToast('Дубликат удалён');
-            return;
-          }
+        // сумма новой фото-платёжки до подтверждения неизвестна → совпавший номер считаем той же платёжкой
+        const dupInfo = findReceiptDuplicate(editingNote, orderNumber, photoId);
+        if(receiptDupVerdict(dupInfo, null) === 'dup'){
+          deletePhotoFromStorage(editingNote.photoIds[photoIndex]);
+          editingNote.photos.splice(photoIndex, 1);
+          editingNote.photoAmounts.splice(photoIndex, 1);
+          editingNote.photoDates.splice(photoIndex, 1);
+          editingNote.photoIds.splice(photoIndex, 1);
+          editingNote.photoNumbers.splice(photoIndex, 1);
+          renderEditorPhotos();
+          recomputePaymentStatus(editingNote);
+          updatePaidBadge();
+          pushHistory();
+          showToast('Платёжка №' + orderNumber + ' уже добавлена', 4000);
+          return;
         }
       }
       editingNote.photoNumbers[photoIndex] = orderNumber;
