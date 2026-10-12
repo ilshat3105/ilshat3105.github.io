@@ -1096,7 +1096,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 13:12 («Загрузить платёжку» перенесена в блок «Оплата (для бухгалтера):»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 13:49 (платёжки — фото и PDF — теперь в списке оплат рядом с суммой)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1601,16 +1601,54 @@ function removePayment(note, idx){
   note.payments.splice(idx, 1);
   recomputePaymentStatus(note);
 }
+// Платёжка = PDF с kind:'receipt', либо файл, к которому привязана строка расчёта, либо фото, распознанное/выбранное как платёжка
+// (photoAmounts[i] != null). Такие файлы показываются здесь, рядом со своей суммой, а не в строке «Заявка:».
+function isReceiptPhotoIndex(i){
+  if(!editingNote) return false;
+  const ids = editingNote.photoIds || [];
+  if((editingNote.photoAmounts || [])[i] != null) return true;
+  return (editingNote.payments || []).some(pm => pm.photoId && pm.photoId === ids[i]);
+}
+function isReceiptPdf(f){
+  if(!f || !editingNote) return false;
+  return f.kind === 'receipt' || (editingNote.payments || []).some(pm => pm.photoId && pm.photoId === f.id);
+}
 function renderPaymentEntryList(){
   const list = document.getElementById('paymentEntryList');
+  if(!list || !editingNote) return;
   const payments = editingNote.payments || [];
-  if(!payments.length){ list.innerHTML = '<div style="font-size:12.5px;color:var(--muted);">Пока пусто — впишите сумму выше.</div>'; return; }
-  list.innerHTML = payments.map((p, i) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--card-line, #eceff2);">
-      <span style="font-size:14px;color:var(--ink);">${formatAmount(p.amount)}</span>
-      <button type="button" data-payrm="${i}" style="background:none;border:none;color:#9aa0a6;font-size:16px;cursor:pointer;padding:0 4px;">×</button>
-    </div>
-  `).join('') + (payments.length > 1 ? `<div style="text-align:right;font-size:12.5px;font-weight:700;color:var(--ink);padding:6px 2px 0;">Итого: ${formatAmount(sumPayments(editingNote))}</div>` : '');
+  const photos = editingNote.photos || [], ids = editingNote.photoIds || [], nums = editingNote.photoNumbers || [], pdfs = editingNote.pdfFiles || [];
+  const TH = 'position:relative;width:44px;height:56px;border-radius:8px;overflow:hidden;border:1px solid var(--card-line, #d8dce1);flex-shrink:0;background:#fff;cursor:pointer;';
+  const X = 'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;padding:0;cursor:pointer;';
+  const recOf = (id) => {
+    if(!id) return null;
+    const i = ids.indexOf(id); if(i !== -1) return { t: 'photo', i };
+    const k = pdfs.findIndex(f => f && f.id === id); if(k !== -1) return { t: 'pdf', k };
+    return null;
+  };
+  const thumbHtml = (r) => r.t === 'photo'
+    ? `<div style="${TH}"><img src="${photoSrcById(photos[r.i], ids[r.i])}" data-viewphoto="${r.i}" style="width:100%;height:100%;object-fit:cover;"><button type="button" data-edphotorm="${r.i}" style="${X}" aria-label="Удалить платёжку">×</button></div>`
+    : `<div style="${TH}" data-viewpdf="${r.k}">${pdfs[r.k].thumb ? `<img src="${pdfs[r.k].thumb}" style="width:100%;height:100%;object-fit:cover;">` : '<div class="pdf-ph">PDF</div>'}<span class="pdf-badge">PDF</span><button type="button" data-edpdfrm="${r.k}" style="${X}" aria-label="Удалить платёжку">×</button></div>`;
+  const numOf = (r) => { const n = r.t === 'photo' ? nums[r.i] : (pdfs[r.k] || {}).number; return n ? 'платёжка № ' + escapeHtml(String(n)) : 'платёжка'; };
+  const statusOf = (r) => {
+    const id = r.t === 'photo' ? ids[r.i] : (pdfs[r.k] || {}).id;
+    if(ocrPendingPhotos.has(id)) return 'распознаю…';
+    if(r.t === 'pdf' && !pdfs[r.k].url) return 'загрузка…';
+    return 'сумма не указана';
+  };
+  const ROW = 'display:flex;align-items:center;gap:12px;padding:6px 2px;border-bottom:1px solid var(--card-line, #eceff2);';
+  const linked = new Set(payments.map(pm => pm.photoId).filter(Boolean));
+  let html = payments.map((p, i) => {
+    const r = recOf(p.photoId);
+    return `<div style="${ROW}">${r ? thumbHtml(r) : ''}<div style="flex:1;min-width:0;"><div style="font-size:${r ? 15 : 14}px;color:var(--ink);${r ? 'font-weight:600;' : ''}">${formatAmount(p.amount)}</div>${r ? `<div style="font-size:11.5px;color:var(--muted);">${numOf(r)}</div>` : ''}</div><button type="button" data-payrm="${i}" style="background:none;border:none;color:#9aa0a6;font-size:16px;cursor:pointer;padding:0 4px;" aria-label="Убрать сумму">×</button></div>`;
+  }).join('');
+  // платёжки без суммы в расчёте (не распознана / «Не отмечать» / сумму убрали): файл не теряется
+  const loose = [];
+  photos.forEach((ph, i) => { if(isReceiptPhotoIndex(i) && !linked.has(ids[i])) loose.push({ t: 'photo', i }); });
+  pdfs.forEach((f, k) => { if(isReceiptPdf(f) && !linked.has(f.id)) loose.push({ t: 'pdf', k }); });
+  html += loose.map(r => `<div style="${ROW}">${thumbHtml(r)}<div style="flex:1;min-width:0;"><div style="font-size:13.5px;color:var(--ink);">${numOf(r)}</div><div style="font-size:11.5px;color:var(--muted);">${statusOf(r)}</div></div></div>`).join('');
+  if(!html){ list.innerHTML = '<div style="font-size:12.5px;color:var(--muted);">Пока пусто — впишите сумму выше.</div>'; return; }
+  list.innerHTML = html + (payments.length > 1 ? `<div style="text-align:right;font-size:12.5px;font-weight:700;color:var(--ink);padding:6px 2px 0;">Итого: ${formatAmount(sumPayments(editingNote))}</div>` : '');
 }
 // 'gray' — ещё не оплачена, 'partial' — недоплата (жёлтый), 'full' — оплачена точно (зелёный),
 // 'over' — оплачена с переплатой (тёмно-зелёный)
@@ -3818,6 +3856,7 @@ function renderEditorPhotos(){
   const photos = editingNote.photos || [];
   const ids = editingNote.photoIds || [];
   wrap.innerHTML = photos.map((p, i) => {
+    if(isReceiptPhotoIndex(i)) return ''; // платёжки показываются в блоке «Оплата» рядом с суммой
     const pct = ocrProgressPercent[ids[i]];
     const errMsg = ids[i] ? photoUploadErrorMsg.get(ids[i]) : null;
     // ВРЕМЕННО: показываем стадию цепочки "фото → облако", пока ошибки нет,
@@ -3834,7 +3873,7 @@ function renderEditorPhotos(){
     ${errMsg ? `<div style="font-size:9.5px;line-height:1.2;color:#b02a37;text-align:center;word-break:break-word;margin-top:2px;">${escapeHtml(errMsg)}</div>` : ''}
     ${stage ? `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;word-break:break-word;margin-top:2px;">${escapeHtml(stage)}</div>` : ''}
     </div>`;
-  }).join('') + (editingNote.pdfFiles || []).map((f, i) => f ? `
+  }).join('') + (editingNote.pdfFiles || []).map((f, i) => (f && !isReceiptPdf(f)) ? `
     <div style="width:64px;">
     <div class="ed-photo-thumb" data-viewpdf="${i}">
       ${f.thumb ? `<img src="${f.thumb}">` : '<div class="pdf-ph">PDF</div>'}
@@ -3843,7 +3882,8 @@ function renderEditorPhotos(){
     </div>
     ${f.url ? '' : `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">загрузка…</div>`}
     ${ocrPendingPhotos.has(f.id) ? `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">распознаю…</div>` : (f.kind === 'receipt' ? `<div style="font-size:9px;line-height:1.2;color:#888;text-align:center;margin-top:2px;">платёжка</div>` : '')}
-    </div>` : '').join('') + `<button class="ed-add-photo labeled" id="edAddPhotoBtn" type="button">Загрузить заявку</button>`
+    </div>` : '').join('') + `<button class="ed-add-photo labeled" id="edAddPhotoBtn" type="button">Загрузить заявку</button>`;
+  renderPaymentEntryList();
 }
 document.getElementById('editorOverlay').addEventListener('click', (e) => {
   const pdfRm = e.target.closest('[data-edpdfrm]');
@@ -4244,7 +4284,7 @@ function compressImage(file, maxDim=1800, quality=0.8, noCrop=false){
 // photoInput без изменений; PDF — отдельный pdfInput (пока только выбор файла).
 // Тот же лист служит и для «Загрузить платёжку» (mode='receipt'): отличается только заголовок и то,
 // что выбранный PDF прикрепляется как платёжный документ и распознаётся как платёжка.
-let attachSrcMode = 'request', pdfPickKind = 'request';
+let attachSrcMode = 'request', pdfPickKind = 'request', photoPickKind = 'request';
 function openAttachSourceSheet(mode){
   attachSrcMode = mode === 'receipt' ? 'receipt' : 'request';
   document.getElementById('attachSrcTitle').textContent = attachSrcMode === 'receipt' ? 'Загрузить платёжку' : 'Загрузить заявку';
@@ -4257,6 +4297,7 @@ document.getElementById('attachSrcOverlay').addEventListener('click', (e) => {
 document.getElementById('attachSrcCancel').addEventListener('click', closeAttachSourceSheet);
 document.getElementById('attachSrcPhoto').addEventListener('click', () => {
   closeAttachSourceSheet();
+  photoPickKind = attachSrcMode;
   document.getElementById('photoInput').click();
 });
 document.getElementById('attachSrcFile').addEventListener('click', () => {
@@ -5065,7 +5106,8 @@ document.getElementById('photoInput').addEventListener('change', async (e) => {
     if(!editingNote.photoNumbers) editingNote.photoNumbers = [];
     const photoId = newPhotoId();
     editingNote.photos.push(dataUrl);
-    editingNote.photoAmounts.push(null);
+    const asReceipt = photoPickKind === 'receipt'; photoPickKind = 'request';
+    editingNote.photoAmounts.push(asReceipt ? 0 : null); // выбрано «Загрузить платёжку» — это платёжка с самого начала
     editingNote.photoDates.push(Date.now());
     editingNote.photoIds.push(photoId);
     editingNote.photoNumbers.push(null);
