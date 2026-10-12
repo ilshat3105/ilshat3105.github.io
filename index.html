@@ -744,6 +744,7 @@
   .svc-link-main a{display:block;font-size:14.5px;font-weight:600;color:var(--accent);text-decoration:none;word-break:break-word;}
   .svc-link-main span{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
   .svc-linkadd{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+  .svc-file-orig{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
   .svc-file-name{display:block;font-size:14.5px;font-weight:600;color:var(--accent);cursor:pointer;word-break:break-word;-webkit-tap-highlight-color:transparent;}
   .svc-carcard{margin-bottom:14px;border-color:var(--accent);}
 
@@ -1097,7 +1098,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 19:53 («Мой автомобиль»: блок «Файлы» (PDF) между «Фото» и «Ссылки»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 20:23 («Мой автомобиль» → Файлы: название документа отдельно от имени файла)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1284,6 +1285,17 @@
     <div class="pdfv-selhint" id="pdfSelHint">Проведите пальцем прямоугольник по нужному участку страницы</div>
     <button class="pdfv-ocr" id="pdfOcrBtn" type="button" title="Распознать текст из PDF">Aa</button>
     <div class="pdfv-count" id="pdfCount"></div>
+  </div>
+
+  <div class="confirm-overlay" id="fileTitleOverlay">
+    <div class="confirm-card">
+      <h4 id="fileTitleHead">Название документа</h4>
+      <input id="fileTitleInput" class="svc-dfield" maxlength="120" autocomplete="off" enterkeyhint="done" placeholder="Например, «Схема пневмоподвески»" style="text-align:left;">
+      <div class="confirm-btns">
+        <button class="confirm-btn no" id="fileTitleNo" type="button">Отмена</button>
+        <button class="confirm-btn yes" id="fileTitleYes" type="button" style="background:var(--accent);">Сохранить</button>
+      </div>
+    </div>
   </div>
 
   <div class="confirm-overlay" id="confirmOverlay">
@@ -7932,7 +7944,10 @@ function svcSanitizeFiles(raw){
     if(seen.has(id)) return;
     seen.add(id);
     const url = (typeof f.url === 'string' && f.url.indexOf('https://') === 0) ? f.url : null;
-    out.push({ id, name: String(f.name == null ? 'document.pdf' : f.name).slice(0, 120) || 'document.pdf', size: Number(f.size) > 0 ? Number(f.size) : 0, url, type: 'pdf' });
+    const o = { id, name: String(f.name == null ? 'document.pdf' : f.name).slice(0, 120) || 'document.pdf', size: Number(f.size) > 0 ? Number(f.size) : 0, url, type: 'pdf' };
+    const ti = typeof f.title === 'string' ? f.title.trim().slice(0, 120) : '';
+    if(ti) o.title = ti; // пользовательская подпись (ключ только когда она есть — Firestore не принимает undefined)
+    out.push(o);
   });
   return out;
 }
@@ -9616,7 +9631,7 @@ function carSanitizeEntry(raw){
 function carEntryForCloud(e){
   const c = JSON.parse(JSON.stringify(e));
   c.photos = (c.photos || []).filter(p => p && p.url).map(p => ({ id: p.id, url: p.url }));
-  c.files = (c.files || []).filter(f => f && f.url).map(f => ({ id: f.id, name: f.name, size: f.size || 0, url: f.url, type: 'pdf' })); // ещё не загруженные файлы в облако не уходят
+  c.files = (c.files || []).filter(f => f && f.url).map(f => { const o = { id: f.id, name: f.name, size: f.size || 0, url: f.url, type: 'pdf' }; if(f.title) o.title = f.title; return o; }); // ещё не загруженные файлы в облако не уходят
   return c;
 }
 function carTouch(e){ e.editedAt = Date.now(); }
@@ -9841,7 +9856,7 @@ function carSearch(stems){
     const noteWords = svcWords(e.note);
     const linkTitles = (e.links || []).map(l => l.title || '').filter(Boolean);
     const linkWords = [].concat.apply([], linkTitles.map(svcWords));
-    const fileNames = (e.files || []).map(f => f.name || '').filter(Boolean);
+    const fileNames = [].concat.apply([], (e.files || []).map(f => [f.title || '', f.name || ''])).filter(Boolean);
     const fileWords = [].concat.apply([], fileNames.map(svcWords));
     const score = svcCountMatches(titleWords.concat(noteWords, linkWords, fileWords), stems);
     if(score < need) return;
@@ -9904,7 +9919,8 @@ function carFilesHtml(e){
   return (e.files || []).map(f => {
     const id = escapeHtml(f.id);
     const meta = [carFileSizeText(f.size), f.url ? '' : '⏳ ждёт загрузки в облако'].filter(Boolean).join(' · ');
-    return `<div class="svc-link"><div class="svc-link-main"><div class="svc-file-name" data-cdet-file="${id}" role="button">📄 ${escapeHtml(f.name || 'document.pdf')}</div>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div><button class="svc-iconbtn danger" type="button" data-cdet-filerm="${id}" aria-label="Удалить файл">${SVC_RM_SVG}</button></div>`;
+    const orig = f.title ? `<span class="svc-file-orig">${escapeHtml(f.name || 'document.pdf')}</span>` : '';
+    return `<div class="svc-link"><div class="svc-link-main"><div class="svc-file-name" data-cdet-file="${id}" role="button">📄 ${escapeHtml(f.title || f.name || 'document.pdf')}</div>${orig}${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div><button class="svc-iconbtn" type="button" data-cdet-filetitle="${id}" aria-label="Изменить название документа" style="color:var(--faint);">${SVC_EDIT_SVG}</button><button class="svc-iconbtn danger" type="button" data-cdet-filerm="${id}" aria-label="Удалить файл">${SVC_RM_SVG}</button></div>`;
   }).join('');
 }
 // Только блоки фото, файлов и ссылок — поля ввода не трогаем, чтобы не сбить набор текста.
@@ -10011,6 +10027,29 @@ async function carAddPhotosFromFiles(files){
     svcUploadPhoto(photo.id);
   }
 }
+// Небольшое окно «Название документа»: resolve(строка) — «Сохранить» (может быть пустой), resolve(null) — «Отмена».
+function carAskFileTitle(initial, head){
+  return new Promise((resolve) => {
+    const ov = document.getElementById('fileTitleOverlay');
+    const inp = document.getElementById('fileTitleInput');
+    document.getElementById('fileTitleHead').textContent = head || 'Название документа';
+    inp.value = initial || '';
+    ov.classList.add('show');
+    const yes = document.getElementById('fileTitleYes'), no = document.getElementById('fileTitleNo');
+    const done = (val) => {
+      ov.classList.remove('show');
+      yes.removeEventListener('click', onYes); no.removeEventListener('click', onNo); inp.removeEventListener('keydown', onKey);
+      if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      resolve(val);
+    };
+    const onYes = () => done(inp.value.trim().slice(0, 120));
+    const onNo = () => done(null);
+    const onKey = (ev) => { if(ev.key === 'Enter'){ ev.preventDefault(); onYes(); } else if(ev.key === 'Escape'){ ev.preventDefault(); onNo(); } };
+    yes.addEventListener('click', onYes); no.addEventListener('click', onNo); inp.addEventListener('keydown', onKey);
+    setTimeout(() => { try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+  });
+}
+function carFileBaseName(name){ return String(name || '').replace(/\.pdf$/i, '').trim(); }
 async function carAddFileFromPicker(file){
   const t0 = carTarget();
   if(!t0 || !file) return;
@@ -10026,8 +10065,10 @@ async function carAddFileFromPicker(file){
   try{ buf = await file.arrayBuffer(); }catch(err){ showToast('Не удалось прочитать файл'); return; }
   const head = String.fromCharCode.apply(null, Array.from(new Uint8Array(buf, 0, Math.min(5, buf.byteLength))));
   if(head !== '%PDF-'){ showToast('Это не PDF-файл'); return; }
+  const title = await carAskFileTitle(carFileBaseName(file.name), 'Название документа');
+  if(title === null) return; // «Отмена» — файл не добавляется
   let e = carEntryAny(eid);
-  if(!e) return; // запись удалили, пока читался файл
+  if(!e) return; // запись удалили, пока читался файл / вводилось название
   if((e.files || []).length >= SVC_MAX_FILES){ showToast('Не больше ' + SVC_MAX_FILES + ' файлов в записи'); return; }
   const id = 'carf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   const saved = await pdfDbPut(owner, id, new Blob([buf], { type: 'application/pdf' }));
@@ -10036,7 +10077,9 @@ async function carAddFileFromPicker(file){
   if(!e){ pdfDbDel(owner, id); return; }
   carEnsureCommitted(e);
   if(!e.files) e.files = [];
-  e.files.push({ id, name: String(file.name || 'document.pdf').slice(0, 120), size: file.size, url: null, type: 'pdf' });
+  const entryF = { id, name: String(file.name || 'document.pdf').slice(0, 120), size: file.size, url: null, type: 'pdf' };
+  if(title) entryF.title = title;
+  e.files.push(entryF);
   carTouch(e);
   carSave();
   carDetailRefreshMedia();
@@ -10093,7 +10136,24 @@ carDetailEl.addEventListener('click', (ev) => {
     return;
   }
   const openF = t.closest('[data-cdet-file]');
-  if(openF){ openPdfViewer(e.files || [], openF.getAttribute('data-cdet-file')); return; }
+  if(openF){ openPdfViewer((e.files || []).map(f => Object.assign({}, f, { name: f.title || f.name })), openF.getAttribute('data-cdet-file')); return; }
+  const editT = t.closest('[data-cdet-filetitle]');
+  if(editT){
+    const tid = editT.getAttribute('data-cdet-filetitle');
+    const tf = (e.files || []).find(x => x.id === tid);
+    if(!tf) return;
+    carAskFileTitle(tf.title || carFileBaseName(tf.name), 'Название документа').then(val => {
+      if(val === null) return;
+      const cur = carTarget();
+      const ff = cur && (cur.files || []).find(x => x.id === tid);
+      if(!ff) return;
+      if(val) ff.title = val; else delete ff.title; // пусто — снова показывается имя файла
+      carTouch(cur);
+      carSave();
+      carDetailRefreshMedia();
+    });
+    return;
+  }
   const rmF = t.closest('[data-cdet-filerm]');
   if(rmF){
     const fid = rmF.getAttribute('data-cdet-filerm');
@@ -10272,7 +10332,7 @@ function carCarryPendingPhotos(incoming, local){
   (local.files || []).forEach(f => {
     if(f.url) return;
     if(incoming.files.some(x => x.id === f.id)) return;
-    if(incoming.files.length < SVC_MAX_FILES) incoming.files.push({ id: f.id, name: f.name, size: f.size || 0, url: null, type: 'pdf' });
+    if(incoming.files.length < SVC_MAX_FILES){ const o = { id: f.id, name: f.name, size: f.size || 0, url: null, type: 'pdf' }; if(f.title) o.title = f.title; incoming.files.push(o); }
   });
 }
 function carApplyIncoming(id, rawData){
