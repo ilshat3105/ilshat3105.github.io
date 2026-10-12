@@ -744,6 +744,7 @@
   .svc-link-main a{display:block;font-size:14.5px;font-weight:600;color:var(--accent);text-decoration:none;word-break:break-word;}
   .svc-link-main span{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
   .svc-linkadd{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+  .svc-file-name{display:block;font-size:14.5px;font-weight:600;color:var(--accent);cursor:pointer;word-break:break-word;-webkit-tap-highlight-color:transparent;}
   .svc-carcard{margin-bottom:14px;border-color:var(--accent);}
 
   main{padding:14px 4px 92px;}
@@ -1096,7 +1097,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 18:56 («Перед рейсом» упрощён до обычного чек-листа: без «Нового рейса» и экрана деталей)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 19:53 («Мой автомобиль»: блок «Файлы» (PDF) между «Фото» и «Ссылки»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1342,6 +1343,7 @@
 <input type="file" id="svcPhotoInput" accept="image/*" multiple style="display:none;">
 <div class="svc-detail-overlay" id="svcCarDetailOverlay"><div class="svc-detail" id="svcCarDetail"></div></div>
 <input type="file" id="svcCarPhotoInput" accept="image/*" multiple style="display:none;">
+<input type="file" id="svcCarFileInput" accept="application/pdf,.pdf" style="display:none;">
 
 <div class="exp-sheet-overlay" id="svcSheetOverlay">
   <div class="exp-sheet">
@@ -3230,10 +3232,19 @@ function svcpqAdd(photoId){
   svcPhotoQueue.push({ photoId: String(photoId), path, deletedAt: now, deleteAfter: now + SVC_PHOTO_GRACE_MS });
   svcpqSave();
 }
+function svcpqAddPdf(fileId){
+  if(!currentUID || fileId == null) return;
+  const path = 'users/' + currentUID + '/photos/' + fileId + '.pdf';
+  if(svcPhotoQueue.some(e => e.path === path)) return;
+  const now = Date.now();
+  svcPhotoQueue.push({ photoId: String(fileId), path, deletedAt: now, deleteAfter: now + SVC_PHOTO_GRACE_MS });
+  svcpqSave();
+}
 function svcpqUsedIds(){
   const used = new Set();
   serviceFolders.forEach(f => (f.items || []).forEach(it => (it.photos || []).forEach(p => { if(p && p.id != null) used.add(String(p.id)); })));
   serviceCarNotes.forEach(e => (e.photos || []).forEach(p => { if(p && p.id != null) used.add(String(p.id)); }));
+  serviceCarNotes.forEach(e => (e.files || []).forEach(f => { if(f && f.id != null) used.add(String(f.id)); }));
   notes.forEach(n => { if(n && Array.isArray(n.photoIds)) n.photoIds.forEach(id => { if(id != null) used.add(String(id)); }); });
   return used;
 }
@@ -4443,6 +4454,18 @@ function applyUploadedPdfUrl(id, uid, path, url){
     });
   });
   if(editingNote) (editingNote.pdfFiles || []).forEach(f => { if(f && f.id === id){ found = true; f.url = url; } });
+  if(!found){
+    // файл «Мой автомобиль»: результат загрузки кладём в запись так же, как у фото
+    for(const entry of serviceCarNotes){
+      (entry.files || []).forEach(cf => {
+        if(cf && cf.id === id){
+          found = true;
+          if(cf.url !== url){ cf.url = url; carTouch(entry); carSave(); carDetailRefreshMedia(); }
+        }
+      });
+    }
+    if(found){ pdfUploadTries.delete(id); pdfClearRetry(id); return; }
+  }
   if(!found){ queueStorageDeletePath(path); pdfDbDel(uid, id); return; } // PDF успели убрать из заявки
   pdfUploadTries.delete(id); pdfClearRetry(id); // успех: пауза обнулена
   if(changed){ saveState(); scheduleCloudSave(); }
@@ -4455,11 +4478,12 @@ function retryPendingPdfUploads(){
   const go = (f) => { if(f && f.id && !f.url && !seen.has(f.id)){ seen.add(f.id); pdfUploadTries.delete(f.id); uploadPdf(f.id); } };
   notes.forEach(n => (n && n.pdfFiles || []).forEach(go));
   if(editingNote) (editingNote.pdfFiles || []).forEach(go); // заявка ещё открыта в редакторе
+  serviceCarNotes.forEach(e => (e && e.files || []).forEach(go)); // файлы «Мой автомобиль»
 }
 
 // ---- получение байтов PDF (локально, иначе по ссылке) ----
 async function pdfGetBytes(entry){
-  const uid = currentUID;
+  const uid = currentUID || pdfLocalOwnerUid(); // локальная копия читается и до подтверждения входа
   if(uid){
     const blob = await pdfDbGet(uid, entry.id);
     if(blob) return new Uint8Array(await blob.arrayBuffer());
@@ -7881,7 +7905,7 @@ function svcTouch(f){ f.editedAt = Date.now(); }
 // photos: [{ id, url, local? }]. url — постоянная ссылка Firebase Storage (в
 // облако уходит ТОЛЬКО она и id). local — временный base64 до окончания загрузки,
 // живёт только на этом телефоне (в localStorage), в Firestore не попадает.
-const SVC_MAX_PHOTOS = 10, SVC_MAX_LINKS = 10;
+const SVC_MAX_PHOTOS = 10, SVC_MAX_LINKS = 10, SVC_MAX_FILES = 10;
 function svcSanitizePhotos(raw){
   const out = [], seen = new Set();
   (Array.isArray(raw) ? raw : []).forEach(p => {
@@ -7895,6 +7919,20 @@ function svcSanitizePhotos(raw){
     const ph = { id, url };
     if(local) ph.local = local;
     out.push(ph);
+  });
+  return out;
+}
+// Файлы «Мой автомобиль» (пока только PDF): { id, name, size, url, type:'pdf' }. url === null — файл лежит только на этом телефоне
+// (сам файл — в локальной базе vreysePdf под ключом «uid:id», как у PDF-заявок) и ждёт загрузки в облако.
+function svcSanitizeFiles(raw){
+  const out = [], seen = new Set();
+  (Array.isArray(raw) ? raw : []).forEach(f => {
+    if(!f || f.id == null || out.length >= SVC_MAX_FILES) return;
+    const id = String(f.id);
+    if(seen.has(id)) return;
+    seen.add(id);
+    const url = (typeof f.url === 'string' && f.url.indexOf('https://') === 0) ? f.url : null;
+    out.push({ id, name: String(f.name == null ? 'document.pdf' : f.name).slice(0, 120) || 'document.pdf', size: Number(f.size) > 0 ? Number(f.size) : 0, url, type: 'pdf' });
   });
   return out;
 }
@@ -9559,7 +9597,7 @@ function refreshServiceFoldersOnResume(){
 // users/{uid}/photos/svc_car_ph_….jpg (id фото начинается с «car_»).
 function carNewEntry(){
   const now = Date.now();
-  return { id: svcNewId(), title: '', note: '', photos: [], links: [], createdAt: now, editedAt: now };
+  return { id: svcNewId(), title: '', note: '', photos: [], files: [], links: [], createdAt: now, editedAt: now };
 }
 function carSanitizeEntry(raw){
   if(!raw || raw.id == null) return null;
@@ -9568,6 +9606,7 @@ function carSanitizeEntry(raw){
     title: typeof raw.title === 'string' ? raw.title.slice(0, 200) : '',
     note: typeof raw.note === 'string' ? raw.note.slice(0, 5000) : '',
     photos: svcSanitizePhotos(raw.photos),
+    files: svcSanitizeFiles(raw.files),
     links: svcSanitizeLinks(raw.links),
     createdAt: raw.createdAt || 0,
     editedAt: raw.editedAt || raw.createdAt || 0
@@ -9577,6 +9616,7 @@ function carSanitizeEntry(raw){
 function carEntryForCloud(e){
   const c = JSON.parse(JSON.stringify(e));
   c.photos = (c.photos || []).filter(p => p && p.url).map(p => ({ id: p.id, url: p.url }));
+  c.files = (c.files || []).filter(f => f && f.url).map(f => ({ id: f.id, name: f.name, size: f.size || 0, url: f.url, type: 'pdf' })); // ещё не загруженные файлы в облако не уходят
   return c;
 }
 function carTouch(e){ e.editedAt = Date.now(); }
@@ -9600,7 +9640,7 @@ function carEnsureCommitted(e){
   if(e && carDraft === e){ serviceCarNotes.push(e); carDraft = null; }
 }
 function carHasContent(e){
-  return !!(e && ((e.title && e.title.trim()) || (e.note && e.note.trim()) || (e.photos && e.photos.length) || (e.links && e.links.length)));
+  return !!(e && ((e.title && e.title.trim()) || (e.note && e.note.trim()) || (e.photos && e.photos.length) || (e.files && e.files.length) || (e.links && e.links.length)));
 }
 
 // ---- удаление: подтверждённое пользователем, окончательное ----
@@ -9620,6 +9660,7 @@ function carDeleteEntry(id){
   const sid = String(id);
   const e = carEntryById(sid);
   if(e) (e.photos || []).forEach(svcQueuePhotoDelete);
+  if(e) (e.files || []).forEach(carQueueFileDelete);
   serviceCarNotes = serviceCarNotes.filter(x => String(x.id) !== sid);
   if(carPendingDeletedIds.indexOf(sid) === -1){ carPendingDeletedIds.push(sid); carSavePendingDeleted(); }
   carSave();
@@ -9747,7 +9788,7 @@ function carCardHtml(){
   return `<div class="svc-card svc-carcard" data-car-open>
     <div class="svc-main">
       <div class="svc-title">🚛 Мой автомобиль</div>
-      <div class="svc-meta">Заметки · фото · ссылки</div>
+      <div class="svc-meta">Заметки · фото · файлы · ссылки</div>
     </div>
   </div>`;
 }
@@ -9764,6 +9805,7 @@ function carListHtml(){
     if(note) parts.push(note.length > 70 ? note.slice(0, 70).trim() + '…' : note);
     const ind = [];
     if(e.photos && e.photos.length) ind.push('📷' + e.photos.length);
+    if(e.files && e.files.length) ind.push('📄' + e.files.length);
     if(e.links && e.links.length) ind.push('🔗' + e.links.length);
     html += `<div class="svc-card" data-car-entry="${escapeHtml(e.id)}">
       <div class="svc-main">
@@ -9799,7 +9841,9 @@ function carSearch(stems){
     const noteWords = svcWords(e.note);
     const linkTitles = (e.links || []).map(l => l.title || '').filter(Boolean);
     const linkWords = [].concat.apply([], linkTitles.map(svcWords));
-    const score = svcCountMatches(titleWords.concat(noteWords, linkWords), stems);
+    const fileNames = (e.files || []).map(f => f.name || '').filter(Boolean);
+    const fileWords = [].concat.apply([], fileNames.map(svcWords));
+    const score = svcCountMatches(titleWords.concat(noteWords, linkWords, fileWords), stems);
     if(score < need) return;
     let snippet = '';
     if(svcCountMatches(titleWords, stems) < score){
@@ -9808,6 +9852,10 @@ function carSearch(stems){
       else {
         const lt = linkTitles.filter(t => stems.some(st => svcWords(t).some(w => w.indexOf(st) === 0)));
         if(lt.length) snippet = '🔗 ' + lt.join(', ');
+        else {
+          const ft = fileNames.filter(t => stems.some(st => svcWords(t).some(w => w.indexOf(st) === 0)));
+          if(ft.length) snippet = '📄 ' + ft.join(', ');
+        }
       }
     }
     hits.push({ entry: e, score, snippet });
@@ -9820,6 +9868,7 @@ function carSearch(stems){
 const carDetailOverlay = document.getElementById('svcCarDetailOverlay');
 const carDetailEl = document.getElementById('svcCarDetail');
 const carPhotoInput = document.getElementById('svcCarPhotoInput');
+const carFileInput = document.getElementById('svcCarFileInput');
 function carTarget(){ return carDetail ? carEntryAny(carDetail.id) : null; }
 function carDetailHtml(e){
   return `<div class="svc-dhead">
@@ -9835,6 +9884,9 @@ function carDetailHtml(e){
       <div class="svc-dlabel" id="carDetPhotosLabel"></div>
       <div id="carDetPhotos"></div>
       <button class="svc-dbtn" type="button" data-cdet-addphoto>+ Добавить фото</button>
+      <div class="svc-dlabel" id="carDetFilesLabel"></div>
+      <div id="carDetFiles"></div>
+      <button class="svc-dbtn" type="button" data-cdet-addfile>+ Добавить файл</button>
       <div class="svc-dlabel" id="carDetLinksLabel"></div>
       <div id="carDetLinks"></div>
       <div class="svc-linkadd">
@@ -9844,7 +9896,18 @@ function carDetailHtml(e){
       </div>
     </div>`;
 }
-// Только блоки фото и ссылок — поля ввода не трогаем, чтобы не сбить набор текста.
+function carFileSizeText(n){
+  if(!(n > 0)) return '';
+  return n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ';
+}
+function carFilesHtml(e){
+  return (e.files || []).map(f => {
+    const id = escapeHtml(f.id);
+    const meta = [carFileSizeText(f.size), f.url ? '' : '⏳ ждёт загрузки в облако'].filter(Boolean).join(' · ');
+    return `<div class="svc-link"><div class="svc-link-main"><div class="svc-file-name" data-cdet-file="${id}" role="button">📄 ${escapeHtml(f.name || 'document.pdf')}</div>${meta ? `<span>${escapeHtml(meta)}</span>` : ''}</div><button class="svc-iconbtn danger" type="button" data-cdet-filerm="${id}" aria-label="Удалить файл">${SVC_RM_SVG}</button></div>`;
+  }).join('');
+}
+// Только блоки фото, файлов и ссылок — поля ввода не трогаем, чтобы не сбить набор текста.
 function carDetailRefreshMedia(){
   if(!carDetail) return;
   const e = carTarget();
@@ -9852,6 +9915,11 @@ function carDetailRefreshMedia(){
   if(!e || !ph) return;
   ph.innerHTML = svcPhotosHtml(e);
   document.getElementById('carDetPhotosLabel').textContent = 'Фото · ' + (e.photos || []).length + '/' + SVC_MAX_PHOTOS;
+  const fl = document.getElementById('carDetFiles');
+  if(fl){
+    fl.innerHTML = carFilesHtml(e);
+    document.getElementById('carDetFilesLabel').textContent = 'Файлы · ' + (e.files || []).length + '/' + SVC_MAX_FILES;
+  }
   document.getElementById('carDetLinks').innerHTML = svcLinksHtml(e);
   document.getElementById('carDetLinksLabel').textContent = 'Ссылки · ' + (e.links || []).length + '/' + SVC_MAX_LINKS;
 }
@@ -9943,6 +10011,46 @@ async function carAddPhotosFromFiles(files){
     svcUploadPhoto(photo.id);
   }
 }
+async function carAddFileFromPicker(file){
+  const t0 = carTarget();
+  if(!t0 || !file) return;
+  const eid = t0.id;
+  if((t0.files || []).length >= SVC_MAX_FILES){ showToast('Не больше ' + SVC_MAX_FILES + ' файлов в записи'); return; }
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  if(!isPdf){ showToast('Пока можно прикреплять только PDF'); return; }
+  if(file.size > PDF_MAX_BYTES){ showToast('Файл больше 25 МБ — слишком большой'); return; }
+  // Владелец локальной копии — последний подтверждённый аккаунт этого телефона; в облако файл уйдёт только после подтверждения входа (uploadPdf).
+  const owner = pdfLocalOwnerUid();
+  if(!owner){ showToast('Нужен вход в аккаунт. Подключитесь к интернету один раз.', 4000); return; }
+  let buf;
+  try{ buf = await file.arrayBuffer(); }catch(err){ showToast('Не удалось прочитать файл'); return; }
+  const head = String.fromCharCode.apply(null, Array.from(new Uint8Array(buf, 0, Math.min(5, buf.byteLength))));
+  if(head !== '%PDF-'){ showToast('Это не PDF-файл'); return; }
+  let e = carEntryAny(eid);
+  if(!e) return; // запись удалили, пока читался файл
+  if((e.files || []).length >= SVC_MAX_FILES){ showToast('Не больше ' + SVC_MAX_FILES + ' файлов в записи'); return; }
+  const id = 'carf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  const saved = await pdfDbPut(owner, id, new Blob([buf], { type: 'application/pdf' }));
+  if(saved === null){ showToast('Не удалось сохранить файл на телефоне'); return; }
+  e = carEntryAny(eid);
+  if(!e){ pdfDbDel(owner, id); return; }
+  carEnsureCommitted(e);
+  if(!e.files) e.files = [];
+  e.files.push({ id, name: String(file.name || 'document.pdf').slice(0, 120), size: file.size, url: null, type: 'pdf' });
+  carTouch(e);
+  carSave();
+  carDetailRefreshMedia();
+  uploadPdf(id);
+}
+// Файл убран из записи или запись удалена: локальную копию снимаем сразу, файл в Storage — через общую
+// постоянную очередь отложенного удаления (30 дней, с проверкой «нигде не используется»).
+function carQueueFileDelete(f){
+  if(!f || f.id == null) return;
+  pdfClearRetry(f.id); pdfUploadTries.delete(f.id);
+  const o = pdfLocalOwnerUid();
+  if(o) pdfDbDel(o, f.id);
+  svcpqAddPdf(f.id);
+}
 function carDetailAddLink(){
   const e = carTarget();
   if(!e) return;
@@ -9966,7 +10074,7 @@ carDetailEl.addEventListener('click', (ev) => {
   if(t.closest('[data-cdet-delete]')){
     const id = e.id;
     if(carDraft === e && !carHasContent(e)){ carResetDetail(); if(currentSection === 'service') renderService(); return; }
-    showConfirm('Удалить запись «' + carTitleOf(e) + '»' + ((e.photos || []).length || (e.links || []).length || (e.note || '').trim() ? ' вместе с фото, заметкой и ссылками' : '') + '? Это действие нельзя отменить.', () => {
+    showConfirm('Удалить запись «' + carTitleOf(e) + '»' + ((e.photos || []).length || (e.files || []).length || (e.links || []).length || (e.note || '').trim() ? ' вместе с фото, файлами, заметкой и ссылками' : '') + '? Это действие нельзя отменить.', () => {
       if(carDraft && carDraft.id === id) carDraft = null;
       else carDeleteEntry(id);
       carResetDetail();
@@ -9977,6 +10085,30 @@ carDetailEl.addEventListener('click', (ev) => {
   if(t.closest('[data-cdet-addphoto]')){
     if((e.photos || []).length >= SVC_MAX_PHOTOS){ showToast('Не больше ' + SVC_MAX_PHOTOS + ' фото в записи'); return; }
     carPhotoInput.click();
+    return;
+  }
+  if(t.closest('[data-cdet-addfile]')){
+    if((e.files || []).length >= SVC_MAX_FILES){ showToast('Не больше ' + SVC_MAX_FILES + ' файлов в записи'); return; }
+    carFileInput.click();
+    return;
+  }
+  const openF = t.closest('[data-cdet-file]');
+  if(openF){ openPdfViewer(e.files || [], openF.getAttribute('data-cdet-file')); return; }
+  const rmF = t.closest('[data-cdet-filerm]');
+  if(rmF){
+    const fid = rmF.getAttribute('data-cdet-filerm');
+    const fe = (e.files || []).find(x => x.id === fid);
+    showConfirm('Удалить файл «' + ((fe && fe.name) || 'PDF') + '»?', () => {
+      const cur = carTarget();
+      if(!cur) return;
+      const idx = (cur.files || []).findIndex(x => x.id === fid);
+      if(idx === -1) return;
+      const gone = cur.files.splice(idx, 1)[0];
+      carQueueFileDelete(gone);
+      carTouch(cur);
+      carSave();
+      carDetailRefreshMedia();
+    });
     return;
   }
   const rmPh = t.closest('[data-det-phrm]');
@@ -10027,6 +10159,11 @@ carDetailEl.addEventListener('keydown', (ev) => {
 });
 carDetailEl.addEventListener('focusout', (ev) => {
   if(ev.target.id === 'carDetTitle' || ev.target.id === 'carDetNote') carFlushLocalSave();
+});
+carFileInput.addEventListener('change', () => {
+  const f = carFileInput.files && carFileInput.files[0];
+  carFileInput.value = '';
+  if(f) carAddFileFromPicker(f);
 });
 carPhotoInput.addEventListener('change', () => {
   const files = Array.from(carPhotoInput.files || []);
@@ -10129,6 +10266,13 @@ function carCarryPendingPhotos(incoming, local){
     if(p.url || !p.local) return;
     if(incoming.photos.some(x => x.id === p.id)) return;
     if(incoming.photos.length < SVC_MAX_PHOTOS) incoming.photos.push({ id: p.id, url: null, local: p.local });
+  });
+  // файлы, лежащие только на этом телефоне (ещё без ссылки), тоже не должны пропасть при замене версией из облака
+  if(!incoming.files) incoming.files = [];
+  (local.files || []).forEach(f => {
+    if(f.url) return;
+    if(incoming.files.some(x => x.id === f.id)) return;
+    if(incoming.files.length < SVC_MAX_FILES) incoming.files.push({ id: f.id, name: f.name, size: f.size || 0, url: null, type: 'pdf' });
   });
 }
 function carApplyIncoming(id, rawData){
