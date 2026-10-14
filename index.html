@@ -475,6 +475,10 @@
   .inc-owed-banner b{font-size:16px;}
   #incFilterToggle{flex-wrap:wrap;}
   #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
+  #incTypeToggle{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-2px 0 12px;padding-bottom:2px;scrollbar-width:none;}
+  #incTypeToggle::-webkit-scrollbar{display:none;}
+  .inc-type-chip{flex:0 0 auto;border:1px solid var(--card-line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;}
+  .inc-type-chip.active{background:var(--ink);color:var(--surface);border-color:var(--ink);}
   #incOverdueBtn.has-overdue{color:var(--danger);border-color:var(--tint-red-border);}
   .inc-card{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:14px 16px;
     margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -1077,6 +1081,12 @@
         <button class="exp-view-btn" data-incfilter="none">Не оплачено</button>
         <button class="exp-view-btn" id="incOverdueBtn" data-incfilter="overdue">⚠ Просрочено</button>
       </div>
+      <div id="incTypeToggle">
+        <button class="inc-type-chip active" data-inctype="all">Все расчёты</button>
+        <button class="inc-type-chip" data-inctype="nds">НДС</button>
+        <button class="inc-type-chip" data-inctype="nonds">Без НДС</button>
+        <button class="inc-type-chip" data-inctype="cash">Нал</button>
+      </div>
       <div id="incList"></div>
     </div>
     <div id="fuelSection" style="display:none;">
@@ -1104,7 +1114,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-12 20:50 («Мой автомобиль»: название у фото — окно, подпись, ✎, просмотр, поиск)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-14 13:50 (телефоны: даты и время больше не принимаются за номера)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -6255,10 +6265,18 @@ function cleanupOcrNumbers(text){
 // ИНН организации (у него тоже ровно 10 цифр), поэтому телефоном считаем только то,
 // что записано в характерном для номера виде — с "+", скобками, дефисами или точками
 // между цифрами, а не сплошным числом.
+// Даты (14.10.2026, 15/10/26) и время (14:00, 08:00:30) — не телефоны: перед поиском заменяем их
+// служебным символом (длина текста не меняется, индексы совпадений остаются верными), чтобы цепочка цифр
+// не могла «склеиться» из дат/времени и соседних чисел. Сам текст не изменяется.
+const PHONE_DATE_RE = /(?<!\d)(?:0?[1-9]|[12]\d|3[01])[.\/](?:0?[1-9]|1[0-2])[.\/](?:\d{4}|\d{2})(?!\d)/g;
+const PHONE_TIME_RE = /(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?!\d)/g;
 function findPhoneMatches(text){
   const regex = /[+]?[78]?[ \t.\-–—()]*\d(?:[\d \t.\-–—()]{7,17})\d/g;
   const matches = [];
   let m;
+  const mask = (t) => t.replace(PHONE_DATE_RE, (x) => '\u0001'.repeat(x.length)).replace(PHONE_TIME_RE, (x) => '\u0001'.repeat(x.length));
+  const orig = text;
+  text = mask(text);
   while((m = regex.exec(text))){
     const raw = m[0];
     const digits = raw.replace(/\D/g, '');
@@ -6285,7 +6303,7 @@ function findPhoneMatches(text){
     // документах паспорт/ИНН/права дефисами никогда не записываются), доверяем ему
     // независимо от первой цифры — это и покрывает городские номера.
     const last10 = digits.length === 10 ? digits : digits.slice(-10);
-    const nearbyContext = text.slice(Math.max(0, m.index - 15), m.index).toLowerCase();
+    const nearbyContext = orig.slice(Math.max(0, m.index - 15), m.index).toLowerCase();
     const hasPhoneLabel = /тел/.test(nearbyContext);
     const hasStrongPunctuation = trimmed.startsWith('+') || dashOrParenCount >= 1;
     if(!hasStrongPunctuation && last10[0] !== '9' && !hasPhoneLabel) continue;
@@ -7459,6 +7477,13 @@ document.getElementById('globalFab').addEventListener('click', () => {
 let viewedIncMonthOffset = 0;
 let incShowAllTime = false;
 let incFilter = 'all'; // 'all' | 'full' | 'partial' | 'none' | 'overdue'
+let incPayType = 'all'; // 'all' | 'nds' | 'nonds' | 'cash' — независимый фильтр по типу расчёта (только отображение)
+function incMatchesPayType(n){
+  if(incPayType === 'nonds') return n.noNds === true;
+  if(incPayType === 'cash') return n.cash === true;
+  if(incPayType === 'nds') return n.noNds !== true && n.cash !== true;
+  return true;
+}
 
 function computeIncomeMonth(offset){
   const now = new Date();
@@ -7538,18 +7563,29 @@ document.getElementById('incFilterToggle').addEventListener('click', (e) => {
   renderIncome();
 });
 
+document.getElementById('incTypeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-inctype]');
+  if(!btn) return;
+  incPayType = btn.getAttribute('data-inctype');
+  renderIncome();
+});
+
 function renderIncome(){
   renderIncSummaryBar();
   renderOwedBanner();
   document.querySelectorAll('#incFilterToggle .exp-view-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-incfilter') === incFilter);
   });
+  document.querySelectorAll('#incTypeToggle .inc-type-chip').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-inctype') === incPayType);
+  });
   const hasOverdue = notes.some(n => !n.trashed && !n.archived && n.amount && isOverdue(n));
   document.getElementById('incOverdueBtn').classList.toggle('has-overdue', hasOverdue);
   const { list } = computeIncomeMonth(viewedIncMonthOffset);
-  const filtered = incFilter === 'all' ? list
+  const byStatus = incFilter === 'all' ? list
     : incFilter === 'overdue' ? list.filter(n => n.amount && isOverdue(n))
     : list.filter(n => getPaymentStatus(n) === incFilter);
+  const filtered = incPayType === 'all' ? byStatus : byStatus.filter(incMatchesPayType);
   const el = document.getElementById('incList');
   if(!filtered.length){
     el.innerHTML = `<div class="empty">Заявок по этому фильтру ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
