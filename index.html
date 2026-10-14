@@ -475,6 +475,17 @@
   .inc-owed-banner b{font-size:16px;}
   #incFilterToggle{flex-wrap:wrap;}
   #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
+  #incTypeStats{margin:0 0 12px;}
+  .inc-ts-head{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:0 2px 6px;}
+  .inc-ts-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .inc-ts-card{background:var(--surface);border:1px solid var(--card-line);border-radius:14px;padding:10px 12px;min-width:0;}
+  .inc-ts-title{font-size:12px;font-weight:700;color:var(--muted);display:flex;justify-content:space-between;gap:6px;}
+  .inc-ts-total{font-size:16.5px;font-weight:800;color:var(--ink);margin:3px 0 4px;white-space:nowrap;}
+  .inc-ts-row{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;gap:6px;white-space:nowrap;}
+  .inc-ts-row b{color:var(--ink);font-weight:600;}
+  .inc-ts-row.owed b{color:var(--tint-warn-text);}
+  #incFoundLine{display:none;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 2px 10px;}
+  #incFoundLine b{color:var(--ink);}
   #incTypeToggle{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-2px 0 12px;padding-bottom:2px;scrollbar-width:none;}
   #incTypeToggle::-webkit-scrollbar{display:none;}
   .inc-type-chip{flex:0 0 auto;border:1px solid var(--card-line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;}
@@ -1074,6 +1085,7 @@
     <div id="incomeSection" style="display:none;">
       <div class="summary-bar" id="incSummaryBar" style="display:none;"></div>
       <div class="inc-owed-banner" id="incOwedBanner" style="display:none;"></div>
+      <div id="incTypeStats"></div>
       <div class="exp-view-toggle" id="incFilterToggle">
         <button class="exp-view-btn active" data-incfilter="all">Все</button>
         <button class="exp-view-btn" data-incfilter="full">Оплачено</button>
@@ -1087,6 +1099,7 @@
         <button class="inc-type-chip" data-inctype="nonds">Без НДС</button>
         <button class="inc-type-chip" data-inctype="cash">Нал</button>
       </div>
+      <div id="incFoundLine"></div>
       <div id="incList"></div>
     </div>
     <div id="fuelSection" style="display:none;">
@@ -1114,7 +1127,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-14 13:50 (телефоны: даты и время больше не принимаются за номера)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-14 19:23 (склонение «заявка/заявки/заявок» в итоговой строке раздела «Заявки»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1845,7 +1858,7 @@ function renderSummaryBarFull(){
       <span class="summary-month-label">${monthLabel}</span>
       <button id="summaryNextMonth" ${nextDisabled}>›</button>
     </div>
-    <div>${count} заявок · ${formatAmount(total)}</div>
+    <div>${incZayavok(count)} · ${formatAmount(total)}</div>
     ${goalHtml}
   `;
   bar.style.display = 'block';
@@ -7478,11 +7491,45 @@ let viewedIncMonthOffset = 0;
 let incShowAllTime = false;
 let incFilter = 'all'; // 'all' | 'full' | 'partial' | 'none' | 'overdue'
 let incPayType = 'all'; // 'all' | 'nds' | 'nonds' | 'cash' — независимый фильтр по типу расчёта (только отображение)
+// Чип-фильтр использует ту же классификацию, что и статистика «По типам расчётов» (incCategoryOf, объявлена ниже).
 function incMatchesPayType(n){
-  if(incPayType === 'nonds') return n.noNds === true;
-  if(incPayType === 'cash') return n.cash === true;
-  if(incPayType === 'nds') return n.noNds !== true && n.cash !== true;
-  return true;
+  return incPayType === 'all' || incCategoryOf(n) === incPayType;
+}
+// «1 заявка», «2 заявки», «5 заявок», «11 заявок», «21 заявка»
+function incZayavok(n){
+  const a = Math.abs(n) % 100, b = a % 10;
+  const w = (a > 10 && a < 20) ? 'заявок' : b === 1 ? 'заявка' : (b >= 2 && b <= 4) ? 'заявки' : 'заявок';
+  return n + ' ' + w;
+}
+
+// Категория заявки для статистики «По типам расчётов»: каждая заявка — ровно в одной (сначала Нал, затем Без НДС, иначе НДС).
+function incCategoryOf(n){ return n.cash === true ? 'cash' : n.noNds === true ? 'nonds' : 'nds'; }
+// Те же правила, что в computeIncomeMonth: заявки без суммы в деньги не входят, частичные — по paidAmount.
+function incCalc(arr){
+  let total = 0, paid = 0;
+  arr.forEach(n => {
+    if(!n.amount) return;
+    total += n.amount;
+    const st = getPaymentStatus(n);
+    paid += st === 'full' ? n.amount : st === 'partial' ? (n.paidAmount || 0) : 0;
+  });
+  return { count: arr.length, total, paid, owed: total - paid };
+}
+function renderIncTypeStats(list){
+  const el = document.getElementById('incTypeStats');
+  if(!el) return;
+  const groups = { all: list, nds: [], nonds: [], cash: [] };
+  list.forEach(n => groups[incCategoryOf(n)].push(n));
+  const cards = [['all','Все расчёты'],['nds','НДС'],['nonds','Без НДС'],['cash','Нал']].map(([k, label]) => {
+    const c = incCalc(groups[k]);
+    return `<div class="inc-ts-card" data-incts="${k}">
+      <div class="inc-ts-title"><span>${label}</span><span>${incZayavok(c.count)}</span></div>
+      <div class="inc-ts-total">${formatAmount(c.total)}</div>
+      <div class="inc-ts-row"><span>Получено</span><b>${formatAmount(c.paid)}</b></div>
+      <div class="inc-ts-row owed"><span>Должны</span><b>${formatAmount(c.owed)}</b></div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="inc-ts-head">По типам расчётов</div><div class="inc-ts-grid">${cards}</div>`;
 }
 
 function computeIncomeMonth(offset){
@@ -7524,7 +7571,7 @@ function renderIncSummaryBar(){
       <span class="summary-month-label" id="incMonthLabel" style="cursor:pointer;text-decoration:underline dotted;">${monthLabel}</span>
       <button id="incNextMonth" ${nextDisabled}>›</button>
     </div>
-    <div>${list.length} заявок · ${formatAmount(total)}</div>
+    <div>${incZayavok(list.length)} · ${formatAmount(total)}</div>
     <div style="font-weight:400;font-size:12.5px;margin-top:2px;color:var(--muted);">
       Получено ${formatAmount(paidTotal)}${incShowAllTime ? '' : ` · Расходы ${formatAmount(expTotal)} · Чистыми ${formatAmount(profit)}`}
     </div>
@@ -7582,10 +7629,27 @@ function renderIncome(){
   const hasOverdue = notes.some(n => !n.trashed && !n.archived && n.amount && isOverdue(n));
   document.getElementById('incOverdueBtn').classList.toggle('has-overdue', hasOverdue);
   const { list } = computeIncomeMonth(viewedIncMonthOffset);
+  renderIncTypeStats(list); // общая статистика месяца — не зависит от фильтров
   const byStatus = incFilter === 'all' ? list
     : incFilter === 'overdue' ? list.filter(n => n.amount && isOverdue(n))
     : list.filter(n => getPaymentStatus(n) === incFilter);
-  const filtered = incPayType === 'all' ? byStatus : byStatus.filter(incMatchesPayType);
+  const byType = incPayType === 'all' ? byStatus : byStatus.filter(incMatchesPayType);
+  // Поиск (поле в шапке): по названию, тексту, пунктам списка и номеру заявки — работает вместе с обоими фильтрами.
+  const sq = (searchQuery || '').trim().toLowerCase();
+  const filtered = !sq ? byType : byType.filter(n =>
+    (n.title || '').toLowerCase().includes(sq) ||
+    (n.text || '').toLowerCase().includes(sq) ||
+    String(n.number || '').toLowerCase().includes(sq) ||
+    (n.checklist || []).some(i => (i.text || '').toLowerCase().includes(sq))
+  );
+  const foundEl = document.getElementById('incFoundLine');
+  if(incFilter !== 'all' || incPayType !== 'all' || sq){
+    const f = incCalc(filtered);
+    foundEl.innerHTML = `Найдено: <b>${incZayavok(f.count)}</b> · <b>${formatAmount(f.total)}</b> · получено ${formatAmount(f.paid)} · должны ${formatAmount(f.owed)}`;
+    foundEl.style.display = 'block';
+  } else {
+    foundEl.style.display = 'none';
+  }
   const el = document.getElementById('incList');
   if(!filtered.length){
     el.innerHTML = `<div class="empty">Заявок по этому фильтру ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
