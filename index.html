@@ -477,6 +477,11 @@
   #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
   #incFoundLine{display:none;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 2px 10px;}
   #incFoundLine b{color:var(--ink);}
+  /* Грузы: переключатель «Доставляется / Доставлено» */
+  .cargo-toggle{display:flex;gap:4px;padding:4px;margin:0 2px 12px;background:var(--surface);border:1px solid var(--card-line);border-radius:14px;}
+  .cargo-btn{flex:1;min-height:44px;border:none;background:none;border-radius:10px;padding:10px 6px;font-family:inherit;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .cargo-btn.active{background:var(--accent);color:#fff;}
+  .ed-undeliver{display:none;margin:8px 0 2px;padding:9px 14px;border:1px solid var(--card-line);border-radius:12px;background:var(--surface);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;}
   #incTypeToggle{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:-2px 0 12px;padding-bottom:2px;scrollbar-width:none;}
   #incTypeToggle::-webkit-scrollbar{display:none;}
   .inc-type-chip{flex:0 0 auto;border:1px solid var(--card-line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;}
@@ -1062,14 +1067,17 @@
   <div id="syncBadge" style="display:none;padding:6px 16px;font-size:12px;text-align:center;cursor:pointer;"></div>
 
   <div class="top-tabs" id="topTabs">
-    <button class="top-tab active" data-section="notes">Заявки</button>
+    <button class="top-tab active" data-section="notes">Грузы</button>
     <button class="top-tab" data-section="fuel">Расходы</button>
-    <button class="top-tab" data-section="income">Доходы</button>
     <button class="top-tab" data-section="service">Автосервис</button>
   </div>
 
   <main id="main">
     <div class="ptr-indicator" id="ptrIndicator"><div class="spinner"></div></div>
+    <div class="cargo-toggle" id="cargoToggle" style="display:none;">
+      <button type="button" class="cargo-btn active" data-cargo="active">Доставляется</button>
+      <button type="button" class="cargo-btn" data-cargo="delivered">Доставлено</button>
+    </div>
     <div class="compose" id="composeBar">Новая заявка</div>
     <div class="summary-bar" id="summaryBar" style="display:none;"></div>
     <div id="content"></div>
@@ -1117,7 +1125,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-14 20:23 («Доходы»: убран блок «По типам расчётов», компактнее)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-15 17:37 («Грузы»: один раздел с переключателем Доставляется / Доставлено вместо «Заявки» и «Доходы»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1185,6 +1193,7 @@
     <div class="editor-fields">
       <div class="ed-num" id="edNum" style="display:none;"></div>
       <div class="ed-reminder-badge" id="edReminderBadge" style="display:none;"></div>
+      <button type="button" class="ed-undeliver" id="edUndeliverBtn">↩ Вернуть в «Доставляется»</button>
     </div>
     <div class="editor-body">
       <textarea class="body" id="bodyInput" placeholder="Заметка..."></textarea>
@@ -1572,6 +1581,8 @@ function computeMonthSummary(offset){
 
 let view = 'notes'; // notes | archive | trash
 let searchQuery = '';
+let currentSection = 'notes'; // 'notes' (Грузы) | 'fuel' | 'service' — объявлено здесь, т.к. renderContent() читает его
+let cargoTab = 'active';      // «Грузы»: 'active' (Доставляется) | 'delivered' (Доставлено); при входе в раздел — 'active'
 let editingNote = null; // draft object being edited, or null
 let isNewNote = false;
 // Версия заявки на момент открытия редактора (аудит, пункт №3) — используется
@@ -1584,8 +1595,8 @@ function filtered(){
   let list = notes.filter(n => {
     if(view === 'trash') return n.trashed;
     if(view === 'archive') return n.archived && !n.trashed;
-    // главная = только активные (недоставленные) заявки; доставленные — всегда в «Доходах» (даже без суммы)
-    return !n.archived && !n.trashed && !n.delivered;
+    // «Доставляется» = все текущие грузы (delivered !== true) независимо от месяца; доставленные — в «Доставлено»
+    return !n.archived && !n.trashed && n.delivered !== true;
   });
   if(searchQuery.trim()){
     const q = searchQuery.trim().toLowerCase();
@@ -1791,8 +1802,11 @@ function renderContent(){
   renumberNotes();
   if(trashChanged) saveState();
   const content = document.getElementById('content');
-  document.getElementById('composeBar').style.display = view === 'notes' ? 'block' : 'none';
+  cargoApplyLayout();
+  const delMode = cargoDeliveredActive();
+  document.getElementById('composeBar').style.display = (view === 'notes' && !delMode) ? 'block' : 'none';
   renderSummaryBar();
+  if(delMode){ renderIncome(); return; } // «Грузы → Доставлено»: компактный список с финансами
   const list = filtered();
 
   if(view === 'trash' && list.length){
@@ -2130,7 +2144,7 @@ function finishCardGesture(e){
       n.editedAt = Date.now();
       saveState();
       renderContent();
-      showToast(n.delivered ? 'Груз доставлен — заявка перенесена в «Доходы»' : 'Отметка «доставлен» снята');
+      showToast(n.delivered ? 'Груз доставлен — перенесён в «Доставлено»' : 'Груз возвращён в «Доставляется»');
     }
     return;
   }
@@ -2239,9 +2253,8 @@ document.getElementById('content').addEventListener('pointercancel', finishDrag)
 document.getElementById('searchInput').addEventListener('input', (e) => {
   searchQuery = e.target.value;
   if(currentSection === 'fuel') renderExpenses();
-  else if(currentSection === 'income') renderIncome();
   else if(currentSection === 'service') renderService();
-  else renderContent();
+  else renderContent(); // «Грузы»: сам выбирает список (Доставляется / Доставлено)
 });
 
 // drawer
@@ -2253,7 +2266,7 @@ drawer.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-view]');
   if(!btn) return;
   // «Главная» / «Корзина» живут в разделе «Заявки»: если сейчас открыт другой раздел
-  // (Расходы / Доходы / Автосервис), сначала возвращаемся на вкладку «Заявки» тем же
+  // (Расходы / Автосервис), сначала возвращаемся на вкладку «Грузы» тем же
   // обработчиком, что и обычный клик по ней (скрывает чужие разделы, показывает #content,
   // настраивает «+» и поиск), и только потом выбираем вид.
   if(currentSection !== 'notes'){
@@ -2261,6 +2274,7 @@ drawer.addEventListener('click', (e) => {
     if(notesTab) notesTab.click();
   }
   view = btn.getAttribute('data-view');
+  cargoTab = 'active';
   drawer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   drawer.classList.remove('show'); overlay.classList.remove('show');
@@ -3564,6 +3578,7 @@ function openEditor(note, isNew){
   const edNum = document.getElementById('edNum');
   if(editingNote.number){ edNum.textContent = '№' + editingNote.number + (editingNote.createdAt ? ' · ' + formatNoteDate(editingNote.createdAt) : ''); edNum.style.display='block'; }
   else { edNum.style.display='none'; }
+  document.getElementById('edUndeliverBtn').style.display = (!isNew && editingNote.delivered === true) ? 'block' : 'none';
   document.getElementById('amountInput').value = editingNote.amountRaw || '';
   document.getElementById('noNdsCheck').checked = !!editingNote.noNds;
   document.getElementById('cashCheck').checked = !!editingNote.cash;
@@ -7361,6 +7376,15 @@ function closeEditor(commit){
   editingNote = null;
   renderContent();
 }
+// «↩ Вернуть в «Доставляется»» в редакторе доставленного груза: снимаем только отметку доставки и сохраняем груз
+// обычным путём (все остальные поля, оплаты и документы остаются как есть; новой записи не создаётся).
+document.getElementById('edUndeliverBtn').addEventListener('click', () => {
+  if(!editingNote || editingNote.delivered !== true) return;
+  editingNote.delivered = false;
+  editingNote.deliveredAt = null;
+  closeEditor(true);
+  showToast('Груз возвращён в «Доставляется»');
+});
 document.getElementById('editorDone').addEventListener('click', () => {
   // Сумма указана, а способ оплаты (без НДС / нал) не отмечен — переспрашиваем,
   // чтобы не забыть проставить нужную галочку задним числом.
@@ -7433,7 +7457,6 @@ function showToast(msg, duration){
 }
 
 // ==================== РАСХОДЫ ====================
-let currentSection = 'notes';
 let expenses = [];           // { id, category, amount, createdAt }
 let expenseIdSeq = 1;
 let expenseCategories = [];  // список категорий, которые пользователь сам вписал
@@ -7442,33 +7465,58 @@ let viewedExpMonthOffset = 0;
 let editingExpenseId = null;
 let expSelectedCategory = null;
 
+// «Грузы»: два списка — «Доставляется» (delivered !== true) и «Доставлено» (delivered === true). Один груз — только в одном.
+function cargoDeliveredActive(){ return currentSection === 'notes' && view === 'notes' && cargoTab === 'delivered'; }
+// Показывает/прячет переключатель и нужный список (только для раздела «Грузы»).
+function cargoApplyLayout(){
+  const inNotes = currentSection === 'notes';
+  const main = inNotes && view === 'notes';
+  const del = main && cargoTab === 'delivered';
+  document.getElementById('cargoToggle').style.display = main ? 'flex' : 'none';
+  document.querySelectorAll('#cargoToggle .cargo-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-cargo') === cargoTab));
+  if(!inNotes) return;
+  document.getElementById('content').style.display = del ? 'none' : 'block';
+  document.getElementById('incomeSection').style.display = del ? 'block' : 'none';
+  document.getElementById('globalFab').style.display = del ? 'none' : 'flex';
+  document.getElementById('searchInput').placeholder = main ? (del ? 'Поиск: доставлено' : 'Поиск: доставляется') : 'Поиск';
+}
+document.getElementById('cargoToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-cargo]');
+  if(!btn) return;
+  const next = btn.getAttribute('data-cargo');
+  if(next === cargoTab) return;
+  cargoTab = next;
+  renderContent();
+});
+
 document.getElementById('topTabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.top-tab');
   if(!btn) return;
+  const prevSection = currentSection;
   if(currentSection === 'service'){ svcFlushLocalSave(); carFlushLocalSave(); }
   currentSection = btn.getAttribute('data-section');
+  if(currentSection === 'notes' && prevSection !== 'notes') cargoTab = 'active';
   document.querySelectorAll('.top-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const isFuel = currentSection === 'fuel';
-  const isIncome = currentSection === 'income';
   const isService = currentSection === 'service';
   document.getElementById('composeBar').style.display = 'none';
   document.getElementById('summaryBar').style.display = 'none';
-  document.getElementById('content').style.display = (isFuel || isIncome || isService) ? 'none' : 'block';
+  document.getElementById('content').style.display = (isFuel || isService) ? 'none' : 'block';
   document.getElementById('fuelSection').style.display = isFuel ? 'block' : 'none';
-  document.getElementById('incomeSection').style.display = isIncome ? 'block' : 'none';
+  document.getElementById('incomeSection').style.display = 'none';
   document.getElementById('serviceSection').style.display = isService ? 'block' : 'none';
-  document.getElementById('globalFab').style.display = isIncome ? 'none' : 'flex';
+  document.getElementById('globalFab').style.display = 'flex';
   document.getElementById('searchInput').placeholder =
-    isFuel ? 'Поиск по расходам' : isIncome ? 'Поиск по доходам' : isService ? 'Поиск по Автосервису' : 'Поиск';
+    isFuel ? 'Поиск по расходам' : isService ? 'Поиск по Автосервису' : 'Поиск';
+  cargoApplyLayout();
   if(isFuel) renderExpenses();
-  else if(isIncome) renderIncome();
   else if(isService) renderService();
   else renderContent();
 });
 
 // Плавающий «+»: на вкладке "Расходы" открывает окно добавления расхода снизу.
-// На "Доходы" кнопка скрыта — отдельного добавления там нет (доход считается по заявкам).
+// В «Грузы → Доставлено» кнопка скрыта — новый груз добавляется только в «Доставляется».
 document.getElementById('globalFab').addEventListener('click', () => {
   if(currentSection === 'fuel'){ openExpenseSheet(null); return; }
   if(currentSection === 'service'){ if(carOpen) carStartNew(); else openSvcSheetCreate(); return; }
@@ -7485,12 +7533,13 @@ let incPayType = 'all'; // 'all' | 'nds' | 'nonds' | 'cash' — независи
 function incMatchesPayType(n){
   return incPayType === 'all' || incCategoryOf(n) === incPayType;
 }
-// «1 заявка», «2 заявки», «5 заявок», «11 заявок», «21 заявка»
-function incZayavok(n){
+// «1 заявка», «2 заявки», «5 заявок», «11 заявок», «21 заявка» / «1 груз», «2 груза», «5 грузов»
+function incPlural(n, one, few, many){
   const a = Math.abs(n) % 100, b = a % 10;
-  const w = (a > 10 && a < 20) ? 'заявок' : b === 1 ? 'заявка' : (b >= 2 && b <= 4) ? 'заявки' : 'заявок';
-  return n + ' ' + w;
+  return n + ' ' + ((a > 10 && a < 20) ? many : b === 1 ? one : (b >= 2 && b <= 4) ? few : many);
 }
+function incZayavok(n){ return incPlural(n, 'заявка', 'заявки', 'заявок'); }
+function incGruzov(n){ return incPlural(n, 'груз', 'груза', 'грузов'); }
 
 // Тип расчёта заявки — ровно один: сначала Нал, затем Без НДС, иначе НДС.
 function incCategoryOf(n){ return n.cash === true ? 'cash' : n.noNds === true ? 'nonds' : 'nds'; }
@@ -7510,8 +7559,8 @@ function computeIncomeMonth(offset){
   const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
   const key = offset ? monthKeyShift(nowKey, offset) : nowKey;
   const list = notes.filter(n => {
-    // без суммы показываем только доставленные (иначе они бы нигде не были видны); в денежные итоги они не входят
-    if(n.trashed || n.archived || !(n.amount || n.delivered)) return false;
+    // «Доставлено»: только доставленные грузы (без суммы тоже — в денежные итоги они не входят)
+    if(n.trashed || n.archived || n.delivered !== true) return false;
     if(n.amount && !n.createdAt) return false;
     if(incShowAllTime) return true;
     if(!n.createdAt) return false;
@@ -7544,7 +7593,7 @@ function renderIncSummaryBar(){
       <span class="summary-month-label" id="incMonthLabel" style="cursor:pointer;text-decoration:underline dotted;">${monthLabel}</span>
       <button id="incNextMonth" ${nextDisabled}>›</button>
     </div>
-    <div>${incZayavok(list.length)} · ${formatAmount(total)}</div>
+    <div>${incShowAllTime ? 'За весь период' : 'За месяц'}: ${incGruzov(list.length)} · ${formatAmount(total)}</div>
     <div style="font-weight:400;font-size:12.5px;margin-top:2px;color:var(--muted);">
       Получено ${formatAmount(paidTotal)}${incShowAllTime ? '' : ` · Расходы ${formatAmount(expTotal)} · Чистыми ${formatAmount(profit)}`}
     </div>
@@ -7563,13 +7612,13 @@ function renderOwedBanner(){
   const el = document.getElementById('incOwedBanner');
   let owed = 0;
   notes.forEach(n => {
-    if(n.trashed || n.archived || !n.amount) return;
+    if(n.trashed || n.archived || n.delivered !== true || !n.amount) return;
     const status = getPaymentStatus(n);
     if(status === 'none') owed += n.amount;
     else if(status === 'partial') owed += (n.amount - (n.paidAmount || 0));
   });
   if(owed > 0){
-    el.innerHTML = `Вам должны: <b>${formatAmount(owed)}</b> — по всем заявкам, за все месяцы`;
+    el.innerHTML = `Вам должны: <b>${formatAmount(owed)}</b> — по доставленным грузам, за все месяцы`;
     el.style.display = 'block';
   } else {
     el.style.display = 'none';
@@ -7599,7 +7648,7 @@ function renderIncome(){
   document.querySelectorAll('#incTypeToggle .inc-type-chip').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-inctype') === incPayType);
   });
-  const hasOverdue = notes.some(n => !n.trashed && !n.archived && n.amount && isOverdue(n));
+  const hasOverdue = notes.some(n => !n.trashed && !n.archived && n.delivered === true && n.amount && isOverdue(n));
   document.getElementById('incOverdueBtn').classList.toggle('has-overdue', hasOverdue);
   const { list } = computeIncomeMonth(viewedIncMonthOffset);
   const byStatus = incFilter === 'all' ? list
@@ -7617,14 +7666,15 @@ function renderIncome(){
   const foundEl = document.getElementById('incFoundLine');
   if(incFilter !== 'all' || incPayType !== 'all' || sq){
     const f = incCalc(filtered);
-    foundEl.innerHTML = `Найдено: <b>${incZayavok(f.count)}</b> · <b>${formatAmount(f.total)}</b> · получено ${formatAmount(f.paid)} · должны ${formatAmount(f.owed)}`;
+    foundEl.innerHTML = `Найдено: <b>${incGruzov(f.count)}</b> · <b>${formatAmount(f.total)}</b> · получено ${formatAmount(f.paid)} · должны ${formatAmount(f.owed)}`;
     foundEl.style.display = 'block';
   } else {
     foundEl.style.display = 'none';
   }
   const el = document.getElementById('incList');
   if(!filtered.length){
-    el.innerHTML = `<div class="empty">Заявок по этому фильтру ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
+    const anyFilter = incFilter !== 'all' || incPayType !== 'all' || !!sq;
+    el.innerHTML = `<div class="empty">${anyFilter ? 'Грузов по этому фильтру' : 'Доставленных грузов'} ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
     return;
   }
   const sorted = filtered.slice().sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -7650,7 +7700,7 @@ function renderIncome(){
       </div>`;
   }).join('');
 }
-// Свайп вправо по ДОСТАВЛЕННОЙ заявке в «Доходах» → «↩ Вернуть в Заявки» (тот же жест и слой, что на главной).
+// Свайп вправо по ДОСТАВЛЕННОМУ грузу в «Доставлено» → «↩ Вернуть в «Доставляется»» (тот же жест и слой, что на главной).
 // Действие — только после отпускания, если дотянули до порога max(64px, 22% W). Данные заявки не трогаем.
 let incSwipedAt = 0, incGesture = null;
 const incListEl = document.getElementById('incList');
@@ -7662,7 +7712,7 @@ incListEl.addEventListener('touchstart', (e) => {
   if(!n || !n.delivered) return;
   const t = e.touches[0];
   incGesture = { id, card, startX: t.clientX, startY: t.clientY, dx: 0, mode: 'pending',
-    override: [null, { cls: 'zb', ic: '↩', t: 'Вернуть в Заявки', th: 0 }] };
+    override: [null, { cls: 'zb', ic: '↩', t: 'Вернуть в «Доставляется»', th: 0 }] };
 }, { passive: true });
 incListEl.addEventListener('touchmove', (e) => {
   const g = incGesture; if(!g) return;
@@ -7689,13 +7739,13 @@ function incFinishSwipe(e){
   if(zone !== 1) return;
   const rn = notes.find(x => x.id == g.id);
   if(!rn) return;
-  // Возврат в «Заявки»: только снимаем отметку — фото, PDF, суммы, оплаты, сроки и статус оплаты не трогаем.
+  // Возврат в «Доставляется»: только снимаем отметку — фото, PDF, суммы, оплаты, сроки и статус оплаты не трогаем.
   rn.delivered = false;
   rn.deliveredAt = null;
   rn.editedAt = Date.now();
   saveState();
   renderIncome();
-  showToast('Заявка возвращена в «Заявки»');
+  showToast('Груз возвращён в «Доставляется»');
 }
 incListEl.addEventListener('touchend', incFinishSwipe);
 incListEl.addEventListener('touchcancel', incFinishSwipe);
@@ -12680,7 +12730,6 @@ function refreshFromCloudOnResume(){
       // иначе pull-to-refresh на вкладках "Расходы"/"Доходы" обновлял бы
       // данные в памяти, но экран остался бы старым.
       if(currentSection === 'fuel') renderExpenses();
-      else if(currentSection === 'income') renderIncome();
       else renderContent();
     }
   }).catch(e => console.warn('Не удалось обновиться с сервера при возврате в приложение:', e));
