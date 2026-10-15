@@ -85,6 +85,8 @@
   .swp-bg.z2{background:#dc2626;}
   .swp-bg.zg{background:#16a34a;}
   .swp-bg.zb{background:#2563eb;}
+  .swp-bg.zp{background:#0f766e;}
+  .toast .toast-act{margin-left:12px;background:none;border:none;color:#93c5fd;font:inherit;font-weight:700;padding:0;cursor:pointer;}
   #incList{position:relative;}
   .inc-card{touch-action:pan-y;}
   .swp-lab{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:flex-end;gap:8px;
@@ -1133,7 +1135,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-16 00:46 («Доставлено»: месяц груза — по дате доставки, подпись «Оплачено по этим грузам», суммы до 10 млн в таблице)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-16 02:26 (длинный свайп: полная отмена для старой оплаты без строк расчёта, paymentAuto не затирается)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1352,6 +1354,7 @@
       <p>Сколько оплачено по этой заявке?</p>
       <div id="payChoiceAmountBox" style="margin-top:2px;">
         <input type="number" inputmode="decimal" id="payChoiceAmountInput" placeholder="Сумма, ₽" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--card-line, #d8dce1);font-size:15px;margin-bottom:8px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted);margin:0 0 8px;">Дата поступления<input type="date" id="payChoiceDateInput" style="padding:6px 8px;border-radius:8px;border:1px solid var(--card-line, #d8dce1);font-size:13px;font-family:inherit;color:var(--ink);background:transparent;"></label>
         <button class="pay-choice-btn" id="payChoiceAmountConfirm" style="justify-content:center;background:#2563eb;color:#fff;">Подтвердить</button>
       </div>
       <button class="pay-choice-cancel" id="payChoiceReset" style="color:#9aa0a6;">Очистить весь расчёт</button>
@@ -1645,9 +1648,9 @@ function recomputePaymentStatus(note){
   if(note.amount && total < note.amount) setPaymentStatus(note, 'partial', { paidAt: latestAt, paidAmount: total });
   else setPaymentStatus(note, 'full', { paidAt: latestAt, paidAmount: total });
 }
-function addPayment(note, amount, photoId){
+function addPayment(note, amount, photoId, at){
   if(!note.payments) note.payments = [];
-  note.payments.push({ amount, photoId: photoId || null, at: Date.now() }); // at — дата поступления (для раздела «Доставлено»)
+  note.payments.push({ amount, photoId: photoId || null, at: at || Date.now() }); // at — дата поступления (для раздела «Доставлено»)
   recomputePaymentStatus(note);
 }
 function removePayment(note, idx){
@@ -1693,7 +1696,7 @@ function renderPaymentEntryList(){
   const linked = new Set(payments.map(pm => pm.photoId).filter(Boolean));
   let html = payments.map((p, i) => {
     const r = recOf(p.photoId);
-    return `<div style="${ROW}">${r ? thumbHtml(r) : ''}<div style="flex:1;min-width:0;"><div style="font-size:${r ? 15 : 14}px;color:var(--ink);${r ? 'font-weight:600;' : ''}">${formatAmount(p.amount)}</div>${r ? `<div style="font-size:11.5px;color:var(--muted);">${numOf(r)}</div>` : ''}</div><button type="button" data-payrm="${i}" style="background:none;border:none;color:#9aa0a6;font-size:16px;cursor:pointer;padding:0 4px;" aria-label="Убрать сумму">×</button></div>`;
+    return `<div style="${ROW}">${r ? thumbHtml(r) : ''}<div style="flex:1;min-width:0;"><div style="font-size:${r ? 15 : 14}px;color:var(--ink);${r ? 'font-weight:600;' : ''}">${formatAmount(p.amount)}</div>${r ? `<div style="font-size:11.5px;color:var(--muted);">${numOf(r)}</div>` : ''}<label style="display:block;font-size:11.5px;color:var(--muted);margin-top:1px;">Дата поступления <input type="date" data-paydate="${i}" value="${dateToInputValue(p.at || editingNote.paidAt || editingNote.createdAt || Date.now())}" style="border:none;background:transparent;font:inherit;color:var(--ink);padding:0;"></label></div><button type="button" data-payrm="${i}" style="background:none;border:none;color:#9aa0a6;font-size:16px;cursor:pointer;padding:0 4px;" aria-label="Убрать сумму">×</button></div>`;
   }).join('');
   // платёжки без суммы в расчёте (не распознана / «Не отмечать» / сумму убрали): файл не теряется
   const loose = [];
@@ -1989,7 +1992,7 @@ function swpEnsure(g, dir){
   const card = g.card, n = notes.find(x => x.id == g.id) || {};
   g.dir = dir;
   g.W = card.offsetWidth || 300;
-  g.T1 = Math.max(64, g.W * 0.22); g.T2 = g.W * 0.5; g.MAX = g.W * 0.8;
+  g.T1 = Math.max(64, g.W * 0.22); g.T2 = g.W * 0.5; g.T3 = g.W * 0.66; g.MAX = g.W * 0.8;
   const bg = document.createElement('div');
   bg.className = 'swp-bg' + (dir > 0 ? ' r' : '');
   bg.style.left = card.offsetLeft + 'px'; bg.style.top = card.offsetTop + 'px';
@@ -2002,7 +2005,10 @@ function swpEnsure(g, dir){
   // карточку тянут ВПРАВО — слева открываются: 1 — ★ Избранное, 2 — 🗑 Удалить; ВЛЕВО — справа открывается ✓ Груз доставлен
   g.zones = dir > 0
     ? [null, { cls: 'z1', ic: '★', t: n.favorite ? 'Из избранного' : 'Избранное', th: g.T1 }, { cls: 'z2', ic: '🗑', t: 'Удалить', th: g.T2 }]
-    : [null, { cls: 'zg', ic: '✓', t: n.delivered ? 'Снять «доставлен»' : 'Груз доставлен', th: g.T1 }];
+    : (n.delivered
+        ? [null, { cls: 'zg', ic: '✓', t: 'Снять «доставлен»', th: g.T1 }]
+        // длинный свайп влево: доставлен + оплачен остаток (дата поступления — сегодня)
+        : [null, { cls: 'zg', ic: '✓', t: 'Груз доставлен', th: g.T1 }, { cls: 'zp', ic: '₽', t: 'Доставлено и оплачено', th: g.T3 }]);
 }
 function swpUpdate(g, dx){
   swpEnsure(g, dx < 0 ? -1 : 1);
@@ -2015,7 +2021,7 @@ function swpUpdate(g, dx){
   if(zone !== g.zone){
     g.zone = zone;
     if(zone > 0 && navigator.vibrate) { try{ navigator.vibrate(10); }catch(_){} }
-    g.bg.classList.remove('z1', 'z2', 'zg', 'zb');
+    g.bg.classList.remove('z1', 'z2', 'zg', 'zb', 'zp');
     if(zone > 0) g.bg.classList.add(g.zones[zone].cls);
   }
   // подпись — активной или ближайшей следующей зоны; иконка плавно растёт по мере приближения к порогу
@@ -2094,6 +2100,97 @@ document.getElementById('content').addEventListener('touchmove', (e) => {
     cardGesture.hoverIndex = idx;
   }
 }, { passive: false });
+// Длинный свайп влево: «Доставлено и оплачено». Без окон: платёж на остаток долга с датой «сегодня».
+// Уже внесённые платежи учитываются (двойного начисления нет); нет суммы перевозки — оплата не пишется.
+// Отмена (кнопка в тосте) возвращает прежнее состояние и убирает платёж(и), созданные этим свайпом.
+function swipeDeliverAndPay(n){
+  const now = Date.now();
+  const snap = {
+    delivered: n.delivered, deliveredAt: n.deliveredAt, paymentStatus: n.paymentStatus, paid: n.paid,
+    paidAt: n.paidAt, paidAmount: n.paidAmount, paymentAuto: n.paymentAuto, hadPayments: !!n.payments
+  };
+  // Каждому платежу от свайпа — уникальный pid: отмена удаляет именно его, а не «похожий» по сумме и времени.
+  // У старых платежей pid нет — они работают как раньше.
+  const newPid = () => 'sw_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  let restPid = null, legacyPid = null, autoTouched = false;
+  n.delivered = true; n.deliveredAt = now;
+  let msg;
+  if(!n.amount){
+    msg = 'Груз доставлен. Сумма не указана — оплата не записана';
+  } else {
+    // старые данные: статус «оплачено/частично» есть, а строк расчёта нет — считаем их уже внесённым
+    let paid = sumPayments(n);
+    if(!(n.payments && n.payments.length)){
+      const st = getPaymentStatus(n);
+      const legacy = st === 'full' ? (n.paidAmount || n.amount) : st === 'partial' ? (n.paidAmount || 0) : 0;
+      if(legacy > 0){
+        legacyPid = newPid();
+        n.payments = [{ amount: legacy, photoId: null, at: n.paidAt || n.createdAt || now, pid: legacyPid }];
+        paid = legacy;
+      }
+    }
+    const rest = n.amount - paid;
+    if(rest > 0){
+      n.paymentAuto = false; autoTouched = true;
+      addPayment(n, rest, null, now); // пересчитывает статус на «Оплачено»
+      restPid = newPid();
+      n.payments[n.payments.length - 1].pid = restPid;
+      msg = 'Доставлено и оплачено: ' + formatAmount(rest);
+    } else {
+      msg = 'Груз доставлен. Уже оплачен полностью — платёж не добавлен';
+    }
+  }
+  const after = { status: n.paymentStatus, paid: n.paid, paidAmount: n.paidAmount };
+  n.editedAt = now;
+  saveState();
+  renderContent();
+  showToast(msg, 6000, { label: 'Отменить', fn: () => {
+    const cur = notes.find(x => x.id == n.id);
+    if(!cur) return;
+    // Откатываем ТОЛЬКО то, что сделал этот свайп, и только если оно ещё на месте: последующие правки
+    // и платежи с другого устройства не затираются.
+    let skipped = false, didPay = false;
+    const noLaterEdits = cur.editedAt === now; // с момента свайпа груз никто не правил (ни здесь, ни с другого устройства)
+    if(restPid || legacyPid){
+      let pays = (cur.payments || []).slice();
+      if(restPid){
+        const k = pays.findIndex(x => x && x.pid === restPid);
+        if(k === -1) skipped = true; else { pays.splice(k, 1); didPay = true; }
+      }
+      // служебная запись «старой» оплаты (создана свайпом из статуса без строк расчёта) убирается, только если рядом
+      // не появилось ничего другого; иначе она остаётся как честная запись прежней оплаты
+      const onlyLegacy = !!legacyPid && pays.length === 1 && pays[0] && pays[0].pid === legacyPid;
+      if(didPay || onlyLegacy){
+        if(!pays.length || onlyLegacy){
+          const untouched = cur.paymentStatus === after.status && cur.paid === after.paid && cur.paidAmount === after.paidAmount;
+          if(!snap.hadPayments) delete cur.payments; else cur.payments = [];
+          if(untouched){
+            cur.paymentStatus = snap.paymentStatus; cur.paid = snap.paid; cur.paidAt = snap.paidAt; cur.paidAmount = snap.paidAmount;
+          } // иначе статус оплаты уже меняли после свайпа — не трогаем
+          didPay = true;
+        } else {
+          cur.payments = pays;
+          // остались чужие/более поздние платежи: статус и дата оплаты — по ним, старый paidAt поверх не возвращаем
+          recomputePaymentStatus(cur);
+          const ats = pays.map(x => x && x.at).filter(Boolean);
+          if(ats.length) cur.paidAt = Math.max.apply(null, ats);
+        }
+        // paymentAuto возвращаем, только если после свайпа груз вообще не правили (editedAt не менялся)
+        if(autoTouched && noLaterEdits && cur.paymentAuto === false) cur.paymentAuto = snap.paymentAuto;
+      }
+    }
+    // отметку «доставлен» снимаем, только если её с тех пор не меняли
+    let deliveredReverted = false;
+    if(cur.delivered === true && cur.deliveredAt === now){
+      cur.delivered = snap.delivered; cur.deliveredAt = snap.deliveredAt; deliveredReverted = true;
+    } else skipped = true;
+    if(!deliveredReverted && !didPay){ showToast('Отмена не выполнена: груз уже изменён'); return; }
+    cur.editedAt = Date.now();
+    saveState();
+    renderContent();
+    showToast(skipped ? 'Отменено частично: часть данных уже изменена' : 'Отменено');
+  }});
+}
 function showConfirm(text, onYes, onNo){
   const overlay = document.getElementById('confirmOverlay');
   document.getElementById('confirmText').textContent = text;
@@ -2146,6 +2243,8 @@ function finishCardGesture(e){
         renderContent();
         showToast('Заявка перемещена в корзину');
       });
+    } else if(dir < 0 && zone === 2 && !n.delivered){
+      swipeDeliverAndPay(n);
     } else if(dir < 0){
       n.delivered = !n.delivered;
       n.deliveredAt = n.delivered ? Date.now() : null;
@@ -4781,7 +4880,7 @@ async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
     }
     editingNote.pdfFiles[k].number = orderNumber;
   }
-  const choice = await askPaymentChoice(suggested);
+  const choice = await askPaymentChoice(suggested, extractReceiptDateFromText(text));
   k = findF();
   if(choice && k !== -1){
     editingNote.paymentAuto = false;
@@ -4790,7 +4889,7 @@ async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
       recomputePaymentStatus(editingNote);
       showToast('Расчёт очищен');
     } else {
-      addPayment(editingNote, choice.amount, id);
+      addPayment(editingNote, choice.amount, id, choice.at);
       showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
     }
     updatePaidBadge();
@@ -6545,13 +6644,53 @@ function extractOrderNumberFromOcrText(text){
 // Если сразу несколько фото подряд определились как платёжки, окна выбора не должны
 // накладываться друг на друга — показываем их строго по очереди, одно за другим.
 let payChoiceChain = Promise.resolve();
-function askPaymentChoice(suggestedAmount){
+// Дата ↔ поле type=date. Сегодня — точное «сейчас», другая дата — полдень этого дня.
+function dateToInputValue(ts){
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function inputValueToTs(v){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+  if(!m) return null;
+  if(v === dateToInputValue(Date.now())) return Date.now();
+  return new Date(+m[1], +m[2] - 1, +m[3], 12).getTime();
+}
+// Дата платёжного поручения из текста распознавания: ищем рядом с «ПЛАТЁЖНОЕ ПОРУЧЕНИЕ № …», а не дату договора/назначения.
+// Не нашли уверенно (или дата в будущем / нереальная) — null, и подставляется сегодняшняя.
+function extractReceiptDateFromText(text){
+  const t = (text || '').replace(/ё/gi, 'е');
+  const ok = (d, mo, y) => {
+    d = +d; mo = +mo; y = +y;
+    if(y < 100) y += 2000;
+    if(!(d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2015)) return null;
+    const dt = new Date(y, mo - 1, d, 12);
+    if(dt.getMonth() !== mo - 1) return null;
+    if(dt.getTime() > Date.now() + 36e5 * 24) return null;
+    return dt.getTime();
+  };
+  const MONTHS = { 'января':1,'февраля':2,'марта':3,'апреля':4,'мая':5,'июня':6,'июля':7,'августа':8,'сентября':9,'октября':10,'ноября':11,'декабря':12 };
+  const hdr = /поручение/ig;
+  let m;
+  while((m = hdr.exec(t))){
+    const tail = t.slice(m.index + m[0].length, m.index + m[0].length + 70);
+    const cut = tail.search(/договор|счет|сч\.|назначен|контракт|заявк/i);
+    const zone = cut === -1 ? tail : tail.slice(0, cut);
+    let d = /(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4}|\d{2})(?!\d)/.exec(zone);
+    if(d){ const r = ok(d[1], d[2], d[3]); if(r) return r; }
+    d = /(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})/i.exec(zone);
+    if(d){ const r = ok(d[1], MONTHS[d[2].toLowerCase()], d[3]); if(r) return r; }
+  }
+  return null;
+}
+function askPaymentChoice(suggestedAmount, suggestedDateTs){
   const run = () => new Promise((resolve) => {
     const overlay = document.getElementById('payChoiceOverlay');
     overlay.classList.add('show');
     const amountInput = document.getElementById('payChoiceAmountInput');
     const remaining = editingNote.amount ? Math.max(editingNote.amount - sumPayments(editingNote), 0) : null;
     amountInput.value = suggestedAmount || remaining || '';
+    const dateInput = document.getElementById('payChoiceDateInput');
+    dateInput.value = dateToInputValue(suggestedDateTs || Date.now()); // распознанная дата — предложение, можно исправить
     const cleanup = (result) => {
       overlay.classList.remove('show');
       amountConfirmBtn.removeEventListener('click', onAmountConfirm);
@@ -6565,7 +6704,7 @@ function askPaymentChoice(suggestedAmount){
     const onAmountConfirm = () => {
       const val = parseExactAmount(amountInput.value);
       if(!val || val <= 0){ amountInput.focus(); return; }
-      cleanup({ amount: val });
+      cleanup({ amount: val, at: inputValueToTs(dateInput.value) || Date.now() });
     };
     const onCancel = () => cleanup(null);
     const onReset = () => cleanup({ reset: true });
@@ -6638,7 +6777,7 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
       editingNote.photoAmounts[photoIndex] = 0;
       editingNote.photoDates[photoIndex] = paidAt;
 
-      const choice = await askPaymentChoice();
+      const choice = await askPaymentChoice(null, extractReceiptDateFromText(text));
       if(choice && editingNote === noteRef){
         editingNote.paymentAuto = false;
         if(choice.reset){
@@ -6646,7 +6785,7 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
           recomputePaymentStatus(editingNote);
           showToast('Расчёт очищен');
         } else {
-          addPayment(editingNote, choice.amount, photoId);
+          addPayment(editingNote, choice.amount, photoId, choice.at);
           showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
         }
         updatePaidBadge();
@@ -6900,7 +7039,7 @@ document.getElementById('paidBtn').addEventListener('click', async () => {
     recomputePaymentStatus(editingNote);
     showToast('Расчёт очищен');
   } else {
-    addPayment(editingNote, choice.amount);
+    addPayment(editingNote, choice.amount, null, choice.at);
     showToast('Добавлено в расчёт: ' + formatAmount(choice.amount));
   }
   updatePaidBadge();
@@ -6942,6 +7081,16 @@ document.getElementById('paymentEntryAdd').addEventListener('click', submitPayme
 document.getElementById('paymentEntryInput').addEventListener('input', updatePaymentEntryPreview);
 document.getElementById('paymentEntryInput').addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); submitPaymentEntry(); }
+});
+// Дата конкретного платежа меняется без удаления платежа (дата поступления денег → payments[i].at).
+document.getElementById('paymentEntryList').addEventListener('change', (e) => {
+  const inp = e.target.closest('[data-paydate]');
+  if(!inp || !editingNote || !editingNote.payments) return;
+  const p = editingNote.payments[parseInt(inp.getAttribute('data-paydate'), 10)];
+  const ts = inputValueToTs(inp.value);
+  if(!p || !ts) { renderPaymentEntryList(); return; }
+  p.at = ts;
+  pushHistory();
 });
 document.getElementById('paymentEntryList').addEventListener('click', (e) => {
   const rm = e.target.closest('[data-payrm]');
@@ -7456,12 +7605,24 @@ document.getElementById('deleteBtn').addEventListener('click', () => {
   closeEditor(true);
 });
 
-function showToast(msg, duration){
+function showToast(msg, duration, action){
   const toast = document.getElementById('toast');
   toast.textContent = msg;
+  toast.style.pointerEvents = 'none';
+  if(action && action.fn){
+    // кнопка действия в тосте (например «Отменить») — только у такого тоста клики включены
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toast-act'; b.textContent = action.label || 'Отменить';
+    b.addEventListener('click', () => {
+      toast.classList.remove('show'); toast.style.pointerEvents = 'none'; clearTimeout(showToast._t);
+      action.fn();
+    });
+    toast.appendChild(b);
+    toast.style.pointerEvents = 'auto';
+  }
   toast.classList.add('show');
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toast.classList.remove('show'), duration || 2000);
+  showToast._t = setTimeout(() => { toast.classList.remove('show'); toast.style.pointerEvents = 'none'; }, duration || 2000);
 }
 
 // ==================== РАСХОДЫ ====================
