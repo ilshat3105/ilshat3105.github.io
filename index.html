@@ -542,6 +542,43 @@
     padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
   .exp-save-btn:disabled{opacity:.4;}
 
+
+  /* Диагностика (журнал событий) — спокойный технический экран */
+  #diagOverlay{display:none;position:absolute;inset:0;z-index:120;background:var(--bg);flex-direction:column;color:var(--ink);}
+  #diagOverlay .dg-top{display:flex;align-items:center;gap:10px;padding:12px 14px 6px;flex-shrink:0;}
+  #diagOverlay .dg-top button{background:none;border:none;font-size:26px;line-height:1;color:var(--ink);padding:0 6px;cursor:pointer;}
+  #diagOverlay .dg-title{font-size:17px;font-weight:700;flex:1;}
+  #diagOverlay .dg-count{font-size:12px;color:var(--muted);}
+  #diagOverlay .dg-bar{display:flex;gap:6px;padding:4px 14px;flex-shrink:0;flex-wrap:wrap;align-items:center;}
+  #diagOverlay input[type=search]{flex:1 1 140px;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:10px;border:1px solid var(--card-line);background:var(--surface);color:var(--ink);font-size:13px;}
+  #diagOverlay .dg-chip,#diagOverlay .dg-btn{border:1px solid var(--card-line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;}
+  #diagOverlay .dg-chip.active{color:var(--ink);border-color:var(--accent);}
+  #diagOverlay .dg-btn{border-radius:10px;color:var(--ink);}
+  #diagOverlay .dg-note{margin:2px 14px 4px;font-size:12px;color:var(--muted);flex-shrink:0;}
+  #diagOverlay .dg-check{margin:2px 14px 6px;padding:8px 10px;border:1px solid var(--card-line);border-radius:10px;font-size:12px;background:var(--surface);flex-shrink:0;}
+  #diagOverlay .dg-sys{margin:2px 14px 6px;border:1px solid var(--card-line);border-radius:10px;background:var(--surface);flex-shrink:0;}
+  #diagOverlay .dg-sys-h{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;}
+  #diagOverlay .dg-sys-t{flex:1;}
+  #diagOverlay .dg-st{display:flex;gap:8px;align-items:flex-start;padding:4px 10px;border-top:1px solid var(--card-line);font-size:12px;cursor:pointer;}
+  #diagOverlay .dg-st-l{width:104px;flex-shrink:0;color:var(--muted);font-weight:600;white-space:nowrap;}
+  #diagOverlay .dg-st-t{flex:1;min-width:0;word-break:break-word;color:var(--ink);}
+  #diagOverlay .dg-st-s{display:block;color:var(--muted);font-size:11px;}
+  #diagOverlay .dg-dot{width:8px;height:8px;border-radius:50%;margin-top:3px;flex-shrink:0;box-sizing:border-box;border:1.5px solid var(--muted);background:transparent;}
+  #diagOverlay .dg-dot.ok{background:#5f9a6e;border-color:#5f9a6e;}
+  #diagOverlay .dg-dot.warn{background:var(--tint-warn-text);border-color:var(--tint-warn-text);}
+  #diagOverlay .dg-dot.bad{background:var(--danger);border-color:var(--danger);}
+  #diagList{flex:1;overflow-y:auto;padding:4px 14px 20px;-webkit-overflow-scrolling:touch;}
+  #diagList .dg-row{padding:7px 0;border-bottom:1px solid var(--card-line);font-size:12px;cursor:pointer;}
+  #diagList .dg-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;}
+  #diagList .dg-t{color:var(--muted);font-variant-numeric:tabular-nums;}
+  #diagList .dg-ty{font-weight:700;}
+  #diagList .dg-n{color:var(--muted);}
+  #diagList .dg-c{color:var(--muted);font-size:11px;border:1px solid var(--card-line);border-radius:6px;padding:0 4px;}
+  #diagList .dg-m{margin-top:2px;color:var(--ink);word-break:break-word;}
+  #diagList .dg-warn .dg-ty{color:var(--tint-warn-text);}
+  #diagList .dg-error .dg-ty{color:var(--danger);}
+  #diagList .dg-d{margin:6px 0 0;padding:6px 8px;background:var(--surface);border:1px solid var(--card-line);border-radius:8px;font:11px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-all;color:var(--ink);}
+  #diagList .dg-more{display:block;margin:10px auto;}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
     background:#323232;color:#fff;font-size:13px;padding:10px 18px;border-radius:8px;
     opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:50;}
@@ -1135,7 +1172,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-16 03:04 (платёжка: дата поручения определяется по расположению на странице, договоры и штампы банка не берутся)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-17 00:17 (диагностика: панель «Состояние системы»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1161,6 +1198,10 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
       Резервные копии
     </button>
+    <button id="diagBtn" type="button" style="margin-top:6px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      Диагностика
+    </button>
     <button id="exportDataBtn" type="button" style="margin-top:6px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Экспорт данных
@@ -1184,6 +1225,37 @@
       <div id="backupsList" style="flex:1;overflow-y:auto;min-height:0;"></div>
       <button id="backupsCloseBtn" type="button" style="flex-shrink:0;width:100%;margin:10px 0;background:var(--concrete);color:var(--ink);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;">Закрыть</button>
     </div>
+  </div>
+
+  <div id="diagOverlay">
+    <div class="dg-top">
+      <button id="diagBack" type="button" aria-label="Назад">‹</button>
+      <div class="dg-title">Диагностика</div>
+      <div class="dg-count" id="diagCount"></div>
+    </div>
+    <div class="dg-sys" id="diagSys">
+      <div class="dg-sys-h" id="diagSysHead"><span class="dg-dot unk" id="diagSysDot"></span><span class="dg-sys-t">Состояние системы</span><span class="dg-sys-x" id="diagSysToggle">▾</span></div>
+      <div id="diagSysBody"></div>
+    </div>
+    <div class="dg-bar">
+      <input id="diagFilter" type="search" placeholder="ID или № заявки" autocomplete="off">
+      <button class="dg-chip active" type="button" data-diaglv="all">Все</button>
+      <button class="dg-chip" type="button" data-diaglv="warn">Предупр.</button>
+      <button class="dg-chip" type="button" data-diaglv="error">Ошибки</button>
+    </div>
+    <div class="dg-check" id="diagCheck" style="display:none;"></div>
+    <div class="dg-note" id="diagFocus" style="display:none;"></div>
+    <div class="dg-bar">
+      <button class="dg-btn" id="diagCopy" type="button">Скопировать журнал</button>
+      <button class="dg-btn" id="diagExport" type="button">Экспорт JSON</button>
+    </div>
+    <div class="dg-bar">
+      <span class="dg-count" id="diagCloudState"></span>
+      <button class="dg-btn" id="diagCloudBtn" type="button"></button>
+      <button class="dg-btn" id="diagRemote" type="button">С других устройств</button>
+    </div>
+    <div class="dg-note">Журнал хранится на этом телефоне 30 дней отдельно от заявок. Нажмите на запись, чтобы увидеть подробности.</div>
+    <div id="diagList"></div>
   </div>
 
   <div id="changePassOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:110;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;">
@@ -1468,6 +1540,560 @@ const COLORS = [
 function colorHex(name){ return (COLORS.find(c=>c.name===name)||COLORS[0]).hex; }
 
 let notes = [];
+// ==================== ДИАГНОСТИКА (только наблюдение) ====================
+// Журнал событий, которые могут повлиять на сохранность заявок. Ничего не меняет в данных и логике:
+// только читает notes и пишет СВОЙ ключ localStorage (отдельно от заявок, не входит в экспорт/бэкапы/сброс кэша).
+// Любая ошибка внутри журнала гасится (diagSafe) и никогда не мешает сохранению заявки.
+// Важные события (intent: «сейчас будет удалено/заменено») пишутся синхронно ДО опасного действия.
+// Облачная копия важных событий (users/{uid}/diagEvents) по умолчанию ВЫКЛЮЧЕНА — включается вручную на экране «Диагностика»
+// после установки правил Firestore.
+function diagSafe(fn){ try{ return fn(); }catch(e){ try{ DIAG.internalError(e); }catch(_){} } }
+const DIAG = (() => {
+  const KEY = 'vreyse_diag_v1', DEV_KEY = 'vreyse_diag_dev';
+  // Облачная история включается отдельно для КАЖДОГО аккаунта: { <хеш uid>: 1 }. Старый общий флаг (vreyse_diag_cloud_v1) не читается:
+  // после обновления облако у всех выключено, пока владелец аккаунта сам не нажмёт «Включить».
+  const CLOUD2_KEY = 'vreyse_diag_cloud_v2', CLEAN_KEY = 'vreyse_diag_clean_v1', CACHE_OWNER_LIT = 'vreyse_cacheOwnerUID';
+  const MAX = 1500, TTL = 30 * 24 * 3600 * 1000, MAX_D = 1800, CLOUD_MAX_PER_SESSION = 400;
+  const IMPORTANT = new Set(['note.vanished', 'notes.mass-vanish', 'firestore.removed', 'sync.reconcile', 'cloud.delete.intent',
+    'cloud.commit.fail', 'state.replace', 'purge.trash', 'note.trash', 'note.restore', 'note.archive', 'note.unarchive',
+    'note.delivered', 'note.undelivered', 'note.delete.permanent', 'sync.conflict', 'js.error', 'js.rejection', 'cache.owner.switch', 'auth.state']);
+  // Короткий необратимый хеш uid: в журнале и экспорте самого uid нет, но записи разных аккаунтов на одном телефоне не смешиваются.
+  function hashUid(x){
+    x = String(x); let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for(let i = 0; i < x.length; i++){ const c = x.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  // «Владелец» журнала = чьи данные сейчас лежат в памяти приложения (владелец локального кэша), а не просто кто вошёл:
+  // до подтверждения входа (офлайн-старт) заявки уже принадлежат владельцу кэша, а при смене аккаунта старые заявки
+  // стираются ещё под прежним владельцем — эти события должны остаться в журнале прежнего аккаунта.
+  let ownerInit = '';
+  try{ const co = localStorage.getItem(CACHE_OWNER_LIT); if(co) ownerInit = hashUid(co); }catch(e){}
+  const S = { buf: [], seq: 0, flushT: null, rawLen: -1, err: '', prev: null, gone: new Map(), ctx: null, lastUI: null,
+    owner: ownerInit, authAt: 0, lsCache: null, flags: {}, enableGen: 0, cleaning: false, cleanTry: 0, cleanFailLogged: false,
+    cloudSent: 0, remote: [], internalErrors: 0, lastKey: '', lastKeyTs: 0, inCon: false, viewSig: '' };
+  let dev = '';
+  try{ dev = localStorage.getItem(DEV_KEY) || ''; if(!dev){ dev = Math.random().toString(36).slice(2, 6); localStorage.setItem(DEV_KEY, dev); } }catch(e){ dev = dev || ('t' + Math.random().toString(36).slice(2, 5)); }
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const plat = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : 'ПК';
+  const devLabel = plat + '·' + dev;
+  const sid = dev + '-' + Date.now().toString(36);
+  function loadFlags(){ try{ const o = JSON.parse(localStorage.getItem(CLOUD2_KEY) || '{}'); S.flags = (o && typeof o === 'object') ? o : {}; }catch(e){ S.flags = {}; } }
+  loadFlags();
+  function cloudFor(h){ return !!h && S.flags[h] === 1; }
+  function setCloudFor(h, on){
+    if(!h) return;
+    loadFlags();
+    if(on) S.flags[h] = 1; else delete S.flags[h];
+    try{ localStorage.setItem(CLOUD2_KEY, JSON.stringify(S.flags)); }catch(_){}
+  }
+  function visible(e){ return e && (e.u === S.owner || (e.u === '' && e.sid === sid)); }
+
+  const mask = (s) => String(s == null ? '' : s).replace(/\+?\d[\d\s()\-]{7,}\d/g, '…').slice(0, 300);
+  const short = (v) => (v == null ? '' : String(v)).slice(0, 14);
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(!raw) return;
+      const arr = JSON.parse(raw);
+      if(Array.isArray(arr)){
+        S.buf = arr.filter(e => e && typeof e.ts === 'number'); S.rawLen = raw.length;
+        // записи прежней версии не помечены владельцем — относим их к владельцу локального кэша на этом телефоне
+        S.buf.forEach(e => { if(e.u === undefined) e.u = S.owner; });
+      }
+    }catch(e){ S.buf = []; }
+    prune();
+  }
+  function prune(){
+    const cutoff = Date.now() - TTL;
+    if(S.buf.length && S.buf[0].ts < cutoff) S.buf = S.buf.filter(e => e.ts >= cutoff);
+    if(S.buf.length > MAX) S.buf = S.buf.slice(S.buf.length - MAX);
+  }
+  function merge(other){
+    const have = new Set(S.buf.map(e => e.sid + '#' + e.n));
+    let added = false;
+    other.forEach(e => { if(e && typeof e.ts === 'number' && !have.has(e.sid + '#' + e.n)){ S.buf.push(e); added = true; } });
+    if(added) S.buf.sort((a, b) => a.ts - b.ts || (a.n || 0) - (b.n || 0));
+  }
+  function flush(){
+    try{
+      if(S.flushT){ clearTimeout(S.flushT); S.flushT = null; }
+      let raw = null;
+      try{ raw = localStorage.getItem(KEY); }catch(_){}
+      if(raw != null && raw.length !== S.rawLen){
+        try{ const other = JSON.parse(raw); if(Array.isArray(other)) merge(other); }catch(_){}
+      }
+      prune();
+      let s = JSON.stringify(S.buf);
+      try{ localStorage.setItem(KEY, s); S.rawLen = s.length; S.err = ''; }
+      catch(err){
+        // не хватило места — отрезаем старую часть журнала (заявки не трогаем) и пробуем ещё раз
+        S.buf = S.buf.slice(Math.floor(S.buf.length * 0.4));
+        s = JSON.stringify(S.buf);
+        try{ localStorage.setItem(KEY, s); S.rawLen = s.length; S.err = 'хранилище почти заполнено: старые записи журнала обрезаны'; }
+        catch(e2){ S.err = 'не удалось записать журнал: ' + (e2 && e2.name || e2); }
+      }
+    }catch(_){}
+  }
+  // Если уже висит «медленный» таймер обычных событий (5 с), а пришло предупреждение/ошибка — таймер заменяется на быстрый.
+  function schedule(ms){
+    const at = Date.now() + ms;
+    if(S.flushT && S.flushAt <= at) return;
+    if(S.flushT) clearTimeout(S.flushT);
+    S.flushAt = at; S.flushT = setTimeout(flush, ms);
+  }
+
+  function log(type, lv, src, o){
+    try{
+      o = o || {};
+      lv = lv || 'info';
+      const msg = mask(o.msg);
+      // одинаковое сообщение подряд (например, повторяющееся предупреждение консоли) не раздуваем
+      const k = type + '|' + lv + '|' + (o.id == null ? '' : o.id) + '|' + msg;
+      const now = Date.now();
+      if(lv !== 'info' && k === S.lastKey && now - S.lastKeyTs < 30000){ S.lastKeyTs = now; return null; }
+      S.lastKey = k; S.lastKeyTs = now;
+      if(type === 'auth.state' && o.d && o.d.signedIn) S.authAt = now; // для панели «Состояние системы»: сколько ждём подтверждения сервера
+      const e = { ts: now, n: ++S.seq, sid, dev: devLabel, u: ('uid' in o) ? (o.uid ? hashUid(o.uid) : '') : S.owner, type, lv, src: src || '', id: o.id == null ? '' : String(o.id), num: o.num == null ? '' : String(o.num), msg };
+      if(o.d !== undefined){
+        let j = '';
+        try{ j = JSON.stringify(o.d); }catch(_){ j = '"[не сериализуется]"'; }
+        e.d = (j && j.length > MAX_D) ? { truncated: true, head: j.slice(0, MAX_D) } : (j === undefined ? undefined : JSON.parse(j));
+      }
+      if(S.lastUI && now - S.lastUI.t < 3000) e.ui = { agoMs: now - S.lastUI.t, el: S.lastUI.el };
+      S.buf.push(e);
+      if(S.buf.length > MAX + 100) S.buf = S.buf.slice(S.buf.length - MAX);
+      if(o.now) flush(); else if(lv !== 'info') schedule(0); else schedule(5000); // обычные события — пакетом раз в 5 с (не нагружаем запись); важные — сразу
+      if(lv !== 'info' || IMPORTANT.has(type)) cloudSend(e);
+      return e;
+    }catch(_){ return null; }
+  }
+
+  // ---- краткое состояние заявки: только важные поля, без текстов, фото и платёжек ----
+  function sum(n){
+    const t = n.title || String(n.text || '').split('\n')[0] || '';
+    return {
+      num: n.number == null ? null : n.number, t: mask(t).slice(0, 40), amt: n.amount == null ? null : n.amount,
+      del: n.delivered === true ? 1 : 0, dAt: n.deliveredAt || null, tr: n.trashed ? 1 : 0, trAt: n.trashedAt || null, ar: n.archived ? 1 : 0,
+      ps: n.paymentStatus || null, pa: n.paidAmount == null ? null : n.paidAmount, np: (n.payments || []).length, pAt: n.paidAt || null,
+      ph: (n.photoIds || n.photos || []).length, cash: n.cash ? 1 : 0, nn: n.noNds ? 1 : 0, fav: n.favorite ? 1 : 0, due: n.dueAt || null,
+      sc: n.syncConflict ? 1 : 0, tl: String(n.text || '').length, cl: (n.checklist || []).length, et: n.editedAt || null, ct: n.createdAt || null
+    };
+  }
+  const CMP = ['num', 't', 'amt', 'del', 'dAt', 'tr', 'trAt', 'ar', 'ps', 'pa', 'np', 'pAt', 'ph', 'cash', 'nn', 'fav', 'due', 'sc', 'tl', 'cl'];
+  function changes(p, c){
+    const ch = {}; let any = false;
+    CMP.forEach(k => { if(p[k] !== c[k]){ ch[k] = [p[k], c[k]]; any = true; } });
+    if(!any && p.et !== c.et){ ch.et = [p.et, c.et]; any = true; }
+    return any ? ch : null;
+  }
+  function typeFor(ch){
+    if(ch.tr) return ch.tr[1] ? 'note.trash' : 'note.restore';
+    if(ch.ar) return ch.ar[1] ? 'note.archive' : 'note.unarchive';
+    if(ch.del) return ch.del[1] ? 'note.delivered' : 'note.undelivered';
+    if(ch.ps || ch.pa || ch.np || ch.pAt) return 'note.payment';
+    if(ch.amt) return 'note.amount';
+    if(ch.dAt || ch.due) return 'note.dates';
+    if(ch.sc) return 'note.syncflag';
+    if(ch.num && Object.keys(ch).length === 1) return 'note.renumber';
+    return 'note.edit';
+  }
+  // Метка источника (mark/user/replaceIntent) относится только к ближайшему diff, который реально нашёл изменения,
+  // и сразу погашается — иначе она «прилипала» бы к посторонним изменениям.
+  function srcOf(where, src){
+    if(S.ctx && Date.now() - S.ctx.t < 5000){ S.ctxUsed = true; return S.ctx.kind + ':' + S.ctx.name; }
+    if(src) return src;
+    return 'код приложения (источник не определён) · ' + where;
+  }
+  function safeGet(fn, dflt){ try{ const v = fn(); return v === undefined ? dflt : v; }catch(_){ return dflt; } }
+
+  // Сравнивает notes с прошлым снимком и пишет, что появилось / изменилось / ИСЧЕЗЛО.
+  function diff(where, src){
+    try{
+      const list = safeGet(() => notes, null);
+      if(!Array.isArray(list)) return;
+      const cur = new Map();
+      list.forEach(n => { if(n && n.id != null) cur.set(String(n.id), sum(n)); });
+      if(!S.prev){
+        S.prev = cur;
+        const nums = Array.from(cur.values()).map(x => x.num).join(',');
+        log('diag.baseline', 'info', 'local', { msg: 'В памяти приложения заявок: ' + cur.size, d: { count: cur.size, nums: nums.slice(0, 1500) } });
+        return;
+      }
+      S.ctxUsed = false;
+      const vanished = [];
+      let s = null;
+      const srcNow = () => (s === null ? (s = srcOf(where, src)) : s);
+      S.prev.forEach((p, id) => { if(!cur.has(id)) vanished.push([id, p]); });
+      cur.forEach((c, id) => {
+        const p = S.prev.get(id);
+        if(!p){
+          log('note.new', 'info', srcNow(), { id, num: c.num, msg: 'Заявка появилась в памяти (' + where + ')', d: { after: c } });
+          S.gone.delete(id);
+          return;
+        }
+        const ch = changes(p, c);
+        if(ch) log(typeFor(ch), 'info', srcNow(), { id, num: c.num, msg: 'Изменение заявки (' + where + ')', d: { ch } });
+      });
+      vanished.forEach(([id, p]) => {
+        S.gone.set(id, { last: p, at: Date.now(), where });
+        if(S.gone.size > 300){ const k = S.gone.keys().next().value; S.gone.delete(k); }
+        log('note.vanished', 'warn', srcNow(), { id, num: p.num, now: true,
+          msg: 'Заявка пропала из массива notes (' + where + '). Причина по одному этому событию не определена.',
+          d: { where, last: p, inLastSynced: safeGet(() => lastSyncedNotes.has(id), null), inPendingDelete: safeGet(() => pendingDeletedNoteIds.indexOf(id) !== -1, null), total: cur.size } });
+      });
+      if(vanished.length >= 2) log('notes.mass-vanish', 'error', srcNow(), { now: true, msg: 'За один шаг из notes пропало заявок: ' + vanished.length + ' (' + where + ')', d: { ids: vanished.slice(0, 15).map(v => [v[0], v[1].num]), total: cur.size } });
+      S.prev = cur;
+      if(S.ctxUsed){ S.ctx = null; S.ctxUsed = false; }
+    }catch(e){ internalError(e); }
+  }
+
+  // «Сейчас notes будет заменён целиком» (импорт файла, восстановление копии, смена владельца кэша): пишем ДО замены.
+  function replaceIntent(name, kind, incomingNotes, extra){
+    try{
+      const cur = safeGet(() => notes, []) || [];
+      const inc = Array.isArray(incomingNotes) ? incomingNotes : [];
+      const incIds = new Set(inc.filter(n => n && n.id != null).map(n => String(n.id)));
+      const curIds = new Set(cur.filter(n => n && n.id != null).map(n => String(n.id)));
+      const lost = cur.filter(n => n && n.id != null && !incIds.has(String(n.id)));
+      const gained = inc.filter(n => n && n.id != null && !curIds.has(String(n.id)));
+      S.ctx = { kind, name, t: Date.now() };
+      log('state.replace', lost.length ? 'warn' : 'info', kind + ':' + name, { now: true,
+        msg: 'Массив notes будет заменён (' + name + '): сейчас ' + cur.length + ', станет ' + inc.length + ', исчезнет ' + lost.length + ', добавится ' + gained.length,
+        d: Object.assign({ lost: lost.slice(0, 12).map(n => [String(n.id), n.number, mask(n.title || String(n.text || '').split('\n')[0]).slice(0, 30)]), gained: gained.length }, extra || {}) });
+    }catch(e){ internalError(e); }
+  }
+  function mark(name, kind){ S.ctx = { kind: kind || 'local', name, t: Date.now() }; }
+  function user(name, o){
+    mark(name, 'user');
+    log('user.action', 'info', 'user:' + name, Object.assign({ msg: 'Действие пользователя: ' + name }, o || {}));
+  }
+
+  function internalError(e){
+    S.internalErrors++;
+    if(S.internalErrors <= 3){
+      try{
+        const ent = { ts: Date.now(), n: ++S.seq, sid, dev: devLabel, u: S.owner, type: 'diag.internal', lv: 'warn', src: 'diag', id: '', num: '', msg: 'Ошибка внутри диагностики (на заявки не влияет): ' + mask(e && e.message) };
+        S.buf.push(ent);
+      }catch(_){}
+    }
+  }
+
+  // ---- облако: только важные события, ВЫКЛЮЧЕНО по умолчанию и включается отдельно для каждого аккаунта ----
+  function uidNow(){ return safeGet(() => currentUID, null); }
+  function cloudOnNow(){ const u = uidNow(); return !!u && cloudFor(hashUid(u)); }
+  function cloudSend(e){
+    try{
+      const uid = uidNow();
+      if(!uid) return;
+      const h = hashUid(uid);
+      // отправляем только события ВЛАДЕЛЬЦА данных = вошедшего аккаунта; пока кэш чужой (смена аккаунта) или uid ещё не обновился — ничего не уходит
+      if(!cloudFor(h) || e.u !== h || S.owner !== h || S.cloudSent >= CLOUD_MAX_PER_SESSION) return;
+      S.cloudSent++;
+      const payload = { ts: e.ts, exp: e.ts + TTL, sid: e.sid, dev: e.dev, n: e.n, type: e.type, lv: e.lv, src: String(e.src || '').slice(0, 120),
+        id: e.id || '', num: e.num || '', msg: String(e.msg || '').slice(0, 300),
+        d: e.d === undefined ? '' : JSON.stringify(e.d).slice(0, 3000), ui: e.ui ? JSON.stringify(e.ui) : '' };
+      db.collection('users').doc(uid).collection('diagEvents').doc(e.sid + '_' + e.n).set(payload).catch(err => {
+        const code = err && err.code;
+        if(code === 'permission-denied'){
+          setCloudFor(h, false); // выключаем именно тот аккаунт, для которого шла запись
+          log('diag.cloud.denied', 'warn', 'diag', { uid, msg: 'Правила Firestore не разрешают запись в diagEvents — облачная история выключена' });
+        }
+      });
+    }catch(_){}
+  }
+  // Проверка записи. Результат учитывается только если попытка всё ещё актуальна (не истёк тайм-аут, не сменился аккаунт, не нажали «Выключить»):
+  // поздний ответ сервера после тайм-аута облако НЕ включает — пользователь уже видел «не включено» и должен повторить сам.
+  function enableCloud(){
+    return new Promise(resolve => {
+      try{
+        const uid = uidNow();
+        if(!uid){ resolve({ ok: false, why: 'нет входа в аккаунт' }); return; }
+        const h = hashUid(uid);
+        if(h !== S.owner){ resolve({ ok: false, why: 'журнал ещё переключается на этот аккаунт — повторите через несколько секунд' }); return; }
+        const gen = ++S.enableGen;
+        const current = () => S.enableGen === gen && uidNow() === uid && S.owner === h;
+        let done = false;
+        const fin = (r) => { if(!done){ done = true; clearTimeout(tm); resolve(r); } };
+        const tm = setTimeout(() => {
+          if(done) return;
+          S.enableGen++; // эта попытка устарела: её поздний ответ ничего не включит
+          fin({ ok: false, why: 'нет подтверждения от сервера за 8 с (возможно, нет сети) — облако не включено, повторите позже' });
+        }, 8000);
+        // id уникален для каждой попытки: повторная запись в тот же документ считалась бы «изменением» и могла бы быть запрещена правилами
+        const ref = db.collection('users').doc(uid).collection('diagEvents').doc(sid + '_test' + gen + '_' + Date.now().toString(36));
+        ref.set({ ts: Date.now(), exp: Date.now() + TTL, sid, dev: devLabel, n: 0, type: 'diag.cloud.test', lv: 'info', src: 'diag', id: '', num: '', msg: 'проверка записи', d: '', ui: '' })
+          .then(() => {
+            try{ ref.delete().catch(() => {}); }catch(_){}
+            if(done || !current()){ log('diag.cloud.late', 'info', 'diag', { uid, msg: 'Поздний ответ сервера на проверку записи проигнорирован (облако не включено)' }); return; }
+            setCloudFor(h, true); S.cloudSent = 0;
+            log('diag.cloud.on', 'info', 'diag', { msg: 'Облачная история включена' });
+            fin({ ok: true });
+            scheduleCleanup(2000, true);
+          })
+          .catch(err => {
+            if(done || !current()) return;
+            fin({ ok: false, why: (err && err.code === 'permission-denied') ? 'правила Firestore ещё не установлены (permission-denied)' : ('ошибка: ' + (err && (err.code || err.message))) });
+          });
+      }catch(e){ resolve({ ok: false, why: String(e && e.message) }); }
+    });
+  }
+  function disableCloud(){ S.enableGen++; setCloudFor(hashUid(uidNow() || ''), false); log('diag.cloud.off', 'info', 'diag', { msg: 'Облачная история выключена вручную' }); }
+
+  // ---- периодическая очистка облачных событий старше срока хранения ----
+  // Раз в сутки (и после включения), пакетами по 100, только из diagEvents текущего аккаунта, только при включённой облачной истории и сети.
+  // К заявкам и основной синхронизации не прикасается; любая ошибка гасится, при сбое повтор не чаще раза в 10 минут.
+  function cleanLast(h){ try{ const o = JSON.parse(localStorage.getItem(CLEAN_KEY) || '{}'); return (o && o[h]) || 0; }catch(_){ return 0; } }
+  function cleanSet(h, t){ try{ const o = JSON.parse(localStorage.getItem(CLEAN_KEY) || '{}') || {}; o[h] = t; localStorage.setItem(CLEAN_KEY, JSON.stringify(o)); }catch(_){} }
+  function scheduleCleanup(ms, force){ try{ setTimeout(() => maybeCleanup(!!force), ms); }catch(_){} }
+  function maybeCleanup(force){
+    try{
+      const uid = uidNow();
+      if(!uid || S.cleaning) return;
+      const h = hashUid(uid);
+      if(h !== S.owner || !cloudFor(h)) return;
+      if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      const now = Date.now();
+      if(!force && (now - cleanLast(h) < 24 * 3600 * 1000 || now - S.cleanTry < 10 * 60 * 1000)) return;
+      S.cleanTry = now;
+      S.cleaning = true;
+      runCleanup(uid, h).then(ok => { if(ok) cleanSet(h, Date.now()); }).catch(() => {}).then(() => { S.cleaning = false; });
+    }catch(_){ S.cleaning = false; }
+  }
+  async function runCleanup(uid, h){
+    const col = db.collection('users').doc(uid).collection('diagEvents');
+    const cutoff = Date.now() - TTL;
+    let removed = 0;
+    try{
+      for(let i = 0; i < 20; i++){
+        if(uidNow() !== uid || S.owner !== h || !cloudFor(h)) return false; // аккаунт сменился / облако выключили — останавливаемся
+        const snap = await col.where('ts', '<', cutoff).limit(100).get({ source: 'server' }); // только ответ сервера, не кэш
+        if(snap.empty){ if(removed) log('diag.cleanup', 'info', 'diag', { msg: 'Из облачной истории удалено устаревших записей: ' + removed }); return true; }
+        const b = db.batch(); snap.docs.forEach(d => b.delete(d.ref)); await b.commit();
+        removed += snap.docs.length;
+        if(snap.docs.length < 100){ log('diag.cleanup', 'info', 'diag', { msg: 'Из облачной истории удалено устаревших записей: ' + removed }); return true; }
+      }
+      log('diag.cleanup', 'info', 'diag', { msg: 'Очистка облачной истории: удалено ' + removed + ', осталось ещё — продолжу позже' });
+      return false;
+    }catch(err){
+      if(!S.cleanFailLogged){ S.cleanFailLogged = true; log('diag.cleanup.fail', 'warn', 'diag', { msg: 'Очистка облачной истории не выполнена: ' + String(err && (err.code || err.message)).slice(0, 80) }); }
+      return false;
+    }
+  }
+  setTimeout(() => maybeCleanup(false), 30000);
+  setInterval(() => maybeCleanup(false), 6 * 3600 * 1000);
+  try{ window.addEventListener('online', () => scheduleCleanup(30000, false)); }catch(_){}
+  try{ window.addEventListener('storage', ev => { if(ev && ev.key === CLOUD2_KEY) loadFlags(); }); }catch(_){}
+
+  // Смена владельца данных (вызывается в точках входа/выхода). Всё, что успело измениться, дописывается ПОД ПРЕЖНИМ владельцем,
+  // затем журнал переключается: снимок заявок, «пропавшие» и облачные записи прежнего аккаунта новому не достаются.
+  function setOwner(uid){
+    try{
+      const h = uid ? hashUid(uid) : '';
+      if(h === S.owner) return;
+      diff('смена аккаунта');
+      flush();
+      S.owner = h; S.prev = null; S.gone = new Map(); S.remote = []; S.ctx = null; S.enableGen++; S.cloudSent = 0; S.lastKey = ''; S.viewSig = ''; S.cleanFailLogged = false;
+      log('diag.owner', 'info', 'diag', { now: true, msg: h ? 'Журнал переключён на другой аккаунт' : 'Журнал: выход из аккаунта' });
+      scheduleCleanup(30000, false);
+    }catch(e){ internalError(e); }
+  }
+  function loadRemote(){
+    return new Promise(resolve => {
+      try{
+        const uid = uidNow();
+        if(!uid){ resolve({ ok: false, why: 'нет входа в аккаунт' }); return; }
+        db.collection('users').doc(uid).collection('diagEvents').orderBy('ts', 'desc').limit(400).get().then(snap => {
+          const have = new Set(S.buf.map(e => e.sid + '#' + e.n));
+          if(uidNow() !== uid || S.owner !== hashUid(uid)) return resolve({ ok: false, why: 'аккаунт сменился во время загрузки' });
+          S.remote = [];
+          snap.docs.forEach(d => {
+            const x = d.data();
+            if(have.has(x.sid + '#' + x.n)) return;
+            let dd; try{ dd = x.d ? JSON.parse(x.d) : undefined; }catch(_){ dd = x.d; }
+            let ui; try{ ui = x.ui ? JSON.parse(x.ui) : undefined; }catch(_){}
+            S.remote.push({ ts: x.ts, n: x.n, sid: x.sid, dev: x.dev, type: x.type, lv: x.lv, src: x.src, id: x.id, num: x.num, msg: x.msg, d: dd, ui, cloud: true });
+          });
+          resolve({ ok: true, count: S.remote.length });
+        }).catch(err => resolve({ ok: false, why: (err && err.code === 'permission-denied') ? 'правила Firestore ещё не установлены' : String(err && (err.code || err.message)) }));
+      }catch(e){ resolve({ ok: false, why: String(e && e.message) }); }
+    });
+  }
+
+  // ---- панель «Состояние системы»: только ЧТЕНИЕ уже существующих состояний приложения и журнала ----
+  // Ничего не отправляет в Firebase, не меняет данные и не влияет на сохранение/синхронизацию. Если показатель неизвестен — так и пишет.
+  // lv: ok | warn | bad | unk. Зелёным («ok») помечается только то, что реально подтверждено.
+  function hm(ts){ const d = new Date(ts), p = n => String(n).padStart(2, '0'); return p(d.getDate()) + '.' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+  function localSaveState(now){
+    // Сколько времени записана последняя правка в хранилище телефона: метка updatedAt лежит в самом конце сохранённых данных.
+    // Если правка в памяти новее, чем в хранилище — запись не удалась (например, нет места). Хранилище читаем не чаще раза в 20 с.
+    const L = safeGet(() => localUpdatedAt, 0) || 0;
+    const c = S.lsCache;
+    if(c && c.L === L && now - c.at < 20000) return c;
+    let P = null, has = false;
+    try{
+      const raw = localStorage.getItem(safeGet(() => STORAGE_KEY, 'moyreys_notes_v1'));
+      if(raw){ has = true; const m = /"updatedAt":(\d+)\}\s*$/.exec(raw.slice(-80)); if(m) P = Number(m[1]); }
+    }catch(_){ has = null; }
+    S.lsCache = { at: now, L, P, has };
+    return S.lsCache;
+  }
+  function status(){
+    const now = Date.now(), rows = [], H24 = 24 * 3600 * 1000;
+    const mine = S.buf.filter(visible);
+    // 1. Интернет
+    const online = (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') ? navigator.onLine : null;
+    rows.push({ key: 'net', label: 'Интернет', lv: online === null ? 'unk' : online ? 'ok' : 'warn', text: online === null ? 'неизвестно' : online ? 'подключён (по данным телефона)' : 'нет подключения' });
+    // 2. Firebase
+    const uid = uidNow();
+    const base = safeGet(() => initialCloudBaselineReady, null), wr = safeGet(() => cloudWritesAllowedThisSession, null);
+    const cs = safeGet(() => cloudSyncStatus, null), code = safeGet(() => cloudLastErrorCode, '');
+    const subErr = S.buf.some(e => e.sid === sid && e.type === 'console.warn' && e.ts >= (S.authAt || 0) && /Не удалось подписаться на (заявки|расходы|служебные данные)/.test(e.msg || ''));
+    let fb;
+    if(online === false) fb = { lv: 'warn', text: 'нет сети' };
+    else if(!uid) fb = { lv: 'unk', text: 'ожидание: вход в аккаунт ещё не подтверждён' };
+    else if(cs === 'error') fb = { lv: 'bad', text: 'ошибка отправки' + (code ? ' (' + code + ')' : '') };
+    else if(subErr && base !== true) fb = { lv: 'bad', text: 'ошибка подписки на данные облака' };
+    else if(base === true) fb = wr === false ? { lv: 'warn', text: 'сервер отвечал, но отправка в этом сеансе отключена' } : { lv: 'ok', text: 'сервер отвечал в этом сеансе' };
+    else if(base === false){ const w = S.authAt ? Math.round((now - S.authAt) / 1000) : null; fb = { lv: (w !== null && w > 30) ? 'warn' : 'unk', text: 'ожидание подтверждения сервера' + (w !== null ? ' (' + w + ' с)' : '') }; }
+    else fb = { lv: 'unk', text: 'неизвестно' };
+    rows.push(Object.assign({ key: 'fb', label: 'Firebase' }, fb));
+    // 3. Локальное сохранение (только телефон; подтверждение облаком — в строке ниже)
+    const ls = localSaveState(now);
+    const saveErrs = mine.filter(e => e.ts >= now - H24 && e.type === 'console.warn' && /Не удалось сохранить \(/.test(e.msg || '')).length;
+    let sv;
+    if(ls.has === null) sv = { lv: 'unk', text: 'хранилище телефона недоступно для проверки' };
+    else if(ls.L && (ls.P === null || ls.P < ls.L)) sv = { lv: 'bad', text: 'правка от ' + hm(ls.L) + ' не записана в хранилище телефона (возможно, нет места)' };
+    else if(ls.P) sv = { lv: saveErrs ? 'warn' : 'ok', text: 'последняя правка записана на телефон ' + hm(ls.P) + (saveErrs ? '; ошибок записи за 24 ч: ' + saveErrs : '') };
+    else if(!ls.has) sv = { lv: 'unk', text: 'в хранилище телефона пока нет данных' };
+    else sv = { lv: 'unk', text: 'время последней записи неизвестно' };
+    rows.push(Object.assign({ key: 'save', label: 'Сохранение' }, sv));
+    // 4. Синхронизация заявок
+    const list = safeGet(() => notes, []) || [];
+    const lsn = safeGet(() => lastSyncedNotes, null), pvc = safeGet(() => notesPendingVersionCheck, null), txn = safeGet(() => notesUnderTransaction, null);
+    let unconf = null, waitVer = 0, delWait = 0;
+    if(lsn && typeof lsn.get === 'function'){
+      unconf = 0;
+      const ids = new Set();
+      list.forEach(n => {
+        if(!n || n.id == null) return;
+        const id = String(n.id); ids.add(id);
+        if((pvc && pvc.has && pvc.has(id)) || (txn && txn.has && txn.has(id))){ waitVer++; return; }
+        if(lsn.get(id) !== (n.editedAt || n.createdAt || 0)) unconf++;
+      });
+      lsn.forEach((et, id) => { if(!ids.has(id) && !(pvc && pvc.has && pvc.has(id)) && !(txn && txn.has && txn.has(id))) delWait++; });
+    }
+    const conflicts = list.filter(n => n && n.syncConflict).length;
+    let lastOk = 0;
+    for(let i = mine.length - 1; i >= 0; i--){ if(mine[i].type === 'cloud.commit.ok'){ lastOk = mine[i].ts; break; } }
+    const waiting = unconf === null ? null : unconf + delWait + waitVer;
+    let sy;
+    if(conflicts > 0) sy = { lv: 'bad', text: 'конфликтов синхронизации: ' + conflicts };
+    else if(waiting === null) sy = { lv: 'unk', text: 'неизвестно' };
+    else if(waiting > 0) sy = { lv: (cs === 'error') ? 'bad' : 'warn', text: 'не подтверждено облаком: ' + waiting + (waitVer ? ' (из них ждут проверки версии: ' + waitVer + ')' : '') + (delWait ? ', удалений: ' + delWait : '') };
+    else if(base === true) sy = { lv: 'ok', text: 'все заявки подтверждены облаком' };
+    else sy = { lv: 'unk', text: 'очередь пуста, но облако в этом сеансе ещё не подтверждено' };
+    sy.sub = 'последняя подтверждённая отправка: ' + (lastOk ? hm(lastOk) : 'в журнале нет');
+    sy.conflicts = conflicts;
+    rows.push(Object.assign({ key: 'sync', label: 'Синхронизация' }, sy));
+    // 5. Программные ошибки за 24 часа (по журналу этого аккаунта)
+    const recent = mine.filter(e => e.ts >= now - H24);
+    const er = recent.filter(e => e.lv === 'error').length, wn = recent.filter(e => e.lv === 'warn').length;
+    const first = mine.length ? mine[0].ts : 0;
+    let pr = { lv: er ? 'bad' : wn ? 'warn' : 'ok', text: 'ошибок: ' + er + ', предупреждений: ' + wn };
+    if(first && now - first < H24) pr.sub = 'журнал ведётся только с ' + hm(first);
+    if(S.err) pr = Object.assign(pr, { lv: (pr.lv === 'bad' ? 'bad' : 'warn'), sub: 'журнал: ' + S.err });
+    rows.push(Object.assign({ key: 'err', label: 'Ошибки 24 ч' }, pr));
+    return rows;
+  }
+
+  // ---- обзор: что видно на экране и из-за чего ----
+  function viewTick(){
+    try{
+      const sec = safeGet(() => currentSection, '?'), v = safeGet(() => view, '?'), tab = safeGet(() => cargoTab, '?');
+      const sq = String(safeGet(() => searchQuery, '') || '').trim();
+      const shown = document.querySelectorAll('#content .note, #incList .inc-card').length;
+      const total = (safeGet(() => notes, []) || []).filter(n => n && !n.trashed && !n.archived).length;
+      const sig = [sec, v, tab, sq ? 'q' + sq.length : '-', shown].join('|');
+      if(sig === S.viewSig) return;
+      S.viewSig = sig;
+      log('view', 'info', 'ui', { msg: 'Экран: ' + sec + '/' + v + '/' + tab + (sq ? ', поиск активен (' + sq.length + ' симв.)' : '') + ', на экране карточек: ' + shown + ', активных в notes: ' + total,
+        d: { section: sec, view: v, tab, searchLen: sq.length, shown, activeInNotes: total } });
+    }catch(_){}
+  }
+
+  // ---- глобальные слушатели (только наблюдение) ----
+  try{
+    const desc = (t) => {
+      try{
+        const el = t && t.closest ? t.closest('[id],[data-open],[data-cargo],[data-view],[data-incopen],button') : null;
+        if(!el) return '';
+        let s = el.tagName.toLowerCase();
+        if(el.id) s += '#' + el.id;
+        ['data-open', 'data-cargo', 'data-view', 'data-incopen'].forEach(a => { if(el.hasAttribute(a)) s += '[' + a + '=' + String(el.getAttribute(a)).slice(0, 10) + ']'; });
+        return s.slice(0, 60);
+      }catch(_){ return ''; }
+    };
+    const rec = (e) => { try{ S.lastUI = { t: Date.now(), el: e.type + ' ' + desc(e.target) }; }catch(_){} };
+    document.addEventListener('touchend', rec, true);
+    document.addEventListener('click', rec, true);
+    window.addEventListener('error', ev => {
+      log('js.error', 'error', 'js', { now: true, msg: String(ev && ev.message || 'ошибка'),
+        d: { file: String(ev && ev.filename || '').split('/').pop().slice(0, 40), line: ev && ev.lineno, col: ev && ev.colno,
+          stack: ev && ev.error && ev.error.stack ? String(ev.error.stack).split('\n').slice(0, 4).join(' | ').slice(0, 400) : '' } });
+    });
+    window.addEventListener('unhandledrejection', ev => {
+      const r = ev && ev.reason;
+      log('js.rejection', 'error', 'js', { now: true, msg: String(r && (r.message || r.code) || r || 'необработанное отклонение promise'),
+        d: { code: r && r.code || '', stack: r && r.stack ? String(r.stack).split('\n').slice(0, 3).join(' | ').slice(0, 300) : '' } });
+    });
+    window.addEventListener('online', () => log('net.online', 'info', 'device', { msg: 'Появилась сеть' }));
+    window.addEventListener('offline', () => log('net.offline', 'info', 'device', { msg: 'Сеть пропала' }));
+    document.addEventListener('visibilitychange', () => { log('app.visibility', 'info', 'device', { msg: document.visibilityState }); if(document.visibilityState === 'hidden') flush(); });
+    window.addEventListener('pagehide', () => { flush(); });
+    ['warn', 'error'].forEach(k => {
+      const orig = console[k];
+      console[k] = function(){
+        try{ orig.apply(console, arguments); }catch(_){}
+        try{
+          if(S.inCon) return;
+          S.inCon = true;
+          const a = Array.prototype.slice.call(arguments);
+          const m = a.map(x => (typeof x === 'string') ? x : (x && (x.code || x.message)) ? (x.code || x.message) : '').filter(Boolean).join(' | ');
+          log('console.' + k, k === 'error' ? 'error' : 'warn', 'console', { msg: m });
+        }catch(_){} finally{ S.inCon = false; }
+      };
+    });
+    // страховка: изменения notes без saveState (запись в localStorage напрямую) всё равно будут замечены
+    setInterval(() => { diff('timer'); viewTick(); }, 3000);
+  }catch(e){ internalError(e); }
+
+  load();
+  log('app.start', 'info', 'device', { now: true, msg: 'Запуск приложения', d: { sid, dev: devLabel, v: safeGet(() => (document.getElementById('appVersionLine') || {}).textContent, '').slice(0, 90) } });
+
+  return {
+    log, diff, mark, user, replaceIntent, internalError, flush, viewTick, sum, status,
+    sid, dev: devLabel, S,
+    entries: () => S.buf.filter(visible).concat(S.remote).sort((a, b) => b.ts - a.ts || (b.n || 0) - (a.n || 0)),
+    setOwner, hash: hashUid, cleanupNow: maybeCleanup, cloudOn: cloudOnNow, enableCloud, disableCloud, loadRemote, storageError: () => S.err
+  };
+})();
+
+// Перед отправкой в облако: пишем, какие заявки будут УДАЛЕНЫ из облака (их нет в локальном notes, но числятся синхронизированными).
+function diagFlushIntent(ops){
+  const dels = ops.filter(o => o.action === 'delete' && o.kind === 'note');
+  const sets = ops.filter(o => o.action === 'set' && o.kind === 'note').length;
+  dels.slice(0, 20).forEach(o => {
+    const g = DIAG.S.gone.get(String(o.id));
+    DIAG.log('cloud.delete.intent', 'warn', 'local:flushCloudSave', { id: o.id, num: g && g.last ? g.last.num : null, now: true,
+      msg: 'В облако будет отправлено УДАЛЕНИЕ заявки: её нет в локальном notes, но она числится синхронизированной. Почему её нет локально — смотрите события note.vanished/state.replace по этому ID.',
+      d: { lastKnownLocal: g ? g.last : null, vanishedAt: g ? g.at : null, vanishedWhere: g ? g.where : null, pendingDelete: pendingDeletedNoteIds.indexOf(String(o.id)) !== -1, localCount: notes.length } });
+  });
+  if(dels.length > 20) DIAG.log('cloud.delete.intent', 'error', 'local:flushCloudSave', { now: true, msg: 'Всего удалений заявок в облаке в этой отправке: ' + dels.length + ' (показаны первые 20)' });
+  if(dels.length) DIAG.log('cloud.commit.start', 'info', 'local:flushCloudSave', { msg: 'Отправка: записей ' + sets + ', удалений ' + dels.length });
+}
 let idSeq = 1;
 let monthKey = null;
 // Номера пересчитываются заново при каждом изменении списка — всегда идут подряд,
@@ -1514,6 +2140,7 @@ function purgeOldTrash(){
       if(n.id != null) clearPendingVersionCheck(n.id);
     }
   });
+  diagSafe(() => { const gone = notes.filter(n => n.trashed && n.trashedAt && n.trashedAt < cutoff); if(gone.length){ DIAG.mark('purge.trash', 'local'); DIAG.log('purge.trash', 'warn', 'local:purgeOldTrash', { now: true, msg: 'Автоочистка корзины: из notes будет удалено заявок ' + gone.length, d: { items: gone.slice(0, 15).map(n => [String(n.id), n.number, n.trashedAt]) } }); } });
   notes = notes.filter(n => !(n.trashed && n.trashedAt && n.trashedAt < cutoff));
   return notes.length !== before;
 }
@@ -1801,6 +2428,8 @@ function escapeHtml(s){
 }
 
 function renderContent(){
+  diagSafe(() => DIAG.diff('renderContent'));
+  setTimeout(() => diagSafe(() => DIAG.viewTick()), 0);
   try{ offlineStatusUpdate(); offlineScheduleWarmup(); } catch(e){} // счётчик «Фото офлайн» и фоновая докачка (ничего не рисует)
   // ВАЖНО: saveState() здесь вызывается, только если purgeOldTrash() реально
   // что-то удалила. Раньше saveState() вызывался безусловно при КАЖДОМ рендере —
@@ -2145,6 +2774,7 @@ function swipeDeliverAndPay(n){
   saveState();
   renderContent();
   showToast(msg, 6000, { label: 'Отменить', fn: () => {
+    diagSafe(() => DIAG.user('swipe.undo', { id: n.id, num: n.number }));
     const cur = notes.find(x => x.id == n.id);
     if(!cur) return;
     // Откатываем ТОЛЬКО то, что сделал этот свайп, и только если оно ещё на месте: последующие правки
@@ -2222,6 +2852,7 @@ function finishCardGesture(e){
     if(!n) return;
     swipedNoteId = id; // клик сразу после свайпа не должен открывать редактор
     setTimeout(() => { if(swipedNoteId === id) swipedNoteId = null; }, 400);
+    diagSafe(() => DIAG.user('swipe ' + (dir > 0 ? 'вправо' : 'влево') + ', зона ' + zone, { id: n.id, num: n.number, d: { before: DIAG.sum(n) } }));
     if(dir > 0 && zone === 1){
       n.favorite = !n.favorite;
       if(n.favorite){
@@ -3450,6 +4081,7 @@ function savePendingDeletedNoteIds(){
 }
 function queueNoteIdForDeletion(id){
   id = String(id);
+  diagSafe(() => { const ln = notes.find(n => String(n.id) === id); DIAG.log('note.delete.permanent', 'warn', 'local:queueNoteIdForDeletion', { id, num: ln ? ln.number : null, now: true, msg: 'Заявка ставится в очередь окончательного удаления (будет удалена в облаке)', d: { local: ln ? DIAG.sum(ln) : (DIAG.S.gone.get(id) || null) } }); });
   if(pendingDeletedNoteIds.indexOf(id) === -1){
     pendingDeletedNoteIds.push(id);
     savePendingDeletedNoteIds();
@@ -7533,6 +8165,7 @@ function closeEditor(commit){
   const changed = commit && !isEmptyNote(editingNote)
     && JSON.stringify(snapshotNote()) !== JSON.stringify(history[0]);
   if(changed){
+    diagSafe(() => DIAG.user(isNewNote ? 'editor.create' : 'editor.save', { id: editingNote.id, num: editingNote.number }));
     if(editingNote.checklist) editingNote.checklist = editingNote.checklist.filter(i => i.text.trim());
     if(isNewNote){
       editingNote.id = idSeq++ + '_' + Math.random().toString(36).slice(2, 8);
@@ -10928,6 +11561,7 @@ function stateSnapshot(forCloud){
     serviceCarNotes: forCloud ? serviceCarNotes.map(carEntryForCloud) : serviceCarNotes, updatedAt: localUpdatedAt };
 }
 function applyState(s){
+  diagSafe(() => { if(!(DIAG.S.ctx && Date.now() - DIAG.S.ctx.t < 5000)) DIAG.replaceIntent('applyState', 'local', s && s.notes ? s.notes : []); });
   // Автосервис: массив в состоянии — применяем; пустой объект (сброс при
   // входе/выходе) — очищаем; иначе (старая копия без этого ключа) — оставляем как есть.
   if(Array.isArray(s.serviceFolders)) serviceFolders = s.serviceFolders.map(svcSanitizeFolder).filter(Boolean);
@@ -10943,6 +11577,7 @@ function applyState(s){
   expenseIdSeq = s.expenseIdSeq || 1;
   expenseCategories = s.expenseCategories || [];
   localUpdatedAt = toMillis(s.updatedAt);
+  diagSafe(() => DIAG.diff('applyState'));
 }
 // ---- Синхронизация теперь идёт ПО ОТДЕЛЬНОЙ ЗАПИСИ, а не общим массивом ----
 // Раньше каждое сохранение отправляло в облако ВЕСЬ список заявок и расходов
@@ -10991,6 +11626,7 @@ function metaSnapshotForSync(){
   return { idSeq, expenseIdSeq, monthKey, monthlyGoal, expenseCategories };
 }
 function saveState(){
+  diagSafe(() => DIAG.diff('saveState'));
   localUpdatedAt = Date.now();
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot()));
@@ -11256,6 +11892,8 @@ function flushCloudSave(){
     if(!localExpenseIds.has(id)) ops.push({ ref: expensesRef.doc(id), action: 'delete', id, kind: 'expense' });
   });
 
+  diagSafe(() => diagFlushIntent(ops));
+  const diagT0 = Date.now();
   // Снимок служебных полей берём ОДИН раз, сейчас, а не заново внутри
   // асинхронной цепочки батчей ниже — иначе, если batch этой отправки дойдёт
   // до сервера уже после того, как на этом телефоне успели выйти и войти в
@@ -11336,12 +11974,14 @@ function flushCloudSave(){
       });
       lastSyncedMetaJSON = metaJSON;
       persistSyncedNotesMap();
+      diagSafe(() => { const dl = ops.filter(o => o.action === 'delete' && o.kind === 'note').length; DIAG.log('cloud.commit.ok', 'info', 'firebase:flushCloudSave', { msg: 'Отправка подтверждена сервером: записей ' + ops.filter(o => o.action === 'set' && o.kind === 'note').length + ', удалений заявок ' + dl + ', ' + (Date.now() - diagT0) + ' мс' }); });
       if(notePendingDeleteConfirmed) savePendingDeletedNoteIds();
       maybeSaveDailyBackup(stateSnapshot(true));
     })
     .catch(e => {
       if(currentUID !== uid || authGeneration !== gen) return;
       console.warn('Не удалось сохранить в облако:', e);
+      diagSafe(() => DIAG.log('cloud.commit.fail', 'error', 'firebase:flushCloudSave', { now: true, msg: 'Отправка в облако не удалась: ' + (e && (e.code || e.message) || 'неизвестная ошибка'), d: { code: e && e.code || '', deletes: ops.filter(o => o.action === 'delete' && o.kind === 'note').length, sets: ops.filter(o => o.action === 'set' && o.kind === 'note').length } }));
       cloudLastErrorCode = e && e.code ? e.code : (e && e.message ? e.message : 'неизвестная ошибка');
       setCloudSyncStatus('error');
       cloudRetryTimer = setTimeout(() => {
@@ -11581,6 +12221,7 @@ function loadFromCloud(){
       // новый аккаунт — начинаем с чистого листа, не тащим данные, оставшиеся
       // в памяти телефона от предыдущего входа под другим аккаунтом
       suppressCloudSave = true;
+      diagSafe(() => DIAG.replaceIntent('cloud.userdoc.missing', 'firebase', [], { note: 'сервер сообщил, что документа users/{uid} нет — локальные заявки сбрасываются как «новый аккаунт»' }));
       applyState({});
       carLoadLocalForUID(currentUID); // сброс не должен стирать отдельную копию «Мой автомобиль» этого UID
       lastSyncedNotes = new Map();
@@ -11710,6 +12351,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
   // умолчанию содержит только реальные изменения документов — обработка прежняя.
   cloudUnsubscribes.push(userRef.collection('notes').onSnapshot({ includeMetadataChanges: true }, snapshot => {
     let touched = false;
+    diagSafe(() => { const c = { added: 0, modified: 0, removed: 0 }; snapshot.docChanges().forEach(x => { c[x.type]++; }); if(c.added + c.modified + c.removed > 0 || (snapshot.size === 0 && notes.length > 0)) DIAG.log('firestore.snapshot', (snapshot.size === 0 && notes.length > 0) ? 'warn' : 'info', 'firebase:onSnapshot', { msg: 'Снимок заявок из Firestore: документов ' + snapshot.size + ', изменений +' + c.added + ' ~' + c.modified + ' -' + c.removed + (snapshot.size === 0 && notes.length > 0 ? ' (облачных заявок 0, а локально ' + notes.length + ')' : ''), d: { size: snapshot.size, changes: c, fromCache: snapshot.metadata.fromCache, hasPendingWrites: snapshot.metadata.hasPendingWrites, localCount: notes.length } }); });
     snapshot.docChanges().forEach(change => {
       if(change.doc.metadata.hasPendingWrites) return; // это наша же ещё не подтверждённая запись
       const id = change.doc.id;
@@ -11730,6 +12372,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
         const idxLocal = notes.findIndex(n => String(n.id) === id);
         if(idxLocal !== -1 && !notes[idxLocal].syncConflict &&
            (!entry.serverSeen.exists || entry.serverSeen.editedAt !== entry.expectedServerEditedAt)){
+          diagSafe(() => DIAG.log('sync.conflict', 'warn', 'firebase', { id: notes[idxLocal].id, num: notes[idxLocal].number, now: true, msg: 'Заявка помечена конфликтом версий: версия на сервере отличается от ожидаемой' }));
           notes[idxLocal].syncConflict = true;
           touched = true;
         }
@@ -11737,6 +12380,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
       }
       if(change.type === 'removed'){
         const idxDel = notes.findIndex(n => String(n.id) === id);
+        diagSafe(() => { const ln = idxDel !== -1 ? notes[idxDel] : null; const ke = lastSyncedNotes.get(id); const le = ln ? (ln.editedAt || ln.createdAt || 0) : null; DIAG.mark('firestore.removed', 'firebase'); DIAG.log('firestore.removed', 'warn', 'firebase:onSnapshot', { id, num: ln ? ln.number : null, now: true, msg: 'Firestore прислал removed для заявки. Причина удаления в облаке неизвестна (другое устройство, этот телефон или правила Firestore).', d: { inLocalNotes: idxDel !== -1, localEditedAt: le, knownCloudEditedAt: ke == null ? null : ke, localNewerSoKept: ln ? (ke != null && le > ke) : null, fromCache: snapshot.metadata.fromCache, snapshotPending: snapshot.metadata.hasPendingWrites, docPending: change.doc.metadata.hasPendingWrites, local: ln ? DIAG.sum(ln) : (DIAG.S.gone.get(id) || null) } }); });
         if(idxDel !== -1){
           const localEt = notes[idxDel].editedAt || notes[idxDel].createdAt || 0;
           const knownEt = lastSyncedNotes.get(id);
@@ -11771,6 +12415,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
         // повторно пошлёт DELETE, как и для любого другого удаления.
       }
       else if(idx === -1){
+        diagSafe(() => DIAG.log('firestore.apply', 'info', 'firebase:onSnapshot', { id, num: incoming.number, msg: 'Из Firestore получена заявка, которой нет локально — добавлена', d: { incomingEditedAt: incomingEt, fromCache: snapshot.metadata.fromCache } }));
         // Вставляем по дате создания (новые сверху), а не в конец массива —
         // иначе заявка, созданная на ДРУГОМ телефоне и прилетевшая сюда через
         // облако, оказывалась внизу списка, а не там же, где она видна на
@@ -11785,12 +12430,14 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
         // Если локальная версия новее — оставляем её как есть, ничего не
         // теряя: она и так будет отправлена в облако через flushCloudSave(),
         // как только к нему дойдёт очередь (сравнение там идёт по editedAt).
+        diagSafe(() => { if(incomingEt !== localEt) DIAG.log('firestore.apply', incomingEt > localEt ? 'info' : 'warn', 'firebase:onSnapshot', { id, num: incoming.number, msg: incomingEt >= localEt ? 'Облачная версия заявки заменила локальную' : 'Локальная версия новее облачной — оставлена как есть', d: { localEditedAt: localEt, incomingEditedAt: incomingEt, before: DIAG.sum(notes[idx]), after: DIAG.sum(incoming) } }); });
         if(incomingEt >= localEt){ fillMissingPhotosFromLocal(incoming, notes[idx]); notes[idx] = incoming; touched = true; }
         else if(absorbKnownPhotoUrls(notes[idx], incoming)){ touched = true; }
       }
       lastSyncedNotes.set(id, incomingEt);
     });
 
+    diagSafe(() => DIAG.diff('firestore.snapshot', 'firebase'));
     // Снимок подтверждён сервером (не из локального кэша Firestore) И не
     // содержит ещё неподтверждённых локальных записей — значит, его
     // отсутствие в нём для конкретного ID можно считать окончательным фактом,
@@ -11818,6 +12465,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
       // каких условиях.
       if(!notesBaselineReconciled){
         notesBaselineReconciled = true;
+        diagSafe(() => { const rem = notes.filter(n => n && n.id != null && !cloudIds.has(String(n.id)) && knownNoteIdsAtStart.has(String(n.id))); DIAG.mark('sync.reconcile', 'firebase'); DIAG.log('sync.reconcile', rem.length ? 'warn' : 'info', 'firebase:первая сверка после запуска', { now: true, msg: 'Первая сверка с облаком: в облаке заявок ' + cloudIds.size + ', локально ' + notes.length + ', известных с прошлого запуска ' + knownNoteIdsAtStart.size + ', будет удалено локально: ' + rem.length, d: { cloud: cloudIds.size, local: notes.length, knownAtStart: knownNoteIdsAtStart.size, remove: rem.slice(0, 12).map(n => [String(n.id), n.number, DIAG.sum(n).t]), fromCache: snapshot.metadata.fromCache, pending: snapshot.metadata.hasPendingWrites } }); });
         const before = notes.length;
         notes = notes.filter(n => {
           if(!n || n.id == null) return true;
@@ -11848,6 +12496,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
       }
     }
 
+    diagSafe(() => DIAG.diff('firestore.snapshot+reconcile', 'firebase'));
     if(touched){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       renderContent();
@@ -11948,6 +12597,7 @@ setTimeout(() => {
 }, 6000);
 auth.onAuthStateChanged(user => {
   authGeneration++;
+  diagSafe(() => DIAG.log('auth.state', 'info', 'firebase:auth', Object.assign({ now: true, msg: user ? 'Вход подтверждён (аккаунт ' + String(user.uid).slice(0, 6) + '…)' : 'Выход / нет входа', d: { signedIn: !!user, gen: authGeneration, notes: notes.length } }, user ? { uid: user.uid } : {})));
   // Единая точка сброса для входа/выхода/смены аккаунта — subscribeCloud()
   // (единственное место, где эти флаги становятся true) вызывается только
   // из loadFromCloud(), а она — только из ветки if(user) этого же колбэка,
@@ -11978,6 +12628,7 @@ auth.onAuthStateChanged(user => {
     try{ cacheOwner = localStorage.getItem(CACHE_OWNER_KEY); }catch(e){}
     if(cacheOwner && cacheOwner !== currentUID){
       suppressCloudSave = true;
+      diagSafe(() => DIAG.replaceIntent('cache.owner.switch', 'local', [], { cacheOwner: String(cacheOwner).slice(0, 6), uid: String(currentUID).slice(0, 6) }));
       applyState({});
       lastSyncedNotes = new Map();
       lastSyncedExpenses = new Map();
@@ -11989,6 +12640,7 @@ auth.onAuthStateChanged(user => {
       renderContent();
     }
     try{ localStorage.setItem(CACHE_OWNER_KEY, currentUID); }catch(e){}
+    diagSafe(() => DIAG.setOwner(currentUID)); // данные в памяти теперь принадлежат вошедшему аккаунту (прежние события остались за прежним владельцем)
     // «Мой автомобиль»: слияние общего кэша с отдельным ключом этого UID и немедленная запись обратно.
     carLoadLocalForUID(currentUID);
     authOverlay.style.display = 'none';
@@ -12311,6 +12963,8 @@ function setupNativeBackButton(){
       document.getElementById('payChoiceCancel').click();
       return;
     }
+    const diagEl = document.getElementById('diagOverlay');
+    if(diagEl && diagEl.style.display === 'flex'){ diagEl.style.display = 'none'; return; }
     if(backupsEl && backupsEl.style.display === 'flex'){
       document.getElementById('backupsCloseBtn').click();
       return;
@@ -12417,6 +13071,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   auth.signOut();
   drawer.classList.remove('show'); overlay.classList.remove('show');
   suppressCloudSave = true;
+  diagSafe(() => DIAG.replaceIntent('logout', 'user', []));
   applyState({});
   lastSyncedNotes = new Map();
   lastSyncedExpenses = new Map();
@@ -12432,6 +13087,7 @@ document.getElementById('logoutBtn')?.addEventListener('click', (e) => {
   try{ localStorage.removeItem(STORAGE_KEY); } catch(e){}
   try{ localStorage.removeItem(CACHE_OWNER_KEY); } catch(e){}
   try{ localStorage.removeItem(LAST_EMAIL_KEY); } catch(e){}
+  diagSafe(() => DIAG.setOwner(null)); // кэш стёрт: заявок в памяти больше нет ни у кого
   suppressCloudSave = false;
   if(cloudSaveRequestedWhileSuppressed){
     cloudSaveRequestedWhileSuppressed = false;
@@ -12554,6 +13210,7 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
               backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
                 .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
                 .then(() => {
+                  diagSafe(() => DIAG.replaceIntent('backup.restore.cloud', 'restore', data && data.notes, { backup: String(preRestoreKey) }));
                   applyState(data);
                   carPersistLocal();
                   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
@@ -12624,6 +13281,198 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   backupsOverlay.style.display = 'none';
 });
 
+// ---- Экран «Диагностика»: просмотр, копирование и экспорт журнала (данные заявок не меняются) ----
+(function setupDiagScreen(){
+  const ov = document.getElementById('diagOverlay');
+  if(!ov) return;
+  const listEl = document.getElementById('diagList'), filterEl = document.getElementById('diagFilter');
+  const countEl = document.getElementById('diagCount'), checkEl = document.getElementById('diagCheck');
+  const cloudState = document.getElementById('diagCloudState'), cloudBtn = document.getElementById('diagCloudBtn');
+  let lvFilter = 'all', limit = 150, timer = null, focus = null, lastRows = [];
+  const sysBody = document.getElementById('diagSysBody'), sysHead = document.getElementById('diagSysHead'), sysToggle = document.getElementById('diagSysToggle'), sysDot = document.getElementById('diagSysDot'), focusEl = document.getElementById('diagFocus');
+  let sysOpen = true;
+  try{ sysOpen = localStorage.getItem('vreyse_diag_sys') !== '0'; }catch(_){}
+  const openRows = new Set();
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = ts => { const d = new Date(ts); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const keyOf = e => e.sid + '#' + e.n;
+  function matches(e, q){
+    if(focus && !focus.pred(e)) return false;
+    if(lvFilter === 'warn' && e.lv === 'info') return false;
+    if(lvFilter === 'error' && e.lv !== 'error') return false;
+    if(!q) return true;
+    const ql = q.toLowerCase().replace(/^№\s*/, '');
+    if(String(e.num).toLowerCase() === ql) return true;
+    if(String(e.id).toLowerCase().indexOf(ql) !== -1) return true;
+    try{
+      const j = JSON.stringify(e.d || '');
+      if(ql.length >= 4 && j.toLowerCase().indexOf(ql) !== -1) return true;
+      // короткий ID или номер внутри списков (например, «будет удалено: [["B",2,…]]») — по точному значению
+      if(j.toLowerCase().indexOf('"' + ql + '"') !== -1) return true;
+      if(/^\d+$/.test(ql) && (new RegExp('[\\[,]' + ql + '[,\\]]').test(j) || new RegExp('"num":' + ql + '[,}]').test(j))) return true;
+    }catch(_){}
+    return false;
+  }
+  function checkLine(q){
+    q = (q || '').trim().replace(/^№\s*/, '');
+    if(!q) return '';
+    const n = notes.find(x => String(x.id) === q || String(x.number) === q);
+    if(n){
+      const id = String(n.id);
+      const loc = n.trashed ? 'Корзина' : n.archived ? 'Архив' : n.delivered === true ? 'Доставлено' : 'Доставляется';
+      const sq = String(searchQuery || '').trim();
+      return 'Заявка №' + esc(n.number) + ' (id ' + esc(id.slice(0, 12)) + ') сейчас <b>в памяти: да</b> · раздел: ' + loc + ' · синхронизирована с облаком: ' + (lastSyncedNotes.has(id) ? 'да' : 'нет') +
+        ' · в очереди удаления: ' + (pendingDeletedNoteIds.indexOf(id) !== -1 ? 'да' : 'нет') + ' · поиск на главном экране: ' + (sq ? 'активен' : 'не активен') + ' · конфликт: ' + (n.syncConflict ? 'да' : 'нет');
+    }
+    let g = DIAG.S.gone.get(q);
+    if(!g) DIAG.S.gone.forEach(v => { if(!g && v.last && String(v.last.num) === q) g = v; });
+    return 'Заявки «' + esc(q) + '» <b>в памяти сейчас нет</b>.' + (g ? ' Пропала в ' + fmt(g.at) + ' (' + esc(g.where) + '), последнее известное состояние смотрите в событии note.vanished.' : ' События об исчезновении в этом сеансе не зафиксированы — смотрите записи ниже.');
+  }
+  // «Состояние системы»: все данные берутся из DIAG.status() — только чтение, никаких запросов к Firebase.
+  function renderSys(){
+    try{
+      const rows = DIAG.status(); lastRows = rows;
+      const rank = { ok: 0, unk: 1, warn: 2, bad: 3 };
+      const worst = rows.reduce((a, r) => (rank[r.lv] > rank[a] ? r.lv : a), 'ok');
+      sysDot.className = 'dg-dot ' + worst;
+      sysToggle.textContent = sysOpen ? '▾' : '▸';
+      sysBody.style.display = sysOpen ? 'block' : 'none';
+      sysBody.innerHTML = rows.map(r => '<div class="dg-st" data-st="' + r.key + '"><span class="dg-dot ' + r.lv + '"></span><span class="dg-st-l">' + esc(r.label) + '</span><span class="dg-st-t">' + esc(r.text) + (r.sub ? '<span class="dg-st-s">' + esc(r.sub) + '</span>' : '') + '</span></div>').join('');
+    }catch(e){ DIAG.internalError(e); }
+  }
+  function focusFor(key){
+    const now = Date.now();
+    if(key === 'net') return { label: 'сеть', pred: e => /^net\./.test(e.type) };
+    if(key === 'fb') return { label: 'Firebase', pred: e => /^(firestore\.|cloud\.|auth\.|sync\.)/.test(e.type) || /Не удалось подписаться/.test(e.msg || '') };
+    if(key === 'save') return { label: 'сохранение на телефон', pred: e => /Не удалось (сохранить|загрузить сохранённые)/.test(e.msg || '') };
+    if(key === 'sync'){
+      const r = DIAG.status().find(x => x.key === 'sync'); // заново, а не из последнего показа
+      if(r && r.conflicts > 0) return { label: 'конфликты синхронизации', pred: e => e.type === 'sync.conflict' };
+      return { label: 'синхронизация заявок', pred: e => /^(cloud\.|sync\.)/.test(e.type) || e.type === 'firestore.removed' };
+    }
+    if(key === 'err') return { label: 'ошибки и предупреждения за 24 ч', pred: e => e.lv !== 'info' && e.ts >= now - 24 * 3600 * 1000 };
+    return null;
+  }
+  function setFocus(f){
+    focus = f; limit = 150; lvFilter = 'all';
+    ov.querySelectorAll('[data-diaglv]').forEach(x => x.classList.toggle('active', x.getAttribute('data-diaglv') === 'all'));
+    render();
+    listEl.scrollTop = 0;
+  }
+  function render(){
+    try{
+      renderSys();
+      if(focus){ focusEl.style.display = 'block'; focusEl.innerHTML = 'Показано: ' + esc(focus.label) + ' <button class="dg-btn" id="diagFocusX" type="button" style="padding:3px 8px;">Показать всё</button>'; }
+      else focusEl.style.display = 'none';
+      const q = filterEl.value.trim();
+      const all = DIAG.entries();
+      const rows = all.filter(e => matches(e, q));
+      countEl.textContent = rows.length + ' из ' + all.length;
+      const cl = checkLine(q);
+      checkEl.style.display = cl ? 'block' : 'none';
+      checkEl.innerHTML = cl;
+      cloudState.textContent = 'Облачная история: ' + (DIAG.cloudOn() ? 'включена' : 'выключена');
+      cloudBtn.textContent = DIAG.cloudOn() ? 'Выключить' : 'Включить';
+      const part = rows.slice(0, limit);
+      listEl.innerHTML = part.map(e => {
+        const k = keyOf(e), op = openRows.has(k);
+        let det = '';
+        if(op){
+          const lines = ['источник: ' + (e.src || '—'), 'id: ' + (e.id || '—'), 'устройство: ' + e.dev + ' · сеанс ' + e.sid];
+          if(e.ui) lines.push('последнее касание за ' + e.ui.agoMs + ' мс до события: ' + e.ui.el);
+          if(e.d !== undefined) lines.push('данные: ' + JSON.stringify(e.d, null, 1));
+          det = '<pre class="dg-d">' + esc(lines.join('\n')) + '</pre>';
+        }
+        return '<div class="dg-row dg-' + esc(e.lv) + '" data-k="' + esc(k) + '"><div class="dg-h"><span class="dg-t">' + fmt(e.ts) + '</span><span class="dg-ty">' + esc(e.type) + '</span>' +
+          (e.num !== '' && e.num != null ? '<span class="dg-n">№' + esc(e.num) + '</span>' : '') + (e.cloud ? '<span class="dg-c">облако · ' + esc(e.dev) + '</span>' : '') + '</div><div class="dg-m">' + esc(e.msg) + '</div>' + det + '</div>';
+      }).join('') + (rows.length > limit ? '<button class="dg-btn dg-more" type="button" id="diagMore">Показать ещё</button>' : '') +
+        (!rows.length ? '<div class="dg-note" style="margin:14px 0;">' + (focus ? 'По выбранному показателю записей в журнале нет.' : 'Записей нет.') + '</div>' : '');
+      const err = DIAG.storageError();
+      if(err) listEl.innerHTML = '<div class="dg-note" style="margin:6px 0;color:var(--danger);">' + esc(err) + '</div>' + listEl.innerHTML;
+    }catch(e){ DIAG.internalError(e); }
+  }
+  function openScreen(){
+    focus = null;
+    ov.style.display = 'flex';
+    render();
+    clearInterval(timer);
+    timer = setInterval(() => { if(ov.style.display === 'flex') render(); else clearInterval(timer); }, 4000);
+  }
+  function closeScreen(){ ov.style.display = 'none'; clearInterval(timer); }
+  function textOf(entries){
+    return entries.map(e => [new Date(e.ts).toISOString(), e.dev + '/' + e.sid, e.lv, e.type, e.src || '', 'id=' + (e.id || ''), 'num=' + (e.num || ''), e.msg || '',
+      e.ui ? 'ui=' + JSON.stringify(e.ui) : '', e.d !== undefined ? 'd=' + JSON.stringify(e.d) : ''].filter(Boolean).join(' | ')).join('\n');
+  }
+  function copyText(t){
+    if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t);
+    return new Promise((res, rej) => { try{ const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); document.body.removeChild(ta); ok ? res() : rej(new Error('copy')); }catch(e){ rej(e); } });
+  }
+  function currentRows(){ const q = filterEl.value.trim(); return DIAG.entries().filter(e => matches(e, q)); }
+  document.getElementById('diagBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    drawer.classList.remove('show'); overlay.classList.remove('show');
+    openScreen();
+  });
+  document.getElementById('diagBack').addEventListener('click', closeScreen);
+  sysHead.addEventListener('click', () => { sysOpen = !sysOpen; try{ localStorage.setItem('vreyse_diag_sys', sysOpen ? '1' : '0'); }catch(_){} renderSys(); });
+  sysBody.addEventListener('click', (e) => { const r = e.target.closest('.dg-st'); if(!r) return; const f = focusFor(r.getAttribute('data-st')); if(f) setFocus(f); });
+  focusEl.addEventListener('click', (e) => { if(e.target.closest('#diagFocusX')) setFocus(null); });
+  ['online', 'offline'].forEach(n => window.addEventListener(n, () => { if(ov.style.display === 'flex') render(); }));
+  filterEl.addEventListener('input', () => { limit = 150; render(); });
+  ov.querySelectorAll('[data-diaglv]').forEach(b => b.addEventListener('click', () => {
+    lvFilter = b.getAttribute('data-diaglv'); limit = 150; focus = null;
+    ov.querySelectorAll('[data-diaglv]').forEach(x => x.classList.toggle('active', x === b));
+    render();
+  }));
+  listEl.addEventListener('click', (e) => {
+    if(e.target.closest('#diagMore')){ limit += 150; render(); return; }
+    const row = e.target.closest('.dg-row');
+    if(!row) return;
+    const k = row.getAttribute('data-k');
+    if(openRows.has(k)) openRows.delete(k); else openRows.add(k);
+    render();
+  });
+  document.getElementById('diagCopy').addEventListener('click', () => {
+    const rows = currentRows().slice().reverse();
+    copyText(textOf(rows)).then(() => showToast('Журнал скопирован (' + rows.length + ' записей)')).catch(() => showToast('Не удалось скопировать — воспользуйтесь экспортом'));
+  });
+  document.getElementById('diagExport').addEventListener('click', () => {
+    try{
+      DIAG.flush();
+      const st = {
+        notesInMemory: notes.length, trashed: notes.filter(n => n.trashed).length, archived: notes.filter(n => n.archived).length, delivered: notes.filter(n => n.delivered === true).length,
+        lastSyncedNotes: lastSyncedNotes.size, pendingDeletedNoteIds: pendingDeletedNoteIds.slice(0, 30), online: navigator.onLine, signedIn: !!currentUID,
+        searchActive: !!String(searchQuery || '').trim(), view, section: currentSection
+      };
+      const payload = { app: 'В рейсе', version: (document.getElementById('appVersionLine') || {}).textContent || '', exportedAt: new Date().toISOString(),
+        device: DIAG.dev, session: DIAG.sid, cloudHistory: DIAG.cloudOn(), state: st, events: DIAG.entries() };
+      const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); const d = new Date();
+      a.href = url; a.download = 'vreyse-diagnostics-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('Диагностика сохранена в Загрузки');
+    }catch(e){ DIAG.internalError(e); showToast('Не удалось сохранить файл'); }
+  });
+  cloudBtn.addEventListener('click', async () => {
+    if(DIAG.cloudOn()){ DIAG.disableCloud(); render(); showToast('Облачная история выключена'); return; }
+    cloudBtn.disabled = true; showToast('Проверяю запись в облако…');
+    const r = await DIAG.enableCloud();
+    cloudBtn.disabled = false;
+    showToast(r.ok ? 'Облачная история включена' : 'Не включено: ' + r.why, r.ok ? 2000 : 5000);
+    render();
+  });
+  document.getElementById('diagRemote').addEventListener('click', async () => {
+    showToast('Загружаю журнал с облака…');
+    const r = await DIAG.loadRemote();
+    showToast(r.ok ? 'Загружено записей с других сеансов: ' + r.count : 'Не загрузилось: ' + r.why, r.ok ? 2500 : 5000);
+    render();
+  });
+})();
+
+
 // ---- Экспорт / импорт данных (для переноса между версиями файла) ----
 // localStorage привязан к конкретному файлу/источнику, поэтому при получении
 // новой версии HTML-файла данные автоматически не переносятся. Эти кнопки
@@ -12655,6 +13504,7 @@ function importDataFromFile(file){
       showConfirm(
         'Загрузить эту копию? Текущие данные в приложении будут заменены.',
         () => {
+          diagSafe(() => DIAG.replaceIntent('import.file', 'restore', s.notes, { fileNotes: (s.notes || []).length }));
           notes = s.notes || [];
           idSeq = s.idSeq || 1;
           monthKey = s.monthKey || null;
@@ -12920,6 +13770,7 @@ function refreshFromCloudOnResume(){
         savePendingVersionCheck();
         const idxLocal = notes.findIndex(n => String(n.id) === id);
         if(idxLocal !== -1 && !notes[idxLocal].syncConflict && incomingEt !== entry.expectedServerEditedAt){
+          diagSafe(() => DIAG.log('sync.conflict', 'warn', 'firebase', { id: notes[idxLocal].id, num: notes[idxLocal].number, now: true, msg: 'Заявка помечена конфликтом версий: версия на сервере отличается от ожидаемой' }));
           notes[idxLocal].syncConflict = true;
           touched = true;
         }
@@ -12939,6 +13790,7 @@ function refreshFromCloudOnResume(){
       }
       else {
         const localEt = notes[idx].editedAt || notes[idx].createdAt || 0;
+        diagSafe(() => { if(incomingEt !== localEt) DIAG.log('firestore.apply', incomingEt > localEt ? 'info' : 'warn', 'firebase:onSnapshot', { id, num: incoming.number, msg: incomingEt >= localEt ? 'Облачная версия заявки заменила локальную' : 'Локальная версия новее облачной — оставлена как есть', d: { localEditedAt: localEt, incomingEditedAt: incomingEt, before: DIAG.sum(notes[idx]), after: DIAG.sum(incoming) } }); });
         if(incomingEt >= localEt){ fillMissingPhotosFromLocal(incoming, notes[idx]); notes[idx] = incoming; touched = true; }
         else if(absorbKnownPhotoUrls(notes[idx], incoming)){ touched = true; }
       }
@@ -12956,6 +13808,7 @@ function refreshFromCloudOnResume(){
           savePendingVersionCheck();
           const idxLocal = notes.findIndex(n => String(n.id) === id);
           if(idxLocal !== -1 && !notes[idxLocal].syncConflict){
+            diagSafe(() => DIAG.log('sync.conflict', 'warn', 'firebase', { id: notes[idxLocal].id, num: notes[idxLocal].number, now: true, msg: 'Заявка помечена конфликтом версий: версия на сервере отличается от ожидаемой' }));
             notes[idxLocal].syncConflict = true;
             touched = true;
           }
@@ -12964,6 +13817,7 @@ function refreshFromCloudOnResume(){
       }
       if(!serverNoteIds.has(id)){
         const idxDel = notes.findIndex(n => String(n.id) === id);
+        diagSafe(() => { const ln = idxDel !== -1 ? notes[idxDel] : null; const ke = lastSyncedNotes.get(id); const le = ln ? (ln.editedAt || ln.createdAt || 0) : null; DIAG.mark('cloud.reload.compare', 'firebase'); DIAG.log('firestore.removed', 'warn', 'firebase:полная загрузка/возврат в приложение', { id, num: ln ? ln.number : null, now: true, msg: 'При полной загрузке заявки с сервера нет (а раньше была синхронизирована). Причина отсутствия в облаке неизвестна.', d: { inLocalNotes: idxDel !== -1, localEditedAt: le, knownCloudEditedAt: ke == null ? null : ke, localNewerSoKept: ln ? (ke != null && le > ke) : null, serverCount: serverNoteIds.size, local: ln ? DIAG.sum(ln) : null } }); });
         // Та же защита, что и в живой подписке: не стираем локальную правку,
         // которая новее того, что мы в последний раз подтверждённо получали
         // с сервера, — иначе можно потерять правку, сделанную прямо перед тем,
@@ -13006,6 +13860,7 @@ function refreshFromCloudOnResume(){
         if(expenses.length !== before) touched = true;
       }
     });
+    diagSafe(() => DIAG.diff('refreshFromCloudOnResume', 'firebase'));
     if(touched){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
       // Перерисовываем именно тот раздел, который сейчас виден (как при
@@ -13047,7 +13902,7 @@ function refreshFromCloudOnResume(){
   // (setupNativeBackButton), плюс экран входа — везде здесь жест тянуть
   // вниз не должен запускать обновление списка под ними.
   const BLOCKING_OVERLAY_IDS = ['confirmOverlay', 'lightbox', 'ocrResultOverlay', 'drawer',
-    'backupsOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
+    'backupsOverlay', 'diagOverlay', 'changePassOverlay', 'payChoiceOverlay', 'goalOverlay',
     'editorOverlay', 'expSheetOverlay', 'svcSheetOverlay', 'svcMoveOverlay', 'svcDetailOverlay', 'svcCarDetailOverlay', 'authOverlay'];
 
   function blockingOverlayOpen(){
