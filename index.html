@@ -519,6 +519,10 @@
   .inc-card .inc-route{font-size:14.5px;font-weight:700;color:var(--ink);overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
   .inc-card .inc-meta{font-size:12.5px;color:var(--faint);}
+  .inc-card .inc-firm{font-size:11.5px;font-weight:400;color:var(--faint);display:flex;min-width:0;white-space:pre;}
+  .note .note-firm{font-size:11px;font-weight:400;color:var(--faint);margin:-1px 0 3px;display:flex;white-space:pre;padding-right:124px;flex-shrink:0;}
+  .note-firm .firm-name,.inc-firm .firm-name{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;}
+  .note-firm .firm-cnt,.inc-firm .firm-cnt{flex:0 0 auto;}
   .inc-card .inc-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
   .inc-card .inc-amount{font-size:16px;font-weight:700;color:var(--ink);}
   .inc-card .inc-status{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;}
@@ -1204,7 +1208,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-20 21:03 (усилена защита очереди удаления файлов)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 00:00 (фирма: кэш, кавычки, «ФИРМА:» в строке)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -2432,6 +2436,7 @@ function noteCardHtml(n, favInfo){
         ${n.number ? `<span>№${n.number}${n.createdAt ? ' · ' + formatNoteDate(n.createdAt) : ''}</span>` : ''}
       </div>`
     : (n.number ? `<div class="note-num">№${n.number}${n.createdAt ? ' · ' + formatNoteDate(n.createdAt) : ''}</div>` : '');
+  const firmHtml = firmLineHtml(n, 'note-firm');
   const overdue = isOverdue(n);
   return `<div class="note ${isFav ? 'favorite' : ''} ${overdue ? 'due-overdue' : ''} ${(!overdue && !isFav && n.color && n.color !== 'default') ? 'tinted' : ''}" style="background:${overdue ? 'var(--tint-red-bg)' : (isFav ? 'var(--tint-fav-bg)' : colorHex(n.color))}" data-open="${n.id}">
     ${isFav ? `<button class="drag-handle" data-drag="${n.id}" aria-label="Изменить порядок в избранном">
@@ -2442,12 +2447,169 @@ function noteCardHtml(n, favInfo){
     ${(n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>` : ''}
     ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="${n.amount ? 'top:60px;' : ''}${isFav ? 'right:32px;' : ''}">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
     ${numberBlockHtml}
+    ${firmHtml}
     ${n.delivered ? '<div class="deliv-tag">✓ Доставлен</div>' : ''}
     ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
     ${n.title ? `<h4>${escapeHtml(n.title)}</h4>` : ''}
     ${body}
     ${photosHtml}
   </div>`;
+}
+
+// ---- Фирма-заказчик и счётчик выполненных рейсов ----
+// Всё вычисляется на лету из текста заявки (строка «ФИРМА:») и статусов заявок. Нигде не хранится и не
+// синхронизируется — поэтому рассинхронизироваться нечему. Содержимое заявок не меняется.
+const FIRM_FORM_RE = '(?:ООО|ОАО|ЗАО|ПАО|АО|ИП|ТОО|НКО|АНО|ЧП|КФХ|ГУП|МУП|ФГУП)';
+const FIRM_L = '(?<![\\p{L}\\p{N}])', FIRM_R = '(?![\\p{L}\\p{N}])';
+const firmFormRe = new RegExp(FIRM_L + FIRM_FORM_RE + FIRM_R, 'iu');
+const firmParseCache = new Map(); // текст заявки -> результат разбора (чистая функция от текста)
+function firmCodeFrom(src){
+  const res = [
+    /ati\.su\/firms\/(\d{3,10})/i,
+    /(?:ati\s*\.?\s*su|ати(?:\s*\.?\s*su)?)\s*[:№#=\-]?\s*(?:id\s*)?(\d{3,10})/iu,
+    /(?:код|id)\s*(?:в\s*)?(?:ати|ati)(?:\s*\.?\s*su)?[^\d\n]{0,12}(\d{3,10})/iu
+  ];
+  for(const re of res){ const m = src.match(re); if(m) return m[1]; }
+  return null;
+}
+// Нормализованное имя для сравнения: регистр, ё/е, кавычки, пробелы и разные написания формы (ООО / О.О.О. /
+// «общество с ограниченной ответственностью» / латинские OOO) сводятся к одному виду, форма уходит в конец.
+// Разные названия НЕ объединяются: сравнение точное, по нормализованной строке.
+function firmNameKey(name){
+  let t = ' ' + String(name || '').toLowerCase().replace(/ё/g, 'е') + ' ';
+  t = t.replace(/общество\s+с\s+ограниченной\s+ответственностью/g, ' ооо ')
+       .replace(/публичное\s+акционерное\s+общество/g, ' пао ')
+       .replace(/закрытое\s+акционерное\s+общество/g, ' зао ')
+       .replace(/открытое\s+акционерное\s+общество/g, ' оао ')
+       .replace(/акционерное\s+общество/g, ' ао ')
+       .replace(/индивидуальный\s+предприниматель/g, ' ип ')
+       .replace(/о\s*\.\s*о\s*\.\s*о\s*\.?/g, ' ооо ')
+       .replace(/(?<![\p{L}\p{N}])o{3}(?![\p{L}\p{N}])/giu, ' ооо ');           // латинские OOO
+  let form = '';
+  t = t.replace(new RegExp(FIRM_L + '(' + FIRM_FORM_RE.slice(3, -1).toLowerCase() + ')' + FIRM_R, 'giu'), (m0, f) => { if(!form) form = f.toLowerCase(); return ' '; });
+  t = t.replace(/[^\p{L}\p{N}+&]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  return t ? t + '|' + form : '';
+}
+// Токен целиком — организационно-правовая форма в любом написании (ООО, О.О.О., латинские OOO, полное название) -> «ООО» и т.п.
+function firmCanonForm(tok){
+  let t = String(tok || '').toLowerCase().replace(/ё/g, 'е').trim();
+  t = t.replace(/^общество с ограниченной ответственностью$/, 'ооо').replace(/^публичное акционерное общество$/, 'пао')
+       .replace(/^закрытое акционерное общество$/, 'зао').replace(/^открытое акционерное общество$/, 'оао')
+       .replace(/^акционерное общество$/, 'ао').replace(/^индивидуальный предприниматель$/, 'ип');
+  t = t.replace(/[\s.]+/g, '').replace(/^o{3}$/, 'ооо');
+  return /^(ооо|оао|зао|пао|ао|ип|тоо|нко|ано|чп|кфх|гуп|муп|фгуп)$/.test(t) ? t.toUpperCase() : null;
+}
+function firmParse(text){
+  const src = String(text || '');
+  if(!src) return null;
+  if(firmParseCache.has(src)) return firmParseCache.get(src);
+  let out = null;
+  const lines = src.split(/\r?\n/);
+  let idx = -1, val = '';
+  for(let i = 0; i < lines.length; i++){
+    const m = lines[i].match(/^\s*[^\p{L}\p{N}]{0,3}фирма\s*:\s*(.*)$/iu);
+    if(m){ idx = i; val = m[1]; break; }
+  }
+  if(idx === -1){
+    // «ФИРМА:» после другого текста в той же строке — только как заглавное поле (не обычное слово «фирма» в тексте)
+    for(let i = 0; i < lines.length; i++){
+      const m = lines[i].match(/(?<![\p{L}\p{N}])ФИРМА[ \t]*:[ \t]*(.*)$/u);
+      if(m){ idx = i; val = m[1]; break; }
+    }
+  }
+  if(idx !== -1){
+    if(!val.trim()){ for(let j = idx + 1; j < lines.length && j <= idx + 2; j++){ if(lines[j].trim()){ val = lines[j]; break; } } }
+    const block = lines.slice(idx, idx + 5).join('\n');
+    const code = firmCodeFrom(block) || firmCodeFrom(src);
+    // убрать из названия код АТИ, рейтинг, контакты
+    let v = val.replace(/https?:\/\/\S+/gi, ' ').replace(/\S+@\S+/g, ' ').replace(/\+?\d[\d\s\-()]{8,}\d/g, ' ');
+    const cut = v.search(/ati\s*\.?\s*su|(?<![\p{L}])ати(?![\p{L}])|код\s+ати|рейтинг|[⭐★☆]|(?<![\p{L}])id(?![\p{L}])/iu);
+    if(cut !== -1) v = v.slice(0, cut);
+    v = v.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+    const toks = v.split(/\s*[,;|•·]\s*/).filter(Boolean);
+    let name = '';
+    if(toks.length){
+      const t0 = toks[0];
+      const fm = t0.match(firmFormRe);
+      if(fm && fm.index > 0){
+        name = t0.slice(0, fm.index + fm[0].length).trim();               // «ТК ПАРНАС+ ООО Москва» -> «ТК ПАРНАС+ ООО»
+      } else if(fm){                                                      // форма в начале: «ООО "Ромашка" Москва»
+        const q = t0.match(/^(.*?[«"“„'][^»"”'“„]*[»"”'])/u);
+        name = (q ? q[1] : t0).trim();
+      } else {
+        name = t0;
+        const f1 = toks[1] ? firmCanonForm(toks[1]) : null;
+        if(f1) name = t0 + ', ' + f1;                                     // «ТК ПАРНАС+, ООО» (город и прочее после — отбрасываем)
+      }
+      name = name.replace(/^[\s\-–—:]+|[\s,;:]+$/gu, '').trim();
+      // открывающую кавычку убираем, только если у неё нет пары: «ОЗНА-ЛОГИСТИКА», ООО — остаётся как есть
+      const oq = name.match(/^[«"“„']/u);
+      if(oq && !/[»"”'“]/u.test(name.slice(1))) name = name.slice(1).trim();
+      name = name.slice(0, 120);
+    }
+    if(name || code){
+      const nameKey = firmNameKey(name);
+      out = { name: name, code: code, nameKey: nameKey };
+      if(!name && !code) out = null;
+    }
+  }
+  if(firmParseCache.size > 3000) firmParseCache.clear();
+  firmParseCache.set(src, out);
+  return out;
+}
+let firmStatsSig = null, firmStatsVal = null;
+// Статистика по всем заявкам: ключ фирмы -> множество id ДОСТАВЛЕННЫХ (не из корзины) заявок. Каждая заявка — один раз по id.
+// Ключ — код АТИ; если кода нет — нормализованное название. Заявка без кода, чьё название однозначно совпадает с названием
+// заявки с кодом, относится к той же фирме (иначе один и тот же заказчик считался бы дважды по-разному).
+function firmStats(){
+  // точная подпись: id, статус, корзина и разобранные фирма/код каждой заявки (разбор кэшируется по тексту) — без коллизий
+  const parts = [];
+  for(let i = 0; i < notes.length; i++){
+    const n = notes[i]; if(!n) continue;
+    const f = n.trashed ? null : firmParse(n.text);
+    parts.push(n.id + (n.delivered === true ? 'd' : 'a') + (n.trashed ? 't' : '') + (f ? '\u0001' + (f.code || '') + '\u0002' + f.nameKey : ''));
+  }
+  const sig = parts.join('\u0003');
+  if(sig === firmStatsSig && firmStatsVal) return firmStatsVal;
+  const nameCodes = new Map(), keyOf = new Map(), counts = new Map();
+  notes.forEach(n => {
+    if(!n || n.trashed) return;
+    const f = firmParse(n.text);
+    if(f && f.code && f.nameKey){ if(!nameCodes.has(f.nameKey)) nameCodes.set(f.nameKey, new Set()); nameCodes.get(f.nameKey).add(f.code); }
+  });
+  notes.forEach(n => {
+    if(!n || n.trashed) return;
+    const f = firmParse(n.text);
+    if(!f) return;
+    let key = null;
+    if(f.code) key = 'c:' + f.code;
+    else if(f.nameKey){ const cs = nameCodes.get(f.nameKey); key = (cs && cs.size === 1) ? 'c:' + Array.from(cs)[0] : 'n:' + f.nameKey; }
+    if(!key) return;
+    keyOf.set(String(n.id), key);
+    if(n.delivered === true){ if(!counts.has(key)) counts.set(key, new Set()); counts.get(key).add(String(n.id)); }
+  });
+  firmStatsSig = sig; firmStatsVal = { keyOf: keyOf, counts: counts };
+  return firmStatsVal;
+}
+// Строка под номером и датой: «ТК ПАРНАС+, ООО · 3 рейса» / «… · Первый рейс». Пусто, если фирма не указана.
+// Длинное название сокращается многоточием, а счётчик справа всегда остаётся виден.
+function firmLineParts(n){
+  try{
+    if(!n || n.trashed) return null;
+    const f = firmParse(n.text);
+    if(!f || !f.name) return null;
+    const st = firmStats();
+    const key = st.keyOf.get(String(n.id));
+    const cnt = key && st.counts.has(key) ? st.counts.get(key).size : 0;
+    return { name: f.name, count: cnt > 0 ? incPlural(cnt, 'рейс', 'рейса', 'рейсов') : 'Первый рейс' };
+  }catch(e){ return null; }
+}
+function firmLineText(n){ const q = firmLineParts(n); return q ? q.name + ' · ' + q.count : ''; }
+function firmLineHtml(n, cls){
+  const q = firmLineParts(n);
+  if(!q) return '';
+  const full = q.name + ' · ' + q.count;
+  return '<div class="' + cls + '" title="' + escapeHtml(full) + '"><span class="firm-name">' + escapeHtml(q.name) + '</span><span class="firm-cnt"> · ' + escapeHtml(q.count) + '</span></div>';
 }
 
 // Если заметка начинается с "Груз: ..." (обычно после копирования с АТИ) — прячем само
@@ -8842,6 +9004,7 @@ function renderIncome(){
         <div class="inc-main">
           <span class="inc-route">${escapeHtml(route)}</span>
           <span class="inc-meta">${n.number ? '№' + n.number + ' · ' : ''}${n.createdAt ? formatNoteDate(n.createdAt) : ''}</span>
+          ${firmLineHtml(n, 'inc-firm')}
         </div>
         <div class="inc-right">
           <span class="inc-amount">${amountLine}</span>
