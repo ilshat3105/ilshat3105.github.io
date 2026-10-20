@@ -529,8 +529,32 @@
   .note .note-cargo .cargo-d{margin-top:2px;}
   .note .note-cargo .cargo-m + .cargo-d{margin-top:2px;}
   .note .note-cargo .cargo-d.two{margin-top:0;}
+  /* «Доставляется»: две колонки — слева маршрут и груз, справа сумма и тип расчёта */
+  .note.lay2 .note-num{font-size:12px;font-weight:400;letter-spacing:0;line-height:1.3;color:#6B7280;margin-bottom:2px;padding-right:0;}
+  .note.lay2 .note-num.fav-row{overflow:visible;}
+  .note.lay2 .note-firm{font-size:14.5px;line-height:1.3;margin:0 0 6px;padding-right:0;}
+  .note.lay2 .note-row{display:flex;align-items:flex-start;gap:10px;min-width:0;flex-shrink:0;}
+  .note.lay2 .note-main{flex:1 1 auto;min-width:0;}
+  .note.lay2 .note-side{flex:0 0 auto;max-width:58%;display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-top:2px;}
+  .note.lay2 .amount-badge,.note.lay2 .flag-tags{position:static;top:auto;right:auto;}
+  .note.lay2 .amount-badge{font-size:16px;line-height:1.2;white-space:nowrap;justify-content:flex-end;}
+  .note.lay2 .flag-tags{justify-content:flex-end;flex-wrap:wrap;}
+  .note.lay2 .note-main p{padding-right:0;line-height:1.3;overflow-wrap:anywhere;}
+  .note.lay2 .note-main p strong{font-size:18px;}
+  .note.lay2 h4{font-size:21px;line-height:1.25;margin:0 0 4px;padding-right:0;overflow-wrap:anywhere;}
+  .note.lay2 .note-cargo{padding-right:0;margin-top:5px;font-size:15.5px;line-height:1.3;}
+  .note.lay2.favorite .note-row{padding-right:22px;}
+  .note.lay2 .note-main p.rt-1 strong{font-size:16px;}
+  .note.lay2 .note-main p.rt-2{-webkit-line-clamp:3 !important;}
+  .note.lay2 .note-main p.rt-2 strong{font-size:14.5px;}
+  .note.lay2 h4.rt-1{font-size:18px;}
+  .note.lay2 h4.rt-2{font-size:15.5px;-webkit-line-clamp:3;}
+  .note.lay2 .note-main p.rt-3{-webkit-line-clamp:4 !important;}
+  .note.lay2 .note-main p.rt-3 strong{font-size:14px;}
+  .note.lay2 h4.rt-3{font-size:14.5px;-webkit-line-clamp:4;}
   .note.tinted .note-firm{color:#6B7280;}
   .note.tinted .note-cargo{color:#4B5563;}
+  .phone[data-theme="dark"] .note.lay2 .note-num{color:#9CA3AF;}
   .phone[data-theme="dark"] .note .note-firm{color:#9CA3AF;}
   .phone[data-theme="dark"] .note .note-cargo{color:#C3C8D0;}
   .inc-card .inc-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
@@ -1218,7 +1242,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 00:52 (тёмная тема: цвета фирмы и груза на цветных карточках)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 01:29 (длинные маршруты, «с НДС», очистка заголовка маршрута)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -2426,7 +2450,7 @@ function noteCardHtml(n, favInfo){
   } else if(n.text){
     if(view === 'notes' && !n.delivered && !n.trashed && !n.archived && cargoOrderOk(n.text)){
       // основной список «Доставляется»: маршрут (если его ещё нет в заголовке) + вес/описание груза (две строки максимум), без «хвоста» текста заявки
-      body = (cargoTitleDup(n) ? '' : `<p style="-webkit-line-clamp:2">${cargoRouteBodyHtml(n.text)}</p>`) + cargoBlockHtml(n);
+      body = (cargoTitleDup(n) ? '' : `<p class="rt" style="-webkit-line-clamp:2">${cargoRouteBodyHtml(n.text)}</p>`) + cargoBlockHtml(n);
     } else {
       body = `<p style="-webkit-line-clamp:${textLines}">${formatCardBodyHtml(n.text)}</p>`;
     }
@@ -2453,6 +2477,29 @@ function noteCardHtml(n, favInfo){
     : (n.number ? `<div class="note-num">№${n.number}${n.createdAt ? ' · ' + formatNoteDate(n.createdAt) : ''}</div>` : '');
   const firmHtml = firmLineHtml(n, 'note-firm');
   const overdue = isOverdue(n);
+  // основной список «Доставляется»: две колонки — слева маршрут и груз, справа сумма и тип расчёта (без абсолютных координат)
+  const lay2 = view === 'notes' && !n.trashed && !n.archived && !n.delivered;
+  if(lay2){
+    const amountH = n.amount ? `<div class="amount-badge">${formatAmount(n.amount)}</div>` : '';
+    // тип расчёта: «нал» / «без НДС» как раньше; обычный расчёт (по правилу incCategoryOf) — «с НДС»
+    const flagsH = (n.noNds || n.cash) ? `<div class="flag-tags">${n.noNds ? '<span class="flag-tag">без НДС</span>' : ''}${n.cash ? '<span class="flag-tag">нал</span>' : ''}</div>`
+      : (n.amount && incCategoryOf(n) === 'nds' ? '<div class="flag-tags"><span class="flag-tag">с НДС</span></div>' : '');
+    const titleOrder = !!n.title && cargoOrderOk(n.text);
+    const titleShown = titleOrder ? cargoRouteClean(n.title) : n.title;
+    return `<div class="note lay2 ${isFav ? 'favorite' : ''} ${overdue ? 'due-overdue' : ''} ${(!overdue && !isFav && n.color && n.color !== 'default') ? 'tinted' : ''}" style="background:${overdue ? 'var(--tint-red-bg)' : (isFav ? 'var(--tint-fav-bg)' : colorHex(n.color))}" data-open="${n.id}">
+    ${isFav ? `<button class="drag-handle" data-drag="${n.id}" aria-label="Изменить порядок в избранном">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+    </button>` : ''}
+    ${n.pinned ? `<span class="pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l1.5 5.5L19 9l-5 3 1 6-3-3-3 3 1-6-5-3 5.5-1.5z"/></svg></span>` : ''}
+    ${n.reminderAt ? `<span class="reminder-tag${n.reminderAt < Date.now() ? ' overdue' : ''}" style="right:${n.pinned ? 36 : 12}px;">🔔 ${formatReminderDate(n.reminderAt)}</span>` : ''}
+    ${numberBlockHtml}
+    ${firmHtml}
+    ${n.delivered ? '<div class="deliv-tag">✓ Доставлен</div>' : ''}
+    ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
+    <div class="note-row"><div class="note-main">${titleShown ? `<h4${titleOrder ? ' class="rt"' : ''}>${escapeHtml(titleShown)}</h4>` : ''}${body}</div>${(amountH || flagsH) ? `<div class="note-side">${amountH}${flagsH}</div>` : ''}</div>
+    ${photosHtml}
+  </div>`;
+  }
   return `<div class="note ${isFav ? 'favorite' : ''} ${overdue ? 'due-overdue' : ''} ${(!overdue && !isFav && n.color && n.color !== 'default') ? 'tinted' : ''}" style="background:${overdue ? 'var(--tint-red-bg)' : (isFav ? 'var(--tint-fav-bg)' : colorHex(n.color))}" data-open="${n.id}">
     ${isFav ? `<button class="drag-handle" data-drag="${n.id}" aria-label="Изменить порядок в избранном">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
@@ -2650,7 +2697,7 @@ function cargoOrderOk(text){
   if(/^\s*груз\s*:/i.test(lines[0] || '')) ok = true;
   else if(src.length < 4000){
     const bullets = lines.filter(l => /^\s*•\s*\S/.test(l)).length;
-    const kmLine = lines.some(l => /^\s*[A-Za-zА-Яа-я]{2,4}\s*,\s*\d[\d\s]*\s*км\s*$/i.test(l));
+    const kmLine = lines.some(l => /^\s*[A-Za-zА-Яа-я]{2,4}\s*,\s*\d[\d\s]*\s*км\s*$/i.test(l)) || /[A-Z]{2,3}\s*,\s*\d[\d\s]*\s*км/.test(lines[0] || '');
     const firm = lines.some(l => /^\s*[^\p{L}\p{N}]{0,3}фирма\s*:/iu.test(l));
     const ati = /ati\s*\.?\s*su|(?<![\p{L}])ати(?![\p{L}])/iu.test(src);
     const rate = lines.some(l => /^\s*ставка\s*:/i.test(l));
@@ -2664,9 +2711,9 @@ function cargoOrderOk(text){
 function cargoNorm(x){ return String(x || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ''); }
 // маршрут уже есть в заголовке карточки (n.title) — второй раз его не показываем
 function cargoTitleDup(n){
-  const t = cargoNorm(n.title);
+  const t = cargoNorm(cargoRouteClean(n.title));
   if(!t) return false;
-  const r = cargoNorm(String(n.text || '').split('\n')[0].replace(/^\s*груз\s*:\s*/i, ''));
+  const r = cargoNorm(cargoRouteText(n.text));
   return !!r && (t === r || t.indexOf(r) !== -1 || r.indexOf(t) !== -1);
 }
 function cargoLineOk(l){
@@ -2744,10 +2791,40 @@ function cargoBlockHtml(n){
     return h ? '<div class="note-cargo" title="' + escapeHtml((c.measure ? c.measure + '\n' : '') + c.desc) + '">' + h + '</div>' : '';
   }catch(e){ return ''; }
 }
-function cargoRouteBodyHtml(text){
-  const first = String(text || '').split('\n')[0] || '';
-  return '<strong>' + escapeHtml(first.replace(/^\s*груз\s*:\s*/i, '')) + '</strong>';
+// Название маршрута для карточки (только отображение, текст заявки не меняется): без «Груз:», без прилипших к нему
+// «RUS, 517 км» и значков «•» (если строка при копировании склеилась), с заглавной буквой в начале и после стрелки/тире.
+function cargoRouteText(text){
+  return cargoRouteClean(String(text || '').split(/\r?\n/)[0] || '');
 }
+function cargoRouteClean(str){
+  let first = String(str || '').replace(/^\s*груз\s*:\s*/i, '');
+  const cut = first.search(/\s*(?:[A-Z]{2,3}\s*,\s*\d[\d\s]*\s*км|[•▪►])/);
+  if(cut > 0) first = first.slice(0, cut);
+  first = first.replace(/\s+/g, ' ').trim();
+  return first.replace(/(^|[→—–]\s*|\s-\s)(\p{Ll})/gu, (m, a, b) => a + b.toUpperCase());
+}
+function cargoRouteBodyHtml(text){
+  return '<strong>' + escapeHtml(cargoRouteText(text)) + '</strong>';
+}
+// Подгонка длинных маршрутов под узкую колонку (только отображение): если название обрезается — сначала чуть меньший шрифт,
+// затем ещё меньший и три строки, в крайнем случае 4 строки, чтобы пункт назначения оставался видимым. На обычных экранах ничего не срабатывает.
+function cargoFitRoutes(){
+  try{
+    const els = Array.prototype.slice.call(document.querySelectorAll('.note.lay2 .rt'));
+    els.forEach(e => e.classList.remove('rt-1', 'rt-2', 'rt-3'));
+    const cut = (e) => e.clientHeight > 0 && e.scrollHeight > e.clientHeight + 1;
+    const need1 = els.filter(cut);                       // чтение для всех сразу
+    need1.forEach(e => e.classList.add('rt-1'));
+    const need2 = need1.filter(cut);
+    need2.forEach(e => e.classList.add('rt-2'));
+    need2.filter(cut).forEach(e => e.classList.add('rt-3'));
+  }catch(e){}
+}
+(function(){
+  let tm = null;
+  window.addEventListener('resize', () => { clearTimeout(tm); tm = setTimeout(cargoFitRoutes, 150); });
+  try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(() => cargoFitRoutes()); }catch(e){}
+})();
 
 // Если заметка начинается с "Груз: ..." (обычно после копирования с АТИ) — прячем само
 // слово "Груз:" и делаем первую строку (маршрут) чуть жирнее для быстрого чтения.
@@ -2798,6 +2875,7 @@ function renderContent(){
     return;
   }
   content.innerHTML = navBarHtml(NAV_VIEW_TITLES[view]) + buildGrids(list);
+  cargoFitRoutes();
 }
 
 let viewedMonthOffset = 0; // 0 = текущий месяц, -1 = предыдущий и т.д.
