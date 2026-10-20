@@ -520,13 +520,19 @@
     text-overflow:ellipsis;white-space:nowrap;}
   .inc-card .inc-meta{font-size:12.5px;color:var(--faint);}
   .inc-card .inc-firm{font-size:11.5px;font-weight:400;color:var(--faint);display:flex;min-width:0;white-space:pre;}
-  .note .note-firm{font-size:11px;font-weight:400;color:var(--faint);margin:-1px 0 3px;display:flex;white-space:pre;padding-right:124px;flex-shrink:0;}
+  .note .note-firm{font-size:13px;font-weight:400;color:#6B7280;margin:-1px 0 6px;line-height:1.3;display:flex;white-space:pre;padding-right:112px;flex-shrink:0;}
   .note-firm .firm-name,.inc-firm .firm-name{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;}
   .note-firm .firm-cnt,.inc-firm .firm-cnt{flex:0 0 auto;}
-  .note .note-cargo{padding-right:78px;margin-top:1px;font-size:12.5px;font-weight:400;color:var(--muted);line-height:1.35;flex-shrink:0;min-width:0;}
+  .note .note-cargo{padding-right:78px;margin-top:6px;font-size:14px;font-weight:400;color:#4B5563;line-height:1.3;flex-shrink:0;min-width:0;}
   .note .note-cargo .cargo-m,.note .note-cargo .cargo-d{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .note .note-cargo .cargo-d.two{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
-  .note.tinted .note-cargo{color:#5f6368;}
+  .note .note-cargo .cargo-d{margin-top:2px;}
+  .note .note-cargo .cargo-m + .cargo-d{margin-top:2px;}
+  .note .note-cargo .cargo-d.two{margin-top:0;}
+  .note.tinted .note-firm{color:#6B7280;}
+  .note.tinted .note-cargo{color:#4B5563;}
+  .phone[data-theme="dark"] .note .note-firm{color:#9CA3AF;}
+  .phone[data-theme="dark"] .note .note-cargo{color:#C3C8D0;}
   .inc-card .inc-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
   .inc-card .inc-amount{font-size:16px;font-weight:700;color:var(--ink);}
   .inc-card .inc-status{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;}
@@ -1212,7 +1218,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 00:29 (груз на карточке: без дубля маршрута, заявки АТИ без «Груз:»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 00:52 (тёмная тема: цвета фирмы и груза на цветных карточках)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
