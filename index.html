@@ -523,6 +523,10 @@
   .note .note-firm{font-size:11px;font-weight:400;color:var(--faint);margin:-1px 0 3px;display:flex;white-space:pre;padding-right:124px;flex-shrink:0;}
   .note-firm .firm-name,.inc-firm .firm-name{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;}
   .note-firm .firm-cnt,.inc-firm .firm-cnt{flex:0 0 auto;}
+  .note .note-cargo{padding-right:78px;margin-top:1px;font-size:12.5px;font-weight:400;color:var(--muted);line-height:1.35;flex-shrink:0;min-width:0;}
+  .note .note-cargo .cargo-m,.note .note-cargo .cargo-d{font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .note .note-cargo .cargo-d.two{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+  .note.tinted .note-cargo{color:#5f6368;}
   .inc-card .inc-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
   .inc-card .inc-amount{font-size:16px;font-weight:700;color:var(--ink);}
   .inc-card .inc-status{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;}
@@ -1208,7 +1212,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 00:00 (фирма: кэш, кавычки, «ФИРМА:» в строке)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 00:29 (груз на карточке: без дубля маршрута, заявки АТИ без «Груз:»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -2414,7 +2418,12 @@ function noteCardHtml(n, favInfo){
       <span>${escapeHtml(it.text)}</span></div>`).join('');
     if(n.checklist.length > clCount) body += `<div class="more-items">+ ещё ${n.checklist.length-clCount}</div>`;
   } else if(n.text){
-    body = `<p style="-webkit-line-clamp:${textLines}">${formatCardBodyHtml(n.text)}</p>`;
+    if(view === 'notes' && !n.delivered && !n.trashed && !n.archived && cargoOrderOk(n.text)){
+      // основной список «Доставляется»: маршрут (если его ещё нет в заголовке) + вес/описание груза (две строки максимум), без «хвоста» текста заявки
+      body = (cargoTitleDup(n) ? '' : `<p style="-webkit-line-clamp:2">${cargoRouteBodyHtml(n.text)}</p>`) + cargoBlockHtml(n);
+    } else {
+      body = `<p style="-webkit-line-clamp:${textLines}">${formatCardBodyHtml(n.text)}</p>`;
+    }
   }
 
   let photosHtml = '';
@@ -2610,6 +2619,128 @@ function firmLineHtml(n, cls){
   if(!q) return '';
   const full = q.name + ' · ' + q.count;
   return '<div class="' + cls + '" title="' + escapeHtml(full) + '"><span class="firm-name">' + escapeHtml(q.name) + '</span><span class="firm-cnt"> · ' + escapeHtml(q.count) + '</span></div>';
+}
+
+// ---- Сведения о грузе на карточке «Доставляется»: вес/объём и краткое описание ----
+// Чистая функция от текста заявки (ничего не хранится и не пишется в Firebase). Ищем строку веса/объёма/габаритов
+// («3.5 т / -», «5 т / 50 куб.м», «1500 кг», «6х2,4х2,4 м», «12 палет», «Вес: 5 т») и строку описания сразу под ней.
+const CARGO_M = '(?:\\d+(?:[.,]\\d+)?\\s*(?:т|тн|тонн[а-я]*|кг)(?![\\p{L}\\p{N}])\\.?'
+  + '|\\d+(?:[.,]\\d+)?\\s*(?:куб(?:\\.?\\s*м)?|м3|м³|м\\^3|м\\.?\\s*куб)(?![\\p{L}\\p{N}])\\.?'
+  + '|\\d+(?:[.,]\\d+)?(?:\\s*[xх×*]\\s*\\d+(?:[.,]\\d+)?){1,2}(?:\\s*(?:м|см|мм)(?![\\p{L}\\p{N}]))?'
+  + '|\\d+\\s*(?:пал[а-я]*|палл[а-я]*|палет[а-я]*|мест[а-я]*|шт)(?![\\p{L}\\p{N}])\\.?'
+  + '|[-–—])';
+const cargoLeadRe = new RegExp('^\\s*(?:(?:вес|масса|объ[её]м|габариты?|размеры?|пал(?:л)?еты?)\\s*[:\\-–]?\\s*)?(?:(?:' + CARGO_M + ')\\s*(?:[/,;]|\\s)?\\s*)+', 'iu');
+const cargoBadRe = /(₽|руб|ндс|нал(?![\p{L}])|безнал|предоплат|оплат|ставк|расч[её]т|https?:|@|\+\s*\d|(?<!\d)8\s?\(?\d{3}|ati|ати(?![\p{L}])|рейтинг|⭐|фирма|контакт|тел(?:ефон)?(?![\p{L}])|погрузк|выгрузк|загрузк|дата|км(?![\p{L}])|^\s*[•▪►→·*]|^\s*[\p{L} ]{2,18}:\s)/iu;
+const cargoBodyRe = /(закр|тент|изотерм|реф|борт|площадк|трал|фургон|шторк|цельномет|контейнеровоз|самосвал|зерновоз|любой тип|все\s)/iu;
+const cargoCache = new Map();
+const cargoOrderCache = new Map();
+// Достоверные признаки грузовой заявки (формат АТИ): «Груз:» в начале ЛИБО не меньше двух признаков из списка,
+// среди которых обязательно «список адресов •» или строка «RUS, 605 км». Обычные заметки под это не попадают.
+function cargoOrderOk(text){
+  const src = String(text || '');
+  if(cargoOrderCache.has(src)) return cargoOrderCache.get(src);
+  let ok = false;
+  const lines = src.split(/\r?\n/);
+  if(/^\s*груз\s*:/i.test(lines[0] || '')) ok = true;
+  else if(src.length < 4000){
+    const bullets = lines.filter(l => /^\s*•\s*\S/.test(l)).length;
+    const kmLine = lines.some(l => /^\s*[A-Za-zА-Яа-я]{2,4}\s*,\s*\d[\d\s]*\s*км\s*$/i.test(l));
+    const firm = lines.some(l => /^\s*[^\p{L}\p{N}]{0,3}фирма\s*:/iu.test(l));
+    const ati = /ati\s*\.?\s*su|(?<![\p{L}])ати(?![\p{L}])/iu.test(src);
+    const rate = lines.some(l => /^\s*ставка\s*:/i.test(l));
+    const spec = (kmLine ? 1 : 0) + (firm ? 1 : 0) + (ati ? 1 : 0) + (rate ? 1 : 0);
+    ok = spec >= 1 && spec + (bullets >= 2 ? 1 : 0) >= 2;   // нужен хотя бы один признак АТИ + ещё один (в т.ч. список адресов «•»)
+  }
+  if(cargoOrderCache.size > 3000) cargoOrderCache.clear();
+  cargoOrderCache.set(src, ok);
+  return ok;
+}
+function cargoNorm(x){ return String(x || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ''); }
+// маршрут уже есть в заголовке карточки (n.title) — второй раз его не показываем
+function cargoTitleDup(n){
+  const t = cargoNorm(n.title);
+  if(!t) return false;
+  const r = cargoNorm(String(n.text || '').split('\n')[0].replace(/^\s*груз\s*:\s*/i, ''));
+  return !!r && (t === r || t.indexOf(r) !== -1 || r.indexOf(t) !== -1);
+}
+function cargoLineOk(l){
+  const t = l.trim();
+  if(!t || t.length > 160) return false;
+  if(cargoBadRe.test(t) || cargoBodyRe.test(t)) return false;
+  if(!/\p{L}/u.test(t)) return false;
+  return true;
+}
+function cargoInfo(text){
+  const src = String(text || '');
+  if(cargoCache.has(src)) return cargoCache.get(src);
+  let out = null;
+  const lines = src.split(/\r?\n/);
+  if(cargoOrderOk(src)){
+    let mi = -1, measure = '', rest = '';
+    const labRe = /^\s*(?:вес|масса|объ[её]м|габариты?|размеры?|пал(?:л)?еты?)\s*[:\-–]?\s*/i;
+    const measOf = (l) => {
+      if(!l.trim() || /^\s*[•▪►→·*]/.test(l) || l.length > 160) return null;
+      const m = l.match(cargoLeadRe);
+      if(!m) return null;
+      const body = m[0].replace(labRe, '').replace(/[\s/,;]+$/, '').replace(/\s+/g, ' ').trim();
+      const dashOnly = /^[-–—]\s*\/\s*[-–—]$/.test(body);
+      if(!/\d/.test(body) && !dashOnly) return null;                    // «-» без чисел — не вес
+      return { body: dashOnly ? '' : body, rest: l.slice(m[0].length).trim() };
+    };
+    for(let i = 1; i < lines.length; i++){
+      const r = measOf(lines[i]);
+      if(!r) continue;
+      mi = i; measure = r.body; rest = r.rest;
+      // следующие строки только из размеров/объёма («Вес: …» + «Объём: …», «20 т / 82 м³» + «6х2,4х2,4 м») — склеиваем
+      while(!rest && mi + 1 < lines.length){
+        const r2 = measOf(lines[mi + 1]);
+        if(!r2 || !r2.body) break;
+        measure = measure ? measure + ' · ' + r2.body : r2.body; rest = r2.rest; mi++;
+      }
+      break;
+    }
+    let desc = '';
+    if(mi !== -1){
+      if(rest && cargoLineOk(rest)) desc = rest;
+      else {
+        // описание — первая непустая строка под весом; допускается одна пустая строка между ними
+        let j = mi + 1;
+        if(j < lines.length && !lines[j].trim()) j++;
+        if(j < lines.length && lines[j].trim() && cargoLineOk(lines[j])) desc = lines[j].trim();
+      }
+    } else {
+      // веса нет: описание — первая подходящая строка в блоке сразу после списка адресов («•…») или строки «RUS, 605 км»
+      let k = -1;
+      for(let i = 1; i < lines.length; i++){ if(/^\s*[•▪►→·*]/.test(lines[i])) k = i; else if(k !== -1 && lines[i].trim()) break; }
+      if(k !== -1){
+        for(let j = k + 1; j < lines.length && j <= k + 3; j++){
+          const t = lines[j];
+          if(!t.trim()) continue;
+          if(cargoLineOk(t)) desc = t.trim();
+          break;
+        }
+      }
+    }
+    desc = desc.replace(/\s+/g, ' ').replace(/[.…]+$/, m2 => m2.length > 1 || /…/.test(m2) ? '' : m2).trim();
+    if(measure || desc) out = { measure: measure, desc: desc };
+  }
+  if(cargoCache.size > 3000) cargoCache.clear();
+  cargoCache.set(src, out);
+  return out;
+}
+function cargoBlockHtml(n){
+  try{
+    const c = cargoInfo(n.text);
+    if(!c) return '';
+    let h = '';
+    if(c.measure) h += '<div class="cargo-m">' + escapeHtml(c.measure) + '</div>';
+    if(c.desc) h += '<div class="cargo-d' + (c.measure ? '' : ' two') + '">' + escapeHtml(c.desc) + '</div>';
+    return h ? '<div class="note-cargo" title="' + escapeHtml((c.measure ? c.measure + '\n' : '') + c.desc) + '">' + h + '</div>' : '';
+  }catch(e){ return ''; }
+}
+function cargoRouteBodyHtml(text){
+  const first = String(text || '').split('\n')[0] || '';
+  return '<strong>' + escapeHtml(first.replace(/^\s*груз\s*:\s*/i, '')) + '</strong>';
 }
 
 // Если заметка начинается с "Груз: ..." (обычно после копирования с АТИ) — прячем само
