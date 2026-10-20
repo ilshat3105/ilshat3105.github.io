@@ -744,6 +744,18 @@
   .svc-iconbtn{background:none;border:none;color:var(--muted);padding:8px;cursor:pointer;display:flex;
     align-items:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
   .svc-iconbtn.danger{color:var(--danger);}
+  /* Единая видимая кнопка «← Назад» на всех внутренних экранах */
+  .nav-back{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--ink);font:600 15px/1 'Inter',sans-serif;
+    padding:0 12px 0 8px;min-height:44px;border-radius:10px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+  .nav-back:active{background:var(--concrete);}
+  .nav-back svg{flex-shrink:0;}
+  .svc-iconbtn.nav-back{padding:0 12px 0 6px;color:var(--ink);}
+  .nav-bar{flex-shrink:0;display:flex;align-items:center;padding:4px 6px 0;}
+  #content > .nav-bar{padding:0 0 6px;margin:-4px 0 0;}
+  .nav-bar .nav-title{font-size:16px;font-weight:700;color:var(--ink);margin-left:2px;}
+  .nav-back.float{position:absolute;top:10px;left:10px;z-index:6;background:rgba(0,0,0,.55);color:#fff;min-height:40px;padding:0 14px 0 10px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.35);}
+  .nav-back.float:active{background:rgba(0,0,0,.75);}
+  #diagOverlay .dg-top button.nav-back{font:600 15px/1 'Inter',sans-serif;padding:0 12px 0 6px;}
   .svc-htitle{flex:1;min-width:0;font-size:18px;font-weight:700;color:var(--ink);padding:0 4px;}
   .svc-htitle .svc-km{font-size:14px;font-weight:600;color:var(--muted);}
   .svc-add{display:flex;gap:8px;margin:0 0 12px;}
@@ -1166,6 +1178,7 @@
       <div id="incList"></div>
     </div>
     <div id="fuelSection" style="display:none;">
+      <div class="nav-bar" ><button type="button" class="nav-back" data-nav-back aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button><span class="nav-title">Расходы</span></div>
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
       <div class="exp-view-toggle" id="expViewToggle">
         <button class="exp-view-btn active" data-expview="history">История</button>
@@ -1179,6 +1192,7 @@
       </div>
     </div>
     <div id="serviceSection" style="display:none;">
+      <div class="nav-bar" id="svcRootBar"><button type="button" class="nav-back" data-nav-back aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button><span class="nav-title">Автосервис</span></div>
       <div id="svcSyncNote" class="svc-sync-note" style="display:none;"></div>
       <div id="svcBody"></div>
     </div>
@@ -1190,7 +1204,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-20 14:58 (общая карточка «Итоги месяца» во вкладке «Доставлено»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-20 21:03 (усилена защита очереди удаления файлов)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1247,7 +1261,7 @@
 
   <div id="diagOverlay">
     <div class="dg-top">
-      <button id="diagBack" type="button" aria-label="Назад">‹</button>
+      <button id="diagBack" class="nav-back" type="button" aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button>
       <div class="dg-title">Диагностика</div>
       <div class="dg-count" id="diagCount"></div>
     </div>
@@ -1290,6 +1304,7 @@
   </div>
 
   <div class="editor-overlay" id="editorOverlay">
+    <div class="nav-bar"><button type="button" class="nav-back" data-nav-back aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button></div>
     <div class="editor-fields">
       <div class="ed-num" id="edNum" style="display:none;"></div>
       <div class="ed-reminder-badge" id="edReminderBadge" style="display:none;"></div>
@@ -1369,7 +1384,7 @@
       <button class="icon-btn" id="deleteBtn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
       </button>
-      <button class="close-btn" id="editorDone">Готово</button>
+      <button class="close-btn" id="editorDone">Сохранить</button>
       <div class="palette" id="palette"></div>
     </div>
   </div>
@@ -1387,6 +1402,7 @@
 
   <div class="lightbox" id="lightbox">
     <button class="lb-close" id="lbClose">×</button>
+    <button type="button" class="nav-back float" data-nav-back aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button>
     <button class="lb-nav lb-prev" id="lbPrev">‹</button>
     <img id="lbImg" src="">
     <div class="lb-select-overlay" id="lbSelectOverlay">
@@ -1407,6 +1423,7 @@
       <div class="pdfv-msg" id="pdfMsg"></div>
     </div>
     <button class="pdfv-close" id="pdfClose" type="button">×</button>
+    <button type="button" class="nav-back float" data-nav-back aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button>
     <button class="pdfv-nav pdfv-prev" id="pdfPrev" type="button">‹</button>
     <button class="pdfv-nav pdfv-next" id="pdfNext" type="button">›</button>
     <div class="pdfv-selov" id="pdfSelOv"><div class="pdfv-selbox" id="pdfSelBox"></div></div>
@@ -2236,6 +2253,10 @@ function computeMonthSummary(offset){
 }
 
 let view = 'notes'; // notes | archive | trash
+const NAV_VIEW_TITLES = { notes:'', archive:'Архив', trash:'Корзина' };
+function navBarHtml(title){ return view === 'notes' ? '' : '<div class="nav-bar"><button type="button" class="nav-back" data-nav-back aria-label="Назад">' + NAV_BACK_HTML + '</button>' + (title ? '<span class="nav-title">' + title + '</span>' : '') + '</div>'; }
+let navSectionReturn = null; // список и прокрутка «Грузов» до ухода в «Расходы»/«Автосервис»
+let navViewReturn = null; // вкладка/поиск до ухода в Корзину/Архив — вернуть при «Назад»
 let searchQuery = '';
 let currentSection = 'notes'; // 'notes' (Грузы) | 'fuel' | 'service' — объявлено здесь, т.к. renderContent() читает его
 let cargoTab = 'active';      // «Грузы»: 'active' (Доставляется) | 'delivered' (Доставлено); при входе в раздел — 'active'
@@ -2468,16 +2489,16 @@ function renderContent(){
   const list = filtered();
 
   if(view === 'trash' && list.length){
-    content.innerHTML = `<p style="font-size:12px;color:var(--faint);margin:0 2px 10px;">Заявки в корзине удаляются навсегда через месяц</p>` + buildGrids(list);
+    content.innerHTML = navBarHtml('Корзина') + `<p style="font-size:12px;color:var(--faint);margin:0 2px 10px;">Заявки в корзине удаляются навсегда через месяц</p>` + buildGrids(list);
     return;
   }
 
   if(!list.length){
     const msgs = { notes:'Здесь пока пусто. Нажмите «Новая заявка», чтобы начать.', archive:'В архиве пока ничего нет.', trash:'Корзина пуста.' };
-    content.innerHTML = `<div class="empty">${msgs[view]}</div>`;
+    content.innerHTML = navBarHtml(NAV_VIEW_TITLES[view]) + `<div class="empty">${msgs[view]}</div>`;
     return;
   }
-  content.innerHTML = buildGrids(list);
+  content.innerHTML = navBarHtml(NAV_VIEW_TITLES[view]) + buildGrids(list);
 }
 
 let viewedMonthOffset = 0; // 0 = текущий месяц, -1 = предыдущий и т.д.
@@ -3079,6 +3100,7 @@ drawer.addEventListener('click', (e) => {
     const notesTab = document.querySelector('.top-tab[data-section="notes"]');
     if(notesTab) notesTab.click();
   }
+  if(btn.getAttribute('data-view') !== 'notes' && view === 'notes') navViewReturn = { cargoTab: cargoTab, searchQuery: searchQuery };
   view = btn.getAttribute('data-view');
   cargoTab = 'active';
   drawer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -4093,12 +4115,30 @@ function svcpqAddPdf(fileId){
   svcPhotoQueue.push({ photoId: String(fileId), path, deletedAt: now, deleteAfter: now + SVC_PHOTO_GRACE_MS });
   svcpqSave();
 }
+// Фото ЗАЯВКИ (путь users/<uid>/photos/<id>.jpg, без префикса svc_) — убранное в редакторе фото ждёт в той же
+// 30-дневной очереди с той же проверкой «нигде не используется».
+function svcpqAddNotePhoto(photoId){
+  if(!currentUID || photoId == null) return;
+  const path = 'users/' + currentUID + '/photos/' + photoId + '.jpg';
+  if(svcPhotoQueue.some(e => e.path === path)) return;
+  const now = Date.now();
+  svcPhotoQueue.push({ photoId: String(photoId), path, deletedAt: now, deleteAfter: now + SVC_PHOTO_GRACE_MS });
+  svcpqSave();
+}
 function svcpqUsedIds(){
   const used = new Set();
   serviceFolders.forEach(f => (f.items || []).forEach(it => (it.photos || []).forEach(p => { if(p && p.id != null) used.add(String(p.id)); })));
   serviceCarNotes.forEach(e => (e.photos || []).forEach(p => { if(p && p.id != null) used.add(String(p.id)); }));
   serviceCarNotes.forEach(e => (e.files || []).forEach(f => { if(f && f.id != null) used.add(String(f.id)); }));
-  notes.forEach(n => { if(n && Array.isArray(n.photoIds)) n.photoIds.forEach(id => { if(id != null) used.add(String(id)); }); });
+  const addNoteFiles = (n) => {
+    if(!n) return;
+    if(Array.isArray(n.photoIds)) n.photoIds.forEach(id => { if(id != null) used.add(String(id)); });
+    if(Array.isArray(n.pdfFiles)) n.pdfFiles.forEach(f => { if(f && f.id != null) used.add(String(f.id)); });
+  };
+  notes.forEach(addNoteFiles);
+  // не подтверждённые сервером черновики и версия «с сервера» из диалога конфликта тоже могут ссылаться на файл
+  try{ notesPendingVersionCheck.forEach(e => { addNoteFiles(e && e.draft); addNoteFiles(e && e.serverSeen && e.serverSeen.data); }); }catch(_){}
+  try{ if(editingNote){ addNoteFiles(editingNote); editorSeenFiles.forEach(k => used.add(String(k.id))); } }catch(_){}   // открытый редактор: его файлы не трогаем
   return used;
 }
 function svcpqRun(){
@@ -4106,6 +4146,13 @@ function svcpqRun(){
   // Пока данные Автосервиса и «Мой автомобиль» не подтверждены сервером, "не используется"
   // проверить нельзя — ничего не трогаем.
   if(!serviceBaselineReady || !carBaselineReady) return;
+  // Файлы заявок: пока серверный снимок списка заявок не получен, «не используется» проверить нельзя — на файл
+  // может ссылаться версия заявки, которой на этом телефоне ещё нет. И пока есть заявка, ждущая подтверждения
+  // версии, но серверная версия ещё не получена, — тоже ничего не удаляем.
+  if(initialCloudBaselineReady !== true) return;
+  let pendingUnknown = false;
+  try{ notesPendingVersionCheck.forEach(e => { if(!e || !e.serverSeen) pendingUnknown = true; }); }catch(_){ pendingUnknown = true; }
+  if(pendingUnknown) return;
   const used = svcpqUsedIds();
   const before = svcPhotoQueue.length;
   svcPhotoQueue = svcPhotoQueue.filter(e => !used.has(String(e.photoId))); // фото вернулось — не удаляем
@@ -4413,6 +4460,7 @@ function openEditor(note, isNew){
   renderPalette();
   history = [snapshotNote()];
   historyIndex = 0;
+  editorSeenFiles = new Map(); editorSeenAdd(editingNote);
   updateHistoryButtons();
 }
 
@@ -4423,6 +4471,7 @@ function snapshotNote(){ return JSON.parse(JSON.stringify(editingNote)); }
 function pushHistory(){
   history = history.slice(0, historyIndex + 1);
   history.push(snapshotNote());
+  editorSeenAdd(editingNote);
   historyIndex = history.length - 1;
   updateHistoryButtons();
 }
@@ -4757,7 +4806,7 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
     const removed = (editingNote.pdfFiles || [])[k];
     if(removed){
       editingNote.pdfFiles.splice(k, 1);
-      deletePdfFromStorage(removed.id);
+      edReleaseFile('pdf', removed.id);
       renderEditorPhotos();
       // Если из этого файла была создана строка в «Расчёте» (платёжка) — убираем и её, статус пересчитается сам.
       const before = (editingNote.payments || []).length;
@@ -4787,7 +4836,7 @@ document.getElementById('editorOverlay').addEventListener('click', (e) => {
     const idx = parseInt(rm.getAttribute('data-edphotorm'), 10);
     if(!editingNote.photoIds) editingNote.photoIds = [];
     const removedId = editingNote.photoIds[idx];
-    deletePhotoFromStorage(removedId);
+    edReleaseFile('photo', removedId);
     editingNote.photos.splice(idx, 1);
     if(!editingNote.photoAmounts) editingNote.photoAmounts = [];
     if(!editingNote.photoDates) editingNote.photoDates = [];
@@ -5557,7 +5606,7 @@ async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
     const verdict = receiptDupVerdict(dupInfo, suggested);
     if(verdict === 'dup'){
       editingNote.pdfFiles.splice(k, 1);
-      deletePdfFromStorage(id);
+      edReleaseFile('pdf', id);
       renderEditorPhotos();
       pushHistory();
       showToast('Платёжка №' + orderNumber + ' уже добавлена', 4000);
@@ -5567,7 +5616,7 @@ async function pdfReceiptApply(text, id, noteRef, viaText, amountItems){
       const drop = window.confirm('Платёжка № ' + orderNumber + ' с таким номером уже есть, но сумма отличается (в расчёте ' + formatAmount(dupInfo.amount) + ', в новом файле ' + formatAmount(suggested) + ').\nРасчёт не менялся.\n\nУбрать новый файл? («Отмена» — оставить файл, но в расчёт он не добавится.)');
       if(drop){
         editingNote.pdfFiles.splice(k, 1);
-        deletePdfFromStorage(id);
+        edReleaseFile('pdf', id);
         renderEditorPhotos();
         pushHistory();
         showToast('Новый файл убран, расчёт не менялся', 4000);
@@ -7529,7 +7578,7 @@ async function checkIfPaymentOrderOCR(dataUrl, photoId){
         // сумма новой фото-платёжки до подтверждения неизвестна → совпавший номер считаем той же платёжкой
         const dupInfo = findReceiptDuplicate(editingNote, orderNumber, photoId);
         if(receiptDupVerdict(dupInfo, null) === 'dup'){
-          deletePhotoFromStorage(editingNote.photoIds[photoIndex]);
+          edReleaseFile('photo', editingNote.photoIds[photoIndex]);
           editingNote.photos.splice(photoIndex, 1);
           editingNote.photoAmounts.splice(photoIndex, 1);
           editingNote.photoDates.splice(photoIndex, 1);
@@ -8156,6 +8205,7 @@ function handleVersionConflict(note, expectedServerEditedAt, err, liveUI){
     // Взять свежую — применяем то, что реально вернул сервер, а не оставляем
     // устаревший локальный черновик висеть без дела.
     const idx = notes.findIndex(n => String(n.id) === id);
+    { const pe = notesPendingVersionCheck.get(id); editorDropDraftFiles([note, pe && pe.draft, idx !== -1 ? notes[idx] : null], serverExists === false ? null : serverData); }
     if(serverExists === false){
       if(idx !== -1) notes.splice(idx, 1);
       lastSyncedNotes.delete(id);
@@ -8207,6 +8257,7 @@ function presentSyncConflictChoice(note){
     }
   }, () => {
     const idx = notes.findIndex(n => String(n.id) === id);
+    if(!serverExists || serverData) editorDropDraftFiles([note, entry && entry.draft, idx !== -1 ? notes[idx] : null], serverExists ? serverData : null);
     if(!serverExists){
       if(idx !== -1) notes.splice(idx, 1);
       lastSyncedNotes.delete(id);
@@ -8222,6 +8273,110 @@ function presentSyncConflictChoice(note){
     renderContent();
   });
 }
+// «Сохранить»: штатное сохранение (closeEditor(true)). Если оно упало с ошибкой ДО закрытия —
+// редактор остаётся открытым со всеми введёнными данными, а не закрывается с потерей.
+function editorSaveAndClose(){
+  try{
+    closeEditor(true);
+  }catch(err){
+    console.warn('Не удалось сохранить заявку:', err);
+    showToast('Не удалось сохранить — данные остались в редакторе, попробуйте ещё раз', 5000);
+  }
+}
+// Есть ли в редакторе несохранённые изменения этого сеанса (сравнение со снимком, снятым при открытии —
+// тем же, что использует closeEditor() для решения «реально изменил»).
+function editorDirty(){
+  if(!editingNote || !history[0]) return false;
+  const cur = snapshotNote();
+  if(!cur.checklist) cur.text = bodyInput.value;
+  if(isNewNote && isEmptyNote(cur)) return false; // пустая новая заявка — терять нечего
+  return JSON.stringify(cur) !== JSON.stringify(history[0]);
+}
+// ---- Файлы заявки (фото, PDF, платёжки) и редактор ----
+// Принцип: пока редактор открыт, НИ ОДИН файл физически не удаляется (иначе Undo, «Назад» без сохранения или
+// конфликт версий оставили бы заявку со ссылкой на стёртый файл). Решение принимается один раз, при закрытии,
+// по трём множествам: base — файлы заявки при открытии; seen — все, что побывали в редакторе (в т.ч. убранные,
+// добавленные, возвращённые через Undo); final — что осталось в итоговом состоянии.
+//  • файл, которого не было до открытия и нет в итоге, нигде не сохранялся — удаляется сразу;
+//  • файл, который был в заявке, но убран из итога, уходит в уже существующую 30-дневную очередь удаления
+//    (svcpq*) с проверкой «нигде не используется» — вернётся в силе, если сохранённая версия на него ссылается;
+//  • при выходе без сохранения (или если сохранять нечего) удаляются только добавленные в этом сеансе файлы.
+let editorSeenFiles = new Map(); // 'photo:id' | 'pdf:id' -> { kind, id }
+function editorNoteFileKeys(n){
+  const out = [];
+  if(!n) return out;
+  (n.photoIds || []).forEach(id => { if(id != null && id !== '') out.push({ kind: 'photo', id: String(id) }); });
+  (n.pdfFiles || []).forEach(f => { if(f && f.id != null && f.id !== '') out.push({ kind: 'pdf', id: String(f.id) }); });
+  return out;
+}
+function editorSeenAdd(n){ editorNoteFileKeys(n).forEach(k => editorSeenFiles.set(k.kind + ':' + k.id, k)); }
+// Из мест, где файл убирают из заявки в редакторе, ничего не удаляем — только запоминаем, что он был.
+function edReleaseFile(kind, id){
+  if(id == null || id === '') return;
+  editorSeenFiles.set(kind + ':' + id, { kind: kind, id: String(id) });
+}
+function editorFilePlan(){
+  const base = new Set(), fin = new Set();
+  if(history && history[0]) editorNoteFileKeys(history[0]).forEach(k => base.add(k.kind + ':' + k.id));
+  editorNoteFileKeys(editingNote).forEach(k => fin.add(k.kind + ':' + k.id));
+  // всё, что есть в любом снимке истории (включая «повторить»-ветку), тоже побывало в редакторе
+  (history || []).forEach(h => editorSeenAdd(h));
+  editorSeenAdd(editingNote);
+  const plan = { removedPre: [], removedNew: [], keptNew: [] };
+  editorSeenFiles.forEach((k, key) => {
+    const inBase = base.has(key), inFinal = fin.has(key);
+    if(inBase && !inFinal) plan.removedPre.push(k);
+    else if(!inBase && !inFinal) plan.removedNew.push(k);
+    else if(!inBase && inFinal) plan.keptNew.push(k);
+  });
+  return plan;
+}
+// Свой черновик отклонён (выбрана версия сервера): файлы, которые есть только в этом черновике и нет в версии,
+// оставшейся в силе, ставим в 30-дневную очередь — она сама проверит, что они нигде не используются. Сразу
+// ничего не удаляем: подтверждённая версия могла быть изменена ещё раз.
+function editorDropDraftFiles(drafts, keepData){
+  try{
+    const keep = new Set(editorNoteFileKeys(keepData).map(k => k.kind + ':' + k.id));
+    const queued = new Set();
+    (drafts || []).forEach(d => editorNoteFileKeys(d).forEach(k => {
+      const key = k.kind + ':' + k.id;
+      if(keep.has(key) || queued.has(key)) return;
+      queued.add(key);
+      editorQueueFilesGrace([k]);
+    }));
+  }catch(e){ console.warn('editorDropDraftFiles', e); }
+}
+function editorDeleteFilesNow(list){
+  (list || []).forEach(k => { try{ if(k.kind === 'pdf') deletePdfFromStorage(k.id); else deletePhotoFromStorage(k.id); }catch(e){ console.warn('editor file delete', e); } });
+}
+function editorQueueFilesGrace(list){
+  (list || []).forEach(k => { try{ if(k.kind === 'pdf') svcpqAddPdf(k.id); else svcpqAddNotePhoto(k.id); }catch(e){ console.warn('editor file queue', e); } });
+}
+// Применить итог по файлам. committed=true — заявка уходит на сохранение; keepNewHeldByDialog — судьбу файлов, добавленных
+// в этом сеансе и оставленных в черновике, решит диалог конфликта (при отказе их удалит он).
+function editorApplyFilePlan(plan, committed, keepNewHeldByDialog){
+  if(committed){
+    editorQueueFilesGrace(plan.removedPre);
+    editorDeleteFilesNow(plan.removedNew);
+  } else {
+    // сохранять нечего: заявка осталась как была — стираем только то, что появилось в этом сеансе
+    editorDeleteFilesNow(plan.removedNew.concat(plan.keptNew));
+  }
+  editorSeenFiles = new Map();
+}
+// Выход БЕЗ сохранения: правки живут только в копии editingNote, поэтому сама заявка, платежи, фото и
+// история остаются как были; файлы, добавленные в этом сеансе, убирает closeEditor(false).
+function editorDiscard(){
+  if(!editingNote){ editorOverlay.classList.remove('show'); return; }
+  closeEditor(false);
+}
+// «Назад» (кнопка и системный жест): нет изменений — сразу к списку; есть — спрашиваем.
+function editorRequestExit(){
+  if(!editingNote){ editorOverlay.classList.remove('show'); return; }
+  if(!editorDirty()){ editorDiscard(); return; }
+  showConfirm('Выйти без сохранения изменений?', () => { editorDiscard(); }, null,
+    { yes: 'Выйти без сохранения', no: 'Продолжить редактирование', guardMs: 450 });
+}
 function closeEditor(commit){
   if(!editingNote.checklist) editingNote.text = bodyInput.value;
   // "Реально изменил" — сравнение текущего содержимого со снимком, снятым
@@ -8232,6 +8387,7 @@ function closeEditor(commit){
   // ни editedAt, ни saveState(), ни тем более перезапись чужой свежей правки.
   const changed = commit && !isEmptyNote(editingNote)
     && JSON.stringify(snapshotNote()) !== JSON.stringify(history[0]);
+  const filePlan = editorFilePlan(); // что делать с файлами решаем ТОЛЬКО по итогу закрытия, а не по ходу правок
   if(changed){
     diagSafe(() => DIAG.user(isNewNote ? 'editor.create' : 'editor.save', { id: editingNote.id, num: editingNote.number }));
     if(editingNote.checklist) editingNote.checklist = editingNote.checklist.filter(i => i.text.trim());
@@ -8290,8 +8446,12 @@ function closeEditor(commit){
             commitNoteWithServerCheck(pendingNote, liveEt, true);
           }
         }, () => {
-          // Отмена — оставляем свежую версию как есть, черновик отбрасывается.
+          // Отмена — оставляем свежую версию как есть, черновик отбрасывается: файлы, добавленные только в
+          // этом сеансе и оставшиеся в черновике, больше нигде не нужны. Убранные из черновика файлы,
+          // которые были в заявке, лежат в 30-дневной очереди и вернутся в силу, если сохранённая версия на них ссылается.
+          editorDeleteFilesNow(filePlan.keptNew);
         });
+        editorApplyFilePlan(filePlan, true, true);
         editorOverlay.classList.remove('show');
         palette.classList.remove('show');
         editingNote = null;
@@ -8305,6 +8465,7 @@ function closeEditor(commit){
       commitNoteWithServerCheck(editingNote, editorBaseVersion.editedAt, true);
     }
   }
+  editorApplyFilePlan(filePlan, changed, false);
   editorOverlay.classList.remove('show');
   palette.classList.remove('show');
   editingNote = null;
@@ -8326,23 +8487,23 @@ document.getElementById('editorDone').addEventListener('click', () => {
     document.getElementById('paymentTypeOverlay').classList.add('show');
     return;
   }
-  closeEditor(true);
+  editorSaveAndClose();
 });
 document.getElementById('paymentTypeNoNds').addEventListener('click', () => {
   editingNote.noNds = true;
   document.getElementById('noNdsCheck').checked = true;
   document.getElementById('paymentTypeOverlay').classList.remove('show');
-  closeEditor(true);
+  editorSaveAndClose();
 });
 document.getElementById('paymentTypeCash').addEventListener('click', () => {
   editingNote.cash = true;
   document.getElementById('cashCheck').checked = true;
   document.getElementById('paymentTypeOverlay').classList.remove('show');
-  closeEditor(true);
+  editorSaveAndClose();
 });
 document.getElementById('paymentTypeSkip').addEventListener('click', () => {
   document.getElementById('paymentTypeOverlay').classList.remove('show');
-  closeEditor(true);
+  editorSaveAndClose();
 });
 
 document.getElementById('archiveBtn').addEventListener('click', () => {
@@ -8441,6 +8602,7 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
   const prevSection = currentSection;
   if(currentSection === 'service'){ svcFlushLocalSave(); carFlushLocalSave(); }
   currentSection = btn.getAttribute('data-section');
+  if(prevSection === 'notes' && currentSection !== 'notes') navSectionReturn = { cargoTab: cargoTab, scroll: (document.getElementById('main') || {}).scrollTop || 0 };
   if(currentSection === 'notes' && prevSection !== 'notes') cargoTab = 'active';
   document.querySelectorAll('.top-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -8993,6 +9155,7 @@ let carLocalReadyUID = null;      // для какого UID отдельный 
 let carSlowFlag = false, carSlowTimer = null; // отправка зависла (нет связи) — показываем «не синхронизировано»
 const SVC_HANDLE_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 const SVC_RM_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const NAV_BACK_HTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span>';
 const SVC_BACK_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
 const SVC_EDIT_SVG = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 const SVC_TRASH_SVG = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
@@ -9447,7 +9610,7 @@ function svcPretripBarHtml(f){
 function svcFolderHtml(f){
   if(svcIsPretrip(f)){
     return `<div class="svc-head">
-      <button class="svc-iconbtn" data-svc-back type="button" aria-label="Назад к папкам">${SVC_BACK_SVG}</button>
+      <button class="svc-iconbtn nav-back" data-svc-back type="button" aria-label="Назад">${NAV_BACK_HTML}</button>
       <div class="svc-htitle">${escapeHtml(svcFolderTitle(f))}</div>
     </div>
     <div id="svcPtBar">${svcPretripBarHtml(f)}</div>
@@ -9462,7 +9625,7 @@ function svcFolderHtml(f){
   const groups = svcGroupsHtml(f); // заодно снимает устаревшие отметки
   const n = mv ? mv.selected.size : 0;
   return `<div class="svc-head">
-      <button class="svc-iconbtn" data-svc-back type="button" aria-label="Назад к папкам">${SVC_BACK_SVG}</button>
+      <button class="svc-iconbtn nav-back" data-svc-back type="button" aria-label="Назад">${NAV_BACK_HTML}</button>
       <div class="svc-htitle">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
       ${mv ? '' : `<button class="svc-textbtn" data-svc-movestart type="button">Перенести</button>
       <button class="svc-iconbtn" data-svc-editmeta type="button" aria-label="Изменить номер и пробег">${SVC_EDIT_SVG}</button>
@@ -9671,6 +9834,7 @@ function renderService(){
     }
   }
   svcUpdateFab();
+  const rb = document.getElementById('svcRootBar'); if(rb) rb.style.display = (svcOpenFolderId == null && !carOpen) ? '' : 'none'; // внутри папки/«Мой автомобиль» у экрана своя «← Назад»
 }
 // Перерисовка из-за изменений, пришедших из облака: не рвём ввод текста и
 // перетаскивание — откладываем до их окончания.
@@ -10315,7 +10479,7 @@ function svcLinksHtml(it){
 function svcDetailHtml(f, it){
   const km = svcFormatKm(f.mileage);
   return `<div class="svc-dhead">
-      <button class="svc-iconbtn" data-det-close type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
+      <button class="svc-iconbtn nav-back" data-det-close type="button" aria-label="Назад">${NAV_BACK_HTML}</button>
       <div class="svc-dtitle">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
       <button class="svc-iconbtn danger" data-det-delete type="button" aria-label="Удалить пункт">${SVC_TRASH_SVG}</button>
     </div>
@@ -10939,7 +11103,7 @@ function carCardHtml(){
 function carListHtml(){
   const list = carSortedEntries();
   let html = `<div class="svc-head">
-      <button class="svc-iconbtn" data-car-back type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
+      <button class="svc-iconbtn nav-back" data-car-back type="button" aria-label="Назад">${NAV_BACK_HTML}</button>
       <div class="svc-htitle">🚛 Мой автомобиль</div>
     </div>`;
   if(!list.length) return html + '<div class="empty" style="margin-top:30px;">Записей пока нет. Нажмите «+», чтобы добавить первую.</div>';
@@ -11022,7 +11186,7 @@ const carFileInput = document.getElementById('svcCarFileInput');
 function carTarget(){ return carDetail ? carEntryAny(carDetail.id) : null; }
 function carDetailHtml(e){
   return `<div class="svc-dhead">
-      <button class="svc-iconbtn" data-det-close type="button" aria-label="Назад">${SVC_BACK_SVG}</button>
+      <button class="svc-iconbtn nav-back" data-det-close type="button" aria-label="Назад">${NAV_BACK_HTML}</button>
       <div class="svc-dtitle">🚛 Мой автомобиль</div>
       <button class="svc-iconbtn danger" data-cdet-delete type="button" aria-label="Удалить запись">${SVC_TRASH_SVG}</button>
     </div>
@@ -12991,6 +13155,131 @@ if(messaging && !isNativeApp()){
   });
 }
 
+// ============================================================================
+// ЕДИНАЯ НАВИГАЦИЯ «НАЗАД»
+// Одна таблица внутренних экранов/окон (сверху вниз по приоритету) и одна функция
+// navBack(), которая закрывает самый верхний из открытых. Её вызывают:
+//  • кнопка «← Назад» на любом внутреннем экране;
+//  • системный жест/кнопка «Назад» в браузере и установленном PWA (Android, iPhone)
+//    — через History API (popstate);
+//  • аппаратная «Назад» в Android-обёртке Capacitor.
+// На главной (ничего не открыто) в историю ничего не добавляется, поэтому системный
+// выход работает как обычно. Заявки, оплаты, Firebase и резервные копии не затрагиваются.
+// ============================================================================
+const NAV_LAYERS = [
+  { n:'confirm',     open:() => navShow('confirmOverlay'),     close:() => document.getElementById('confirmNo').click() },
+  { n:'fileTitle',   open:() => navShow('fileTitleOverlay'),   close:() => document.getElementById('fileTitleNo').click() },
+  { n:'payType',     open:() => navShow('paymentTypeOverlay'), close:() => document.getElementById('paymentTypeOverlay').classList.remove('show') },
+  { n:'payChoice',   open:() => navShow('payChoiceOverlay'),   close:() => document.getElementById('payChoiceCancel').click() },
+  { n:'goal',        open:() => navShow('goalOverlay'),        close:() => document.getElementById('goalCancelBtn').click() },
+  { n:'ocr',         open:() => navShow('ocrResultOverlay'),   close:() => document.getElementById('ocrResultClose').click() },
+  { n:'attachSrc',   open:() => navShow('attachSrcOverlay'),   close:() => closeAttachSourceSheet() },
+  { n:'diag',        open:() => navFlex('diagOverlay'),        close:() => document.getElementById('diagBack').click() },
+  { n:'backups',     open:() => navFlex('backupsOverlay'),     close:() => document.getElementById('backupsCloseBtn').click() },
+  { n:'changePass',  open:() => navFlex('changePassOverlay'),  close:() => document.getElementById('cpCancelBtn').click() },
+  { n:'pdf',         open:() => navShow('pdfViewer'),          close:() => document.getElementById('pdfClose').click() },
+  { n:'lightbox',    open:() => navShow('lightbox'),           close:() => document.getElementById('lbClose').click() },
+  { n:'expSheet',    open:() => navShow('expSheetOverlay'),    close:() => closeExpenseSheet() },
+  { n:'svcMove',     open:() => navShow('svcMoveOverlay'),     close:() => closeSvcMovePicker() },
+  { n:'svcSheet',    open:() => navShow('svcSheetOverlay'),    close:() => closeSvcSheet() },
+  // Редактор: «Назад» — выход БЕЗ сохранения. Нет изменений — сразу закрывается; есть — спрашивает
+  // «Выйти без сохранения изменений?». Сохраняет только кнопка «Сохранить».
+  { n:'editor',      open:() => navShow('editorOverlay'),      close:() => editorRequestExit() },
+  { n:'svcDetail',   open:() => navShow('svcDetailOverlay'),   close:() => closeSvcDetail() },
+  { n:'carDetail',   open:() => navShow('svcCarDetailOverlay'),close:() => carCloseDetail() },
+  { n:'drawer',      open:() => navShow('drawer'),             close:() => { drawer.classList.remove('show'); overlay.classList.remove('show'); } },
+  { n:'svcMoveMode', open:() => currentSection === 'service' && !!svcMoveCur(), close:() => { svcMove = null; renderService(); } },
+  { n:'svcFolder',   open:() => currentSection === 'service' && !!svcOpenFolderId, close:() => svcCloseFolder() },
+  { n:'carList',     open:() => currentSection === 'service' && !!carOpen, close:() => carCloseList() },
+  // Архив/корзина внутри «Грузов» — один уровень назад, к обычному списку (вкладка и поиск возвращаются).
+  { n:'view',        open:() => currentSection === 'notes' && view !== 'notes', close:() => {
+      const r = navViewReturn; navViewReturn = null;
+      const home = drawer.querySelector('[data-view="notes"]');
+      if(home) home.click(); else { view = 'notes'; renderContent(); }
+      if(r){
+        if(r.cargoTab && r.cargoTab !== cargoTab){ const tb = document.querySelector('[data-cargo="' + r.cargoTab + '"]'); if(tb) tb.click(); }
+        if(r.searchQuery){ searchQuery = r.searchQuery; const si = document.getElementById('searchInput'); if(si) si.value = r.searchQuery; renderContent(); }
+      }
+    } },
+  // «Расходы» / «Автосервис» (после закрытия своих внутренних экранов) → назад на «Грузы»: тот же список
+  // («Доставляется»/«Доставлено») и то же положение прокрутки, что были до ухода.
+  { n:'section',     open:() => currentSection !== 'notes',   close:() => {
+      const r = navSectionReturn; navSectionReturn = null;
+      const tab = document.querySelector('.top-tab[data-section="notes"]');
+      if(tab) tab.click();
+      if(r){
+        if(r.cargoTab && r.cargoTab !== cargoTab){ cargoTab = r.cargoTab; renderContent(); }
+        const m = document.getElementById('main'); if(m) m.scrollTop = r.scroll || 0;
+      }
+    } },
+];
+function navShow(id){ const el = document.getElementById(id); return !!(el && el.classList.contains('show')); }
+function navFlex(id){ const el = document.getElementById(id); return !!(el && el.style.display === 'flex'); }
+function navLevel(){ let n = 0; for(const l of NAV_LAYERS){ try{ if(l.open()) n++; }catch(e){} } return n; }
+// Закрывает самый верхний открытый экран/окно. true — что-то закрыто, false — открыта главная.
+function navBack(){
+  for(const l of NAV_LAYERS){
+    let o = false;
+    try{ o = l.open(); }catch(e){}
+    if(o){ NAV.inClose = true; try{ l.close(); }catch(e){ console.warn('nav close failed', l.n, e); } NAV.inClose = false; return true; }
+  }
+  return false;
+}
+// --- Браузер / установленный PWA (Android и iPhone): системная «Назад» через History API ---
+// Правило: число записей истории, добавленных нами (NAV.pushed), всегда подгоняется под число
+// открытых внутренних экранов. На главной NAV.pushed = 0 — приложение не перехватывает выход.
+const NAV = { pushed: 0, inClose: false, backBusy: false, expectPop: false, expectTimer: 0, popSeen: false, raf: 0 };
+function navSync(){
+  if(isNativeApp() || NAV.expectPop) return;
+  const lvl = navLevel();
+  while(NAV.pushed < lvl){ NAV.pushed++; try{ window.history.pushState({ vrNav: NAV.pushed }, ''); }catch(e){} }
+  if(NAV.pushed > lvl){
+    const d = NAV.pushed - lvl;
+    NAV.pushed = lvl;
+    NAV.expectPop = true;                    // это наш собственный откат — popstate не считать жестом пользователя
+    clearTimeout(NAV.expectTimer);
+    NAV.expectTimer = setTimeout(() => { NAV.expectPop = false; navSync(); }, 700); // на случай, если события не будет
+    try{ window.history.go(-d); }catch(e){ NAV.expectPop = false; }
+  }
+}
+function navSyncSoon(){ if(NAV.raf) return; NAV.raf = requestAnimationFrame(() => { NAV.raf = 0; navSync(); }); }
+window.addEventListener('popstate', (e) => {
+  if(isNativeApp()) return;
+  NAV.popSeen = true; NAV.backBusy = false;
+  if(NAV.expectPop){ NAV.expectPop = false; clearTimeout(NAV.expectTimer); navSync(); return; }
+  const target = (e.state && e.state.vrNav) || 0;
+  if(target < NAV.pushed){
+    let n = NAV.pushed - target;
+    NAV.pushed = target;
+    while(n-- > 0){ if(!navBack()) break; }
+  } else {
+    NAV.pushed = target;                     // «вперёд» или перезагрузка с остатком истории — подгонит navSync
+  }
+  navSync();
+});
+// Кнопка «← Назад»: идёт через ту же историю, что и системный жест (одна логика). Если по какой-то причине
+// истории нет или событие не пришло — закрываем напрямую.
+document.addEventListener('click', (e) => {
+  const b = e.target && e.target.closest && e.target.closest('.nav-back');
+  if(!b || NAV.inClose) return;   // клик, который navBack() сам посылает штатной кнопке закрытия, не перехватываем
+  e.preventDefault(); e.stopImmediatePropagation();
+  if(!isNativeApp() && NAV.pushed > 0 && !NAV.expectPop){
+    if(NAV.backBusy) return;                 // предыдущий шаг «Назад» ещё выполняется — повторный быстрый тап не должен уйти дальше
+    const lvl = navLevel();
+    NAV.popSeen = false; NAV.backBusy = true;
+    try{ window.history.back(); }catch(err){ NAV.backBusy = false; navBack(); return; }
+    setTimeout(() => { NAV.backBusy = false; if(!NAV.popSeen && navLevel() >= lvl) navBack(); }, 400);
+  } else {
+    navBack();
+  }
+}, true);
+if(!isNativeApp()){
+  try{ NAV.pushed = (window.history.state && window.history.state.vrNav) || 0; }catch(e){}   // перезагрузка с остатком истории
+  new MutationObserver(navSyncSoon).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class', 'style'] });
+  ['content', 'svcBody'].forEach(id => { const el = document.getElementById(id); if(el) new MutationObserver(navSyncSoon).observe(el, { childList: true }); });
+  setInterval(navSync, 500);
+}
+
 // Системная кнопка "Назад" на Android. Без этого обработчика Android по
 // умолчанию просто закрывает (убивает) приложение целиком с любого экрана —
 // непривычно и неприятно, если в этот момент открыт, например, редактор
@@ -13007,95 +13296,8 @@ function setupNativeBackButton(){
     return;
   }
   CapacitorApp.addListener('backButton', () => {
-    const confirmOverlay = document.getElementById('confirmOverlay');
-    const lightboxEl = document.getElementById('lightbox');
-    const ocrOverlay = document.getElementById('ocrResultOverlay');
-    const drawerEl = document.getElementById('drawer');
-    const backupsEl = document.getElementById('backupsOverlay');
-    const changePassEl = document.getElementById('changePassOverlay');
-    const payChoiceEl = document.getElementById('payChoiceOverlay');
-    const goalEl = document.getElementById('goalOverlay');
-    if(confirmOverlay && confirmOverlay.classList.contains('show')){
-      document.getElementById('confirmNo').click();
-      return;
-    }
-    if(ocrOverlay && ocrOverlay.classList.contains('show')){
-      ocrOverlay.classList.remove('show');
-      return;
-    }
-    if(lightboxEl && lightboxEl.classList.contains('show')){
-      document.getElementById('lbClose').click();
-      return;
-    }
-    // Модальные окна поверх редактора (пароль, резервные копии, выбор
-    // оплаты, цель месяца) — закрываем их раньше, чем сам редактор или
-    // список, иначе "Назад" может провалиться на уровень ниже.
-    if(payChoiceEl && payChoiceEl.classList.contains('show')){
-      document.getElementById('payChoiceCancel').click();
-      return;
-    }
-    const diagEl = document.getElementById('diagOverlay');
-    if(diagEl && diagEl.style.display === 'flex'){ diagEl.style.display = 'none'; return; }
-    if(backupsEl && backupsEl.style.display === 'flex'){
-      document.getElementById('backupsCloseBtn').click();
-      return;
-    }
-    if(changePassEl && changePassEl.style.display === 'flex'){
-      document.getElementById('cpCancelBtn').click();
-      return;
-    }
-    if(goalEl && goalEl.classList.contains('show')){
-      goalEl.classList.remove('show');
-      return;
-    }
-    if(editorOverlay.classList.contains('show')){
-      closeEditor(true);
-      return;
-    }
-    if(expSheetOverlay && expSheetOverlay.classList.contains('show')){
-      closeExpenseSheet();
-      return;
-    }
-    if(svcMoveOverlay && svcMoveOverlay.classList.contains('show')){
-      closeSvcMovePicker();
-      return;
-    }
-    if(svcSheetOverlay && svcSheetOverlay.classList.contains('show')){
-      closeSvcSheet();
-      return;
-    }
-    if(svcDetailOverlay && svcDetailOverlay.classList.contains('show')){
-      closeSvcDetail();
-      return;
-    }
-    if(carDetailOverlay && carDetailOverlay.classList.contains('show')){
-      carCloseDetail();
-      return;
-    }
-    if(drawerEl && drawerEl.classList.contains('show')){
-      drawerEl.classList.remove('show');
-      overlay.classList.remove('show');
-      return;
-    }
-    if(currentSection === 'service' && svcMoveCur()){
-      svcMove = null; renderService(); // системная «Назад» сначала выходит из режима выбора
-      return;
-    }
-    if(currentSection === 'service' && svcOpenFolderId){
-      svcCloseFolder();
-      return;
-    }
-    if(currentSection === 'service' && carOpen){
-      carCloseList();
-      return;
-    }
-    // Архив/корзина внутри "Заявок" — поднимаемся на один уровень назад к
-    // обычному списку, а не сразу сворачиваем приложение.
-    if(currentSection === 'notes' && view !== 'notes'){
-      view = 'notes';
-      renderContent();
-      return;
-    }
+    // Та же единая логика, что у кнопки «← Назад» и системного жеста в браузере/PWA.
+    if(navBack()) return;
     // Самый верхний уровень — сворачиваем, а не убиваем приложение (как
     // делает обычная кнопка "домой"), чтобы не терять состояние и не заново
     // ждать перезапуска Firebase при следующем открытии.
