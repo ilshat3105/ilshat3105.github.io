@@ -482,6 +482,21 @@
   .inc-split .sp-name{color:var(--muted);font-weight:500;font-size:12px;}
   .inc-split .sp-val{font-weight:600;white-space:nowrap;font-size:12px;letter-spacing:-.2px;min-width:0;}
   .inc-split .sp-sub{display:block;font-weight:400;font-size:11px;color:var(--muted);}
+  /* «Итоги месяца»: одна общая карточка (месяц → сумма и число грузов → оплачено/расходы/чистыми → таблица по типам расчёта) */
+  .inc-month-card{background:var(--surface);border:1px solid var(--card-line);border-radius:18px;box-shadow:0 6px 18px rgba(15,23,42,.055);margin-bottom:10px;overflow:hidden;}
+  .inc-month-card #incSummaryBar{background:none;border:0;border-radius:0;box-shadow:none;margin:0;padding:8px 16px 10px;font-weight:600;color:var(--ink);}
+  .inc-month-card .summary-nav{margin-bottom:0;}
+  .inc-month-card .im-cap{font-size:11.5px;color:var(--muted);font-weight:600;}
+  .inc-month-card .im-total{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0;}
+  .inc-month-card .im-sum{font-size:19px;font-weight:700;color:var(--ink);white-space:nowrap;min-width:0;letter-spacing:-.3px;}
+  .inc-month-card .im-cnt{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap;}
+  .inc-month-card .im-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;margin-top:9px;padding-top:8px;border-top:1px solid var(--card-line);}
+  .inc-month-card .im-cell{flex:0 1 auto;min-width:0;}
+  .inc-month-card .inc-split .sp-row{grid-template-columns:74px repeat(3,minmax(0,1fr));gap:4px 5px;}
+  .inc-month-card .inc-split .sp-val{font-size:11.5px;letter-spacing:-.3px;}
+  .inc-month-card .im-l{display:block;font-size:11.5px;font-weight:500;color:var(--muted);}
+  .inc-month-card .im-v{display:block;font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;letter-spacing:-.2px;}
+  .inc-month-card .inc-split{border:0;border-top:1px solid var(--card-line);border-radius:0;margin:0;padding:8px 16px 10px;}
   #incFilterToggle{flex-wrap:wrap;}
   #incFilterToggle .exp-view-btn{flex:1 1 auto;min-width:44%;font-size:12.5px;padding:9px 4px;}
   #incFoundLine{display:none;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 2px 10px;}
@@ -1129,8 +1144,10 @@
     <div class="summary-bar" id="summaryBar" style="display:none;"></div>
     <div id="content"></div>
     <div id="incomeSection" style="display:none;">
-      <div class="summary-bar" id="incSummaryBar" style="display:none;"></div>
-      <div class="inc-split" id="incSplit" style="display:none;"></div>
+      <div class="inc-month-card" id="incMonthCard">
+        <div class="summary-bar" id="incSummaryBar" style="display:none;"></div>
+        <div class="inc-split" id="incSplit" style="display:none;"></div>
+      </div>
       <div class="inc-owed-banner" id="incOwedBanner" style="display:none;"></div>
       <div class="exp-view-toggle" id="incFilterToggle">
         <button class="exp-view-btn active" data-incfilter="all">Все</button>
@@ -1173,7 +1190,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-20 13:50 (длинный свайп «Доставлено и оплачено» — с подтверждением)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-20 14:58 (общая карточка «Итоги месяца» во вкладке «Доставлено»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -8560,9 +8577,12 @@ function renderIncSummaryBar(){
       <span class="summary-month-label" id="incMonthLabel" style="cursor:pointer;text-decoration:underline dotted;">${monthLabel}</span>
       <button id="incNextMonth" ${nextDisabled}>›</button>
     </div>
-    <div>${incShowAllTime ? 'За весь период' : 'За месяц'}: ${incGruzov(list.length)} · ${formatAmount(total)}</div>
-    <div style="font-weight:400;font-size:12.5px;margin-top:2px;color:var(--muted);">
-      Оплачено по этим грузам (за всё время) ${formatAmount(paidTotal)}${incShowAllTime ? '' : ` · Расходы ${formatAmount(expTotal)} · Чистыми ${formatAmount(profit)}`}
+    <div class="im-cap">${incShowAllTime ? 'Итоги за весь период' : 'Итоги месяца'}</div>
+    <div class="im-total"><span class="im-sum">${formatAmount(total)}</span><span class="im-cnt">${incGruzov(list.length)}</span></div>
+    <div class="im-row${incShowAllTime ? ' one' : ''}">
+      <span class="im-cell"><span class="im-l">Оплачено</span><span class="im-v">${formatAmount(paidTotal)}</span></span>${incShowAllTime ? '' : `
+      <span class="im-cell"><span class="im-l">Расходы</span><span class="im-v">${formatAmount(expTotal)}</span></span>
+      <span class="im-cell"><span class="im-l">Чистыми</span><span class="im-v">${formatAmount(profit)}</span></span>`}
     </div>
   `;
   bar.style.display = 'block';
