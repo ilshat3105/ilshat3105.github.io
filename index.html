@@ -1242,7 +1242,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-21 01:51 (главная: убрано название фирмы)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-25 09:03 (этап 2: диагностика восстановления копии)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1629,7 +1629,8 @@ const DIAG = (() => {
   const MAX = 1500, TTL = 30 * 24 * 3600 * 1000, MAX_D = 1800, CLOUD_MAX_PER_SESSION = 400;
   const IMPORTANT = new Set(['note.vanished', 'notes.mass-vanish', 'firestore.removed', 'sync.reconcile', 'cloud.delete.intent',
     'cloud.commit.fail', 'state.replace', 'purge.trash', 'note.trash', 'note.restore', 'note.archive', 'note.unarchive',
-    'note.delivered', 'note.undelivered', 'note.delete.permanent', 'sync.conflict', 'js.error', 'js.rejection', 'cache.owner.switch', 'auth.state']);
+    'note.delivered', 'note.undelivered', 'note.delete.permanent', 'sync.conflict', 'js.error', 'js.rejection', 'cache.owner.switch', 'auth.state',
+    'backup.restore.start', 'backup.restore.plan', 'backup.restore.ok', 'backup.restore.fail', 'backup.restore.mismatch']);
   // Короткий необратимый хеш uid: в журнале и экспорте самого uid нет, но записи разных аккаунтов на одном телефоне не смешиваются.
   function hashUid(x){
     x = String(x); let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
@@ -1645,7 +1646,7 @@ const DIAG = (() => {
   try{ const co = localStorage.getItem(CACHE_OWNER_LIT); if(co) ownerInit = hashUid(co); }catch(e){}
   const S = { buf: [], seq: 0, flushT: null, rawLen: -1, err: '', prev: null, gone: new Map(), ctx: null, lastUI: null,
     owner: ownerInit, authAt: 0, lsCache: null, flags: {}, enableGen: 0, cleaning: false, cleanTry: 0, cleanFailLogged: false,
-    cloudSent: 0, remote: [], internalErrors: 0, lastKey: '', lastKeyTs: 0, inCon: false, viewSig: '' };
+    cloudSent: 0, remote: [], internalErrors: 0, lastKey: '', lastKeyTs: 0, inCon: false, viewSig: '', restore: null };
   let dev = '';
   try{ dev = localStorage.getItem(DEV_KEY) || ''; if(!dev){ dev = Math.random().toString(36).slice(2, 6); localStorage.setItem(DEV_KEY, dev); } }catch(e){ dev = dev || ('t' + Math.random().toString(36).slice(2, 5)); }
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
@@ -1740,6 +1741,7 @@ const DIAG = (() => {
       if(S.buf.length > MAX + 100) S.buf = S.buf.slice(S.buf.length - MAX);
       if(o.now) flush(); else if(lv !== 'info') schedule(0); else schedule(5000); // обычные события — пакетом раз в 5 с (не нагружаем запись); важные — сразу
       if(lv !== 'info' || IMPORTANT.has(type)) cloudSend(e);
+      if(type === 'cloud.commit.ok' && S.restore && S.restore.state === 'unconfirmed') restoreLateCheck();
       return e;
     }catch(_){ return null; }
   }
@@ -1803,21 +1805,36 @@ const DIAG = (() => {
       cur.forEach((c, id) => {
         const p = S.prev.get(id);
         if(!p){
-          log('note.new', 'info', srcNow(), { id, num: c.num, msg: 'Заявка появилась в памяти (' + where + ')', d: { after: c } });
+          restoreRevive(id);
+          const gop = restoreGained(id);
+          log('note.new', 'info', srcNow(), { id, num: c.num, msg: (gop ? 'Заявка появилась из восстановленной копии (' : 'Заявка появилась в памяти (') + where + ')', d: gop ? { after: c, opId: gop } : { after: c } });
           S.gone.delete(id);
           return;
         }
         const ch = changes(p, c);
         if(ch) log(typeFor(ch), 'info', srcNow(), { id, num: c.num, msg: 'Изменение заявки (' + where + ')', d: { ch } });
       });
+      // Заявки, которые пропали по списку замены выбранной копии (восстановление), — это ожидаемая замена: информация.
+      // Всё, чего в этом списке нет, остаётся предупреждением / ошибкой, как и раньше.
+      const expV = [], unexpV = [];
       vanished.forEach(([id, p]) => {
-        S.gone.set(id, { last: p, at: Date.now(), where });
+        const op = restoreExpected(id);
+        S.gone.set(id, op ? { last: p, at: Date.now(), where, op } : { last: p, at: Date.now(), where });
         if(S.gone.size > 300){ const k = S.gone.keys().next().value; S.gone.delete(k); }
-        log('note.vanished', 'warn', srcNow(), { id, num: p.num, now: true,
-          msg: 'Заявка пропала из массива notes (' + where + '). Причина по одному этому событию не определена.',
-          d: { where, last: p, inLastSynced: safeGet(() => lastSyncedNotes.has(id), null), inPendingDelete: safeGet(() => pendingDeletedNoteIds.indexOf(id) !== -1, null), total: cur.size } });
+        (op ? expV : unexpV).push([id, p, op]);
       });
-      if(vanished.length >= 2) log('notes.mass-vanish', 'error', srcNow(), { now: true, msg: 'За один шаг из notes пропало заявок: ' + vanished.length + ' (' + where + ')', d: { ids: vanished.slice(0, 15).map(v => [v[0], v[1].num]), total: cur.size } });
+      const rcOp = restoreActiveId();
+      expV.slice(0, 20).forEach(([id, p, op]) => log('note.replaced', 'info', srcNow(), { id, num: p.num,
+        msg: 'Заявка заменена в результате восстановления резервной копии (' + where + ')', d: { opId: op, last: p } }));
+      if(expV.length) log('backup.restore.replaced', 'info', srcNow(), { now: true,
+        msg: 'Заявки заменены в результате восстановления резервной копии: исчезло ' + expV.length + ' (по списку замены этой копии)',
+        d: { opId: expV[0][2], count: expV.length, ids: expV.slice(0, 15).map(v => [v[0], v[1].num]), planned: S.restore ? S.restore.lost.size : null, total: cur.size } });
+      unexpV.forEach(([id, p]) => {
+        log('note.vanished', 'warn', srcNow(), { id, num: p.num, now: true,
+          msg: 'Заявка пропала из массива notes (' + where + '). Причина по одному этому событию не определена.' + (rcOp ? ' Во время восстановления копии (' + rcOp + ') эта заявка в список замены НЕ входила.' : ''),
+          d: { where, last: p, inLastSynced: safeGet(() => lastSyncedNotes.has(id), null), inPendingDelete: safeGet(() => pendingDeletedNoteIds.indexOf(id) !== -1, null), total: cur.size, restoreOp: rcOp || undefined } });
+      });
+      if(unexpV.length >= 2) log('notes.mass-vanish', 'error', srcNow(), { now: true, msg: 'За один шаг из notes пропало заявок: ' + unexpV.length + ' (' + where + ')' + (expV.length ? '; ещё ' + expV.length + ' заменены восстановлением копии (ожидаемо)' : ''), d: { ids: unexpV.slice(0, 15).map(v => [v[0], v[1].num]), total: cur.size, restoreOp: rcOp || undefined } });
       S.prev = cur;
       if(S.ctxUsed){ S.ctx = null; S.ctxUsed = false; }
     }catch(e){ internalError(e); }
@@ -1833,11 +1850,198 @@ const DIAG = (() => {
       const lost = cur.filter(n => n && n.id != null && !incIds.has(String(n.id)));
       const gained = inc.filter(n => n && n.id != null && !curIds.has(String(n.id)));
       S.ctx = { kind, name, t: Date.now() };
-      log('state.replace', lost.length ? 'warn' : 'info', kind + ':' + name, { now: true,
-        msg: 'Массив notes будет заменён (' + name + '): сейчас ' + cur.length + ', станет ' + inc.length + ', исчезнет ' + lost.length + ', добавится ' + gained.length,
+      // замена при восстановлении копии, для которой уже построен список ожидаемых изменений (restorePlan), — не тревога
+      const expRestore = name === 'backup.restore.cloud' && S.restore && S.restore.state === 'running' && S.restore.planned && !S.restore.invalidNotes;
+      log('state.replace', (lost.length && !expRestore) ? 'warn' : 'info', kind + ':' + name, { now: true,
+        msg: 'Массив notes будет заменён (' + name + '): сейчас ' + cur.length + ', станет ' + inc.length + ', исчезнет ' + lost.length + ', добавится ' + gained.length + (expRestore ? ' — ожидаемая замена при восстановлении копии (' + S.restore.id + ')' : ''),
         d: Object.assign({ lost: lost.slice(0, 12).map(n => [String(n.id), n.number, mask(n.title || String(n.text || '').split('\n')[0]).slice(0, 30)]), gained: gained.length }, extra || {}) });
     }catch(e){ internalError(e); }
   }
+  // ---- восстановление копии: операция с идентификатором и список ожидаемых изменений по содержимому выбранной копии ----
+  const RESTORE_KEY = 'vreyse_diag_restore_op', RESTORE_GRACE_MS = 10 * 60 * 1000;
+  function restoreSave(){
+    try{
+      const r = S.restore;
+      if(r && r.state === 'running') localStorage.setItem(RESTORE_KEY, JSON.stringify({ opId: r.id, t0: r.t0, backup: r.backup, planned: r.planned, applied: r.applied, h: S.owner }));
+      else localStorage.removeItem(RESTORE_KEY);
+    }catch(_){}
+  }
+  function restoreCur(id){ const r = S.restore; return r && (id == null || r.id === id) ? r : null; }
+  // Список ожидаемых изменений действует:
+  //  - пока операция идёт (в том числе внутри applyState: running);
+  //  - после ЗАВЕРШЁННОЙ замены (applied): пока сервер не подтвердил (unconfirmed — без ограничения по времени) и ещё 10 минут после
+  //    конца операции (ok / ошибка отправки) — на запоздавшие подтверждения облака при плохой связи.
+  // Если восстановление закончилось неудачей ДО завершения замены (fail при applied=false), новые исчезновения штатными не считаются.
+  function restoreLive(r){
+    if(!r) return false;
+    if(r.state === 'running') return true;
+    if(!r.applied) return false;
+    if(r.state === 'unconfirmed') return true;
+    return Date.now() - r.endedAt <= RESTORE_GRACE_MS;
+  }
+  // Заявка с тем же ID снова появилась в памяти (добавлена заново с этого или другого телефона): любое следующее её удаление — новое
+  // самостоятельное событие и под прежнюю операцию не попадает. В r.lostAll остаётся полный список для итоговой сверки.
+  function restoreRevive(id){
+    try{
+      const r = S.restore;
+      if(r && r.lost.has(String(id))){ r.lost.delete(String(id)); r.revived = (r.revived || 0) + 1; }
+    }catch(_){}
+  }
+  function restoreActiveId(){ const r = S.restore; return r && restoreLive(r) ? r.id : null; }
+  function restoreExpected(id){
+    try{
+      const r = S.restore;
+      if(!r || !r.planned || !restoreLive(r)) return null;
+      return r.lost.has(String(id)) ? r.id : null;
+    }catch(_){ return null; }
+  }
+  function restoreGained(id){
+    try{
+      const r = S.restore;
+      if(!r || !r.planned || !restoreLive(r)) return null;
+      return r.gained.has(String(id)) ? r.id : null;
+    }catch(_){ return null; }
+  }
+  function restoreBegin(backup, extra){
+    try{
+      const prev = S.restore;
+      if(prev && prev.state === 'running') restoreFail(prev.id, 'superseded', null);
+      const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      S.restore = { id, t0: Date.now(), backup: String(backup == null ? '' : backup).slice(0, 60), state: 'running', planned: false, applied: false, invalidNotes: false, endedAt: 0,
+        lost: new Map(), lostAll: new Set(), revived: 0, gained: new Set(), changed: new Set(), keep: new Set() };
+      restoreSave();
+      log('backup.restore.start', 'info', 'restore:backup', { now: true, msg: 'Начато восстановление из резервной копии',
+        d: Object.assign({ opId: id, backup: S.restore.backup, notesNow: safeGet(() => notes.length, null) }, extra || {}) });
+      return id;
+    }catch(e){ internalError(e); return null; }
+  }
+  // Сравнение текущих заявок с содержимым выбранной копии — ДО замены: какие должны исчезнуть, появиться, измениться.
+  // planned = «замена запланирована/выполняется» (с этого момента исчезновения классифицируются по списку, в том числе внутри applyState);
+  // applied = «замена фактически завершена» (ставится restoreApplied только после нормального выхода из applyState).
+  function restorePlan(opId, incomingNotes){
+    try{
+      const r = restoreCur(opId);
+      if(!r || r.state !== 'running') return;
+      const cur = safeGet(() => notes, []) || [];
+      r.lost = new Map(); r.gained = new Set(); r.changed = new Set(); r.keep = new Set();
+      // В копии нет корректного массива notes: приложение всё равно заменит заявки пустым списком, но это НЕ штатная замена —
+      // список ожидаемых исчезновений остаётся пустым, и каждая пропавшая заявка будет записана как предупреждение.
+      if(!Array.isArray(incomingNotes)){
+        r.invalidNotes = true; r.planned = true;
+        restoreSave();
+        log('backup.restore.plan', 'warn', 'restore:backup', { now: true,
+          msg: 'В выбранной копии нет корректного списка заявок (notes). Исчезновение заявок при этом восстановлении НЕ считается штатным: сейчас заявок ' + cur.length,
+          d: { opId: r.id, backup: r.backup, now: cur.length, inCopy: null, notesInCopy: incomingNotes === undefined ? 'нет' : incomingNotes === null ? 'null' : typeof incomingNotes } });
+        return;
+      }
+      const inc = incomingNotes;
+      const curMap = new Map(), incMap = new Map();
+      cur.forEach(n => { if(n && n.id != null) curMap.set(String(n.id), n); });
+      inc.forEach(n => { if(n && n.id != null) incMap.set(String(n.id), n); });
+      r.keep = new Set(incMap.keys());
+      curMap.forEach((n, id) => {
+        if(!incMap.has(id)) r.lost.set(id, n.number == null ? null : n.number);
+        else if(changes(sum(n), sum(incMap.get(id)))) r.changed.add(id);
+      });
+      incMap.forEach((n, id) => { if(!curMap.has(id)) r.gained.add(id); });
+      r.lostAll = new Set(r.lost.keys());
+      r.planned = true;
+      restoreSave();
+      const numOf = (m, id) => { const n = m.get(id); return n && n.number != null ? n.number : null; };
+      log('backup.restore.plan', 'info', 'restore:backup', { now: true,
+        msg: 'Сравнение с выбранной копией: сейчас заявок ' + cur.length + ', в копии ' + inc.length + '; должно исчезнуть ' + r.lost.size + ', появиться ' + r.gained.size + ', измениться ' + r.changed.size,
+        d: { opId: r.id, backup: r.backup, now: cur.length, inCopy: inc.length,
+          remove: Array.from(r.lost.entries()).slice(0, 20), add: Array.from(r.gained).slice(0, 20).map(id => [id, numOf(incMap, id)]), change: Array.from(r.changed).slice(0, 20) } });
+    }catch(e){ internalError(e); }
+  }
+  // Вызывается ТОЛЬКО после того, как applyState(restoreData) вернулся без ошибки.
+  function restoreApplied(opId){
+    try{
+      const r = restoreCur(opId);
+      if(!r || r.state !== 'running' || !r.planned) return;
+      r.applied = true;
+      restoreSave();
+    }catch(e){ internalError(e); }
+  }
+  function restoreVerify(r){
+    const cur = safeGet(() => notes, []) || [];
+    const ids = new Set(cur.filter(n => n && n.id != null).map(n => String(n.id)));
+    const missing = [], resurrected = [];
+    r.keep.forEach(id => { if(!ids.has(id)) missing.push(id); });
+    r.lostAll.forEach(id => { if(ids.has(id)) resurrected.push(id); });
+    return { missing, resurrected };
+  }
+  function restoreOk(opId){
+    try{
+      const r = restoreCur(opId);
+      if(!r || (r.state !== 'running' && r.state !== 'unconfirmed')) return;
+      if(!r.applied) return;   // успех не объявляем, пока замена не завершена
+      const late = r.state === 'unconfirmed';
+      r.state = 'ok'; r.endedAt = Date.now(); restoreSave();
+      log('backup.restore.ok', 'info', 'restore:backup', { now: true,
+        msg: 'Восстановление завершено: сервер подтвердил сохранение' + (late ? ' (позже, чем ждало окно восстановления)' : '') + (r.invalidNotes ? '. В копии не было корректного списка заявок — это не штатная замена заявок' : '. Заявки заменены в результате восстановления резервной копии: исчезло ' + r.lost.size + ', появилось ' + r.gained.size + ', изменено ' + r.changed.size),
+        d: { opId: r.id, backup: r.backup, ms: Date.now() - r.t0, removed: r.lost.size, added: r.gained.size, changed: r.changed.size, late, notesNow: safeGet(() => notes.length, null) } });
+      if(r.invalidNotes) log('backup.restore.mismatch', 'warn', 'restore:backup', { now: true, msg: 'Копия не содержала корректного списка заявок: после восстановления на этом телефоне заявок ' + safeGet(() => notes.length, null), d: { opId: r.id, invalidNotes: true } });
+      const v = restoreVerify(r);
+      if(v.missing.length || v.resurrected.length) log('backup.restore.mismatch', 'warn', 'restore:backup', { now: true,
+        msg: 'После восстановления состав заявок не совпал с копией: не хватает ' + v.missing.length + ', лишних (должны были исчезнуть) ' + v.resurrected.length,
+        d: { opId: r.id, missing: v.missing.slice(0, 12), resurrected: v.resurrected.slice(0, 12) } });
+    }catch(e){ internalError(e); }
+  }
+  function restoreFail(opId, stage, e){
+    try{
+      const r = restoreCur(opId);
+      if(!r || (r.state !== 'running' && r.state !== 'unconfirmed')) return;
+      const why = mask(e && (e.code || e.message)) || '';
+      const applied = r.applied, planned = r.planned;
+      let lv = 'warn', msg, changedFlag = false;
+      if(stage === 'cloud-confirm' && applied){
+        r.state = 'unconfirmed'; r.endedAt = Date.now(); changedFlag = true;
+        msg = 'Восстановлено только на этом телефоне: сервер не подтвердил сохранение за отведённое время. Приложение повторит отправку само';
+      } else {
+        r.state = 'fail'; r.endedAt = Date.now();
+        if(applied){
+          lv = 'error'; stage = 'cloud-send'; changedFlag = true;
+          msg = 'Данные на этом телефоне заменены копией, но дальше произошла ошибка' + (why ? ' (' + why + ')' : '') + ': сохранение в облаке не подтверждено. Приложение повторит отправку само';
+        } else if(planned){
+          lv = 'error'; stage = 'apply'; changedFlag = 'unknown';
+          msg = 'Замена данных копией НЕ завершилась' + (why ? ' (' + why + ')' : '') + ': восстановление не применено полностью, заявки на этом телефоне могли измениться частично — проверьте данные';
+        } else {
+          msg = stage === 'superseded' ? 'Восстановление заменено новой попыткой, данные не менялись'
+            : stage === 'not-ready' ? 'Восстановление не начато: приложение ещё сверяет данные с сервером. Данные не менялись'
+            : 'Восстановление не выполнено, данные не менялись (' + (stage === 'emergency' ? 'аварийная копия не сохранена' : stage === 'prep' ? 'сейчас нельзя заменить данные' : 'копию не удалось получить') + (why ? ': ' + why : '') + ')';
+        }
+      }
+      restoreSave();
+      log('backup.restore.fail', lv, 'restore:backup', { now: true, msg, d: { opId: r.id, backup: r.backup, stage, planned, applied, dataChanged: changedFlag, ms: Date.now() - r.t0, removed: r.lost.size, added: r.gained.size, error: why || undefined } });
+    }catch(err){ internalError(err); }
+  }
+  // «Ждали подтверждения, оно пришло позже»: после очередной подтверждённой отправки проверяем общее состояние синхронизации
+  function restoreLateCheck(){
+    const r = S.restore, id = r && r.id;
+    setTimeout(() => {
+      try{
+        if(!S.restore || S.restore.id !== id || S.restore.state !== 'unconfirmed') return;
+        const p = safeGet(() => backupWaitSynced(null), null);
+        if(p && p.then) p.then(ok => { if(ok) restoreOk(id); }, () => {});
+      }catch(e){ internalError(e); }
+    }, 400);
+  }
+  // Прошлый запуск закрылся посреди восстановления: об этом остаётся запись (после app.start)
+  function restoreInterruptedCheck(){
+    try{
+      const raw = localStorage.getItem(RESTORE_KEY);
+      if(!raw) return;
+      localStorage.removeItem(RESTORE_KEY);
+      const o = JSON.parse(raw);
+      if(!o || o.h !== S.owner) return;
+      const ap = !!o.applied, pl = !!o.planned;
+      log('backup.restore.fail', ap || !pl ? 'warn' : 'error', 'restore:backup', { now: true,
+        msg: 'Восстановление было прервано: приложение закрыто или перезагружено до завершения. ' + (ap ? 'Данные на этом телефоне уже были заменены копией, отправка в облако могла не завершиться — приложение повторит отправку само.' : pl ? 'Замена данных была начата, но не завершена: заявки на этом телефоне могли измениться частично — проверьте данные.' : 'Данные заменены не были.'),
+        d: { opId: o.opId, backup: o.backup, stage: 'interrupted', planned: pl, applied: ap, dataChanged: ap ? true : pl ? 'unknown' : false, sinceMs: Date.now() - (o.t0 || Date.now()) } });
+    }catch(e){ internalError(e); }
+  }
+
   function mark(name, kind){ S.ctx = { kind: kind || 'local', name, t: Date.now() }; }
   function user(name, o){
     mark(name, 'user');
@@ -1968,7 +2172,7 @@ const DIAG = (() => {
       if(h === S.owner) return;
       diff('смена аккаунта');
       flush();
-      S.owner = h; S.prev = null; S.gone = new Map(); S.remote = []; S.ctx = null; S.enableGen++; S.cloudSent = 0; S.lastKey = ''; S.viewSig = ''; S.cleanFailLogged = false;
+      S.owner = h; S.prev = null; S.gone = new Map(); S.remote = []; S.ctx = null; S.enableGen++; S.cloudSent = 0; S.lastKey = ''; S.viewSig = ''; S.cleanFailLogged = false; S.restore = null; try{ localStorage.removeItem(RESTORE_KEY); }catch(_){}
       log('diag.owner', 'info', 'diag', { now: true, msg: h ? 'Журнал переключён на другой аккаунт' : 'Журнал: выход из аккаунта' });
       scheduleCleanup(30000, false);
     }catch(e){ internalError(e); }
@@ -2145,9 +2349,11 @@ const DIAG = (() => {
 
   load();
   log('app.start', 'info', 'device', { now: true, msg: 'Запуск приложения', d: { sid, dev: devLabel, v: safeGet(() => (document.getElementById('appVersionLine') || {}).textContent, '').slice(0, 90) } });
+  restoreInterruptedCheck();
 
   return {
     log, diff, mark, user, replaceIntent, internalError, flush, viewTick, sum, status,
+    restoreBegin, restorePlan, restoreApplied, restoreOk, restoreFail, restoreExpected,
     sid, dev: devLabel, S,
     entries: () => S.buf.filter(visible).concat(S.remote).sort((a, b) => b.ts - a.ts || (b.n || 0) - (a.n || 0)),
     setOwner, hash: hashUid, cleanupNow: maybeCleanup, cloudOn: cloudOnNow, enableCloud, disableCloud, loadRemote, storageError: () => S.err
@@ -2158,13 +2364,23 @@ const DIAG = (() => {
 function diagFlushIntent(ops){
   const dels = ops.filter(o => o.action === 'delete' && o.kind === 'note');
   const sets = ops.filter(o => o.action === 'set' && o.kind === 'note').length;
-  dels.slice(0, 20).forEach(o => {
+  // удаления, которые входят в список замены восстановленной копии, — ожидаемые (информация); остальные — предупреждения, как раньше
+  const expDels = [], realDels = [];
+  dels.forEach(o => { const op = DIAG.restoreExpected(o.id); (op ? expDels : realDels).push([o, op]); });
+  realDels.slice(0, 20).forEach(([o]) => {
     const g = DIAG.S.gone.get(String(o.id));
     DIAG.log('cloud.delete.intent', 'warn', 'local:flushCloudSave', { id: o.id, num: g && g.last ? g.last.num : null, now: true,
       msg: 'В облако будет отправлено УДАЛЕНИЕ заявки: её нет в локальном notes, но она числится синхронизированной. Почему её нет локально — смотрите события note.vanished/state.replace по этому ID.',
       d: { lastKnownLocal: g ? g.last : null, vanishedAt: g ? g.at : null, vanishedWhere: g ? g.where : null, pendingDelete: pendingDeletedNoteIds.indexOf(String(o.id)) !== -1, localCount: notes.length } });
   });
-  if(dels.length > 20) DIAG.log('cloud.delete.intent', 'error', 'local:flushCloudSave', { now: true, msg: 'Всего удалений заявок в облаке в этой отправке: ' + dels.length + ' (показаны первые 20)' });
+  expDels.slice(0, 20).forEach(([o, op]) => {
+    const g = DIAG.S.gone.get(String(o.id));
+    DIAG.log('cloud.delete.expected', 'info', 'local:flushCloudSave', { id: o.id, num: g && g.last ? g.last.num : null, now: true,
+      msg: 'В облако отправляется удаление заявки, заменённой при восстановлении резервной копии (ожидаемо)',
+      d: { opId: op, lastKnownLocal: g ? g.last : null, pendingDelete: pendingDeletedNoteIds.indexOf(String(o.id)) !== -1, localCount: notes.length } });
+  });
+  if(realDels.length > 20) DIAG.log('cloud.delete.intent', 'error', 'local:flushCloudSave', { now: true, msg: 'Всего удалений заявок в облаке в этой отправке: ' + realDels.length + ' (показаны первые 20)' });
+  if(expDels.length > 20) DIAG.log('cloud.delete.expected', 'info', 'local:flushCloudSave', { now: true, msg: 'Всего ожидаемых удалений при восстановлении копии в этой отправке: ' + expDels.length + ' (показаны первые 20)' });
   if(dels.length) DIAG.log('cloud.commit.start', 'info', 'local:flushCloudSave', { msg: 'Отправка: записей ' + sets + ', удалений ' + dels.length });
 }
 let idSeq = 1;
@@ -12648,31 +12864,472 @@ window.addEventListener('pagehide', flushCloudSave);
 // отдельную подколлекцию backups, чтобы при случайной перезаписи основного
 // документа было куда откатиться. Храним только последние 7 копий.
 const BACKUP_INTERVAL_MS = 3 * 60 * 60 * 1000; // не чаще раза в 3 часа
+const BACKUP_KEEP = 7;                          // храним последние 7 копий
+// Лимит документа Firestore — 1 МиБ. Размер считаем в БАЙТАХ (UTF-8) и берём большой запас
+// (в Firestore числа и имена полей занимают место иначе, чем в JSON): всё, что больше порога,
+// уходит файлом JSON в Storage, а в Firestore остаётся только короткая запись о нём.
+const BACKUP_FS_SAFE_BYTES = 600 * 1024;
+const BACKUP_STORAGE_MAX_BYTES = 50 * 1024 * 1024; // предел размера копии: не меньше — не отправляем (в Storage Rules size < 50 МиБ); столько же — предел скачивания
+const BACKUP_FS_TIMEOUT_MS = 20000, BACKUP_UP_TIMEOUT_MS = 60000;
+const BACKUP_RETRY_DELAYS = [60000, 300000, 900000, 3600000]; // повторные попытки: 1, 5, 15, 60 минут
+const BACKUP_ORPHAN_MIN_AGE_MS = 48 * 60 * 60 * 1000; // «осиротевший» файл удаляем не раньше чем через 2 суток
+const BACKUP_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+let backupInFlight = false, backupRetryTimer = null, backupRetryStep = 0, backupNextAttemptAt = 0, backupNextAttemptUid = null;
+let backupLastError = null;   // { text, at } — показывается в окне «Резервные копии»
+let backupWarnAt = 0;         // когда в последний раз показывали тост об ошибке
+function backupLsKey(kind, uid){ return 'vreyse_backup' + kind + '_' + uid; }
+function backupLsGet(kind, uid){ try{ const v = localStorage.getItem(backupLsKey(kind, uid)); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+function backupLsSet(kind, uid, val){ try{ if(val == null) localStorage.removeItem(backupLsKey(kind, uid)); else localStorage.setItem(backupLsKey(kind, uid), JSON.stringify(val)); }catch(e){} }
+function backupStoragePath(uid, key){ return 'users/' + uid + '/backups/' + key + '.json'; }
+// Любое действие с файлом — только внутри папки СВОЕГО пользователя и только по ожидаемому имени.
+function backupPathOk(uid, path){
+  const pre = 'users/' + uid + '/backups/';
+  return typeof path === 'string' && !!uid && path.indexOf(pre) === 0 && /^(periodic|preRestore)-\d+\.json$/.test(path.slice(pre.length));
+}
+function backupWithTimeout(p, ms, onTimeout){
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { try{ if(onTimeout) onTimeout(); }catch(e){} reject(Object.assign(new Error('timeout'), { code: 'backup/timeout' })); }, ms);
+    Promise.resolve(p).then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+function backupErrKind(e){
+  const c = e && e.code ? String(e.code) : '';
+  if(c === 'storage/unauthorized' || c === 'storage/unauthenticated' || c === 'permission-denied' || c === 'unauthenticated') return 'perm';
+  if(c === 'backup/timeout' || c === 'unavailable' || c === 'storage/retry-limit-exceeded' || c === 'storage/canceled' || c === 'deadline-exceeded' || c === 'failed-precondition' && /offline/i.test(e.message || '') || (e instanceof TypeError)) return 'net';
+  return 'other';
+}
+function backupErrText(e){
+  const k = backupErrKind(e), c = e && e.code ? String(e.code) : '';
+  if(k === 'perm') return 'нет прав на запись/чтение файла (нужно обновить правила хранилища)';
+  if(k === 'net') return 'нет связи с сервером';
+  if(c === 'storage/quota-exceeded') return 'превышена квота хранилища';
+  if(c === 'backup/too-large') return 'копия слишком большая (' + Math.round(((e && e.size) || 0) / 1048576) + ' МБ, предел ' + Math.round(BACKUP_STORAGE_MAX_BYTES / 1048576) + ' МБ)';
+  if(c === 'backup/busy') return 'ещё идёт отправка данных в облако';
+  if(c === 'backup/state-changed') return 'аккаунт или состояние синхронизации изменились';
+  if(c === 'backup/corrupt') return 'файл копии повреждён';
+  if(c === 'storage/object-not-found') return 'файл копии не найден';
+  return 'неизвестная ошибка' + (c ? ' (' + c + ')' : '');
+}
+// Тихо «нет связи» не пугаем: об обычной нехватке сети сообщаем, только если новой копии нет дольше 6 часов.
+function backupReportFail(uid, e){
+  const kind = backupErrKind(e), text = backupErrText(e);
+  backupLastError = { text, at: Date.now() };
+  let failSince = (backupLsGet('FailSince', uid) || {}).at;
+  if(!failSince){ failSince = Date.now(); backupLsSet('FailSince', uid, { at: failSince }); }
+  const lastOk = (backupLsGet('Last', uid) || {}).at || 0;
+  const loud = kind !== 'net' || (Date.now() - Math.max(lastOk, failSince)) > 2 * BACKUP_INTERVAL_MS;
+  if(loud && Date.now() - backupWarnAt > 2 * 60 * 60 * 1000){
+    backupWarnAt = Date.now();
+    try{ showToast('Резервная копия не создана: ' + text + '. Заявки и данные не затронуты, повторю позже.', 7000); }catch(_){}
+  }
+  console.warn('Не удалось сохранить бэкап:', e);
+}
+// Делает ОДНУ запись копии и возвращает promise, который выполняется ТОЛЬКО когда сервер подтвердил запись.
+// Маленькая копия — документ Firestore (как раньше). Большая — JSON-файл в Storage своего пользователя
+// + короткая запись в Firestore (дата, размер, путь, формат, число записей). Публичные ссылки не используются.
+function backupWriteRecord(uid, key, snap){
+  const backupsRef = db.collection('users').doc(uid).collection('backups');
+  const createdAt = Date.now();
+  const full = Object.assign({}, snap, { backupCreatedAt: createdAt });
+  const json = JSON.stringify(full);
+  const bytes = new TextEncoder().encode(json);
+  if(bytes.length <= BACKUP_FS_SAFE_BYTES){
+    return backupWithTimeout(backupsRef.doc(key).set(full), BACKUP_FS_TIMEOUT_MS).then(() => ({ kind: 'firestore', createdAt }));
+  }
+  if(bytes.length >= BACKUP_STORAGE_MAX_BYTES) return Promise.reject(Object.assign(new Error('too large'), { code: 'backup/too-large', size: bytes.length })); // до загрузки: чрезмерно большой файл не отправляем
+  const path = backupStoragePath(uid, key);
+  const task = storage.ref(path).put(bytes, { contentType: 'application/json' });
+  return backupWithTimeout(task, BACKUP_UP_TIMEOUT_MS, () => { try{ task.cancel(); }catch(_){} }).then(() => {
+    const firstTitle = ((snap.notes || []).map(n => (n && (n.title || (n.text || '').split('\n')[0].replace(/^Груз:\s*/, ''))) || '').find(t => String(t).trim()) || '');
+    const rec = {
+      backupCreatedAt: createdAt, backupStorage: 'storage', backupFormat: 'json-v1', backupPath: path, backupSize: bytes.length,
+      backupCounts: { notes: (snap.notes || []).length, expenses: (snap.expenses || []).length, serviceFolders: (snap.serviceFolders || []).length, serviceCarNotes: (snap.serviceCarNotes || []).length },
+      backupPreview: String(firstTitle).slice(0, 120)
+    };
+    return backupWithTimeout(backupsRef.doc(key).set(rec), BACKUP_FS_TIMEOUT_MS);
+  }).then(() => ({ kind: 'storage', createdAt, path }));
+}
+function backupDeleteFile(uid, path){
+  if(!backupPathOk(uid, path)) return Promise.resolve(false);
+  return storage.ref(path).delete().then(() => true, e => (e && e.code === 'storage/object-not-found') ? true : false);
+}
+// Скачивание большой копии: только с проверкой входа (Rules), без публичных ссылок-токенов.
+function backupDownload(uid, rec){
+  const path = rec && rec.backupPath;
+  if(!backupPathOk(uid, path)) return Promise.reject(Object.assign(new Error('bad path'), { code: 'backup/corrupt' }));
+  const ref = storage.ref(path);
+  let p;
+  if(typeof ref.getBytes === 'function') p = ref.getBytes(BACKUP_STORAGE_MAX_BYTES);
+  else {
+    const bucket = (firebase.app().options || {}).storageBucket;
+    p = auth.currentUser.getIdToken().then(tok => fetch('https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) + '/o/' + encodeURIComponent(path) + '?alt=media', { headers: { Authorization: 'Firebase ' + tok } }))
+      .then(r => {
+        if(!r.ok){ const er = new Error('HTTP ' + r.status); er.code = (r.status === 401 || r.status === 403) ? 'storage/unauthorized' : (r.status === 404 ? 'storage/object-not-found' : 'backup/http'); throw er; }
+        return r.arrayBuffer();
+      });
+  }
+  return backupWithTimeout(p, BACKUP_UP_TIMEOUT_MS).then(buf => {
+    if(rec.backupSize != null && buf.byteLength !== rec.backupSize) throw Object.assign(new Error('size mismatch'), { code: 'backup/corrupt' });
+    let obj; try{ obj = JSON.parse(new TextDecoder().decode(buf)); }catch(e){ throw Object.assign(new Error('bad json'), { code: 'backup/corrupt' }); }
+    if(!obj || !Array.isArray(obj.notes)) throw Object.assign(new Error('bad shape'), { code: 'backup/corrupt' });
+    return obj;
+  });
+}
+// ===== Проверка скачивания большой копии: ТОЛЬКО ЧТЕНИЕ =====
+// Ничего не записывает (ни в Firestore, ни в Storage, ни в память телефона), не меняет заявки и копии и не вызывает
+// восстановление. Показывает, на каком шаге и с какой ошибкой не скачивается файл копии. Токены, адрес файла с токеном,
+// полный UID и содержимое файла в отчёт не попадают.
+let backupProbeBusy = false;
+function backupProbeRedact(s, uid){
+  let t = String(s == null ? '' : s);
+  t = t.replace(/token=[^&\s"'<>»]+/gi, 'token=[скрыто]')
+       .replace(/eyJ[A-Za-z0-9_\-.]{20,}/g, '[jwt скрыт]')
+       .replace(/\b(Bearer|Firebase)\s+[A-Za-z0-9_\-.]{20,}/g, '$1 [скрыто]')
+       .replace(/AIza[0-9A-Za-z_\-]{20,}/g, '[ключ скрыт]');
+  if(uid){ t = t.split(uid).join(String(uid).slice(0, 6) + '…'); }
+  return t;
+}
+function backupProbeErr(e, uid){
+  if(!e) return 'неизвестная ошибка';
+  const parts = [];
+  parts.push((e.name || 'Error'));
+  if(e.code) parts.push('code=' + e.code);
+  const st = e.status_ != null ? e.status_ : (e.customData && e.customData.status != null ? e.customData.status : null);
+  if(st != null) parts.push('http=' + st);
+  if(e.message) parts.push('«' + backupProbeRedact(String(e.message).slice(0, 200), uid).replace(/»/g, '') + '»');
+  const sr = e.customData && e.customData.serverResponse;
+  if(sr) parts.push('ответ сервера: ' + backupProbeRedact(String(sr).slice(0, 150), uid));
+  return parts.join(' · ');
+}
+function backupProbeShow(text){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:130;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--surface, #fff);color:var(--ink, #111);border-radius:12px;padding:14px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column;gap:10px;';
+  const h = document.createElement('div');
+  h.style.cssText = 'font-size:14px;font-weight:600;';
+  h.textContent = 'Проверка скачивания копии (только чтение)';
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'margin:0;font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-word;overflow:auto;flex:1;min-height:80px;user-select:text;-webkit-user-select:text;';
+  pre.textContent = text;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+  const mk = (label, primary) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;' + (primary ? 'background:#2563eb;color:#fff;border:none;' : 'background:transparent;color:var(--muted);border:1px solid var(--card-line, #d0d0d0);'); return b; };
+  const copyBtn = mk('Копировать', true), closeBtn = mk('Закрыть', false);
+  copyBtn.addEventListener('click', () => {
+    const done = () => { copyBtn.textContent = 'Скопировано'; };
+    const fallback = () => { try{ const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done(); }catch(_){ copyBtn.textContent = 'Выделите текст вручную'; } };
+    try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, fallback); } else fallback(); }catch(_){ fallback(); }
+  });
+  closeBtn.addEventListener('click', () => ov.remove());
+  row.appendChild(copyBtn); row.appendChild(closeBtn);
+  box.appendChild(h); box.appendChild(pre); box.appendChild(row); ov.appendChild(box);
+  document.body.appendChild(ov);
+}
+async function backupProbeDownload(uid, key, rec, btn){
+  if(backupProbeBusy) return;
+  if(!uid || !rec) return;
+  backupProbeBusy = true;
+  const oldLabel = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Проверяю…'; }
+  const lines = [];
+  const res = {};   // итог каждого шага: 'ok' | 'fail' | 'skip'
+  const T = 20000;
+  const add = (s) => lines.push(backupProbeRedact(s, uid));
+  const run = async (id, title, fn) => {
+    const t0 = Date.now();
+    try{
+      const info = await backupWithTimeout(fn(), T);
+      res[id] = 'ok';
+      add(id + ' ' + title + ' — ОК (' + (Date.now() - t0) + ' мс)' + (info ? ': ' + info : ''));
+    }catch(e){
+      res[id] = 'fail';
+      add(id + ' ' + title + ' — ОШИБКА (' + (Date.now() - t0) + ' мс): ' + backupProbeErr(e, uid));
+    }
+  };
+  const abortable = (fnWithSignal) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { try{ ctrl.abort(); }catch(_){} }, T);
+    return fnWithSignal(ctrl).finally(() => clearTimeout(timer));
+  };
+  try{
+    const path = rec.backupPath;
+    const ref = storage.ref(path);
+    const opts = (firebase.app().options || {});
+    const bucket = opts.storageBucket;
+    // Н0 — окружение
+    add(((document.getElementById('appVersionLine') || {}).textContent) || 'Версия: ?');
+    add('Время: ' + new Date().toISOString());
+    add('Адрес сайта: ' + location.origin);
+    add('В сети: ' + navigator.onLine + ' · service worker управляет страницей: ' + (!!(navigator.serviceWorker && navigator.serviceWorker.controller)));
+    add('SDK: ' + (firebase.SDK_VERSION || '?') + ' · getBytes: ' + typeof ref.getBytes + ' · getMetadata: ' + typeof ref.getMetadata + ' · getDownloadURL: ' + typeof ref.getDownloadURL);
+    add('Бакет: ' + bucket + ' · вход: ' + (auth.currentUser ? 'да (' + String(uid).slice(0, 6) + '…)' : 'НЕТ'));
+    add('Копия: ' + key + ' · формат ' + rec.backupFormat + ' · ожидаемый размер ' + rec.backupSize + ' · заявок ' + ((rec.backupCounts || {}).notes));
+    add('');
+    // Н1 — путь
+    const okPath = backupPathOk(uid, path), same = path === backupStoragePath(uid, key);
+    res.S1 = (okPath && same) ? 'ok' : 'fail';
+    add('S1 путь файла — ' + (res.S1 === 'ok' ? 'ОК' : 'ОШИБКА') + ': допустимый ' + okPath + ', совпадает с ключом копии ' + same);
+    if(!auth.currentUser){ add('Нет входа — дальше проверять нечего.'); throw new Error('stop'); }
+    // S2 — метаданные через SDK
+    await run('S2', 'getMetadata (SDK)', () => ref.getMetadata().then(m => 'размер ' + m.size + (rec.backupSize != null ? (m.size === rec.backupSize ? ' (совпадает)' : ' (НЕ совпадает с ' + rec.backupSize + ')') : '') + ', тип ' + m.contentType));
+    // S3 — байты через SDK
+    if(typeof ref.getBytes === 'function'){
+      await run('S3', 'getBytes (SDK)', () => ref.getBytes(BACKUP_STORAGE_MAX_BYTES).then(buf => {
+        let ok = false, n = null;
+        try{ const o = JSON.parse(new TextDecoder().decode(buf)); ok = true; n = Array.isArray(o.notes) ? o.notes.length : null; }catch(_){}
+        return buf.byteLength + ' байт' + (rec.backupSize != null ? (buf.byteLength === rec.backupSize ? ' (совпадает)' : ' (НЕ совпадает)') : '') + ', JSON ' + (ok ? 'корректный' : 'НЕкорректный') + ', заявок ' + n;
+      }));
+    }else{
+      res.S3 = 'skip'; add('S3 getBytes (SDK) — пропущен: метода getBytes в этой версии SDK нет');
+    }
+    // S4 — запасной путь приложения (fetch с Authorization)
+    const mediaUrl = 'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucket) + '/o/' + encodeURIComponent(path) + '?alt=media';
+    await run('S4', 'fetch как в приложении (с Authorization)', () => abortable(async (ctrl) => {
+      const tok = await auth.currentUser.getIdToken();
+      const r = await fetch(mediaUrl, { headers: { Authorization: 'Firebase ' + tok }, signal: ctrl.signal });
+      const info = 'HTTP ' + r.status + ', тип ответа ' + r.type + ', длина ' + (r.headers.get('content-length') || '?');
+      try{ ctrl.abort(); }catch(_){}
+      if(!r.ok){ const er = new Error('HTTP ' + r.status + ' (' + info + ')'); er.name = 'HttpError'; throw er; }
+      return info;
+    }));
+    // S5 — тот же адрес без авторизации (простой запрос, без предварительного)
+    await run('S5', 'fetch без Authorization и без токена', () => abortable(async (ctrl) => {
+      const r = await fetch(mediaUrl, { signal: ctrl.signal });
+      const info = 'ответ ПРОЧИТАН страницей: HTTP ' + r.status + ', тип ' + r.type;
+      try{ ctrl.abort(); }catch(_){}
+      return info;
+    }));
+    // S6 — адрес из getDownloadURL, простой GET
+    let dlUrl = null;
+    await run('S6', 'getDownloadURL (SDK)', () => ref.getDownloadURL().then(u => { dlUrl = u; return 'адрес получен (не показываю)'; }));
+    if(dlUrl){
+      await run('S7', 'простой GET по адресу из getDownloadURL', () => abortable(async (ctrl) => {
+        const r = await fetch(dlUrl, { cache: 'no-store', signal: ctrl.signal });
+        const info = 'ответ ПРОЧИТАН страницей: HTTP ' + r.status + ', тип ' + r.type + ', длина ' + (r.headers.get('content-length') || '?');
+        try{ ctrl.abort(); }catch(_){}
+        if(!r.ok){ const er = new Error('HTTP ' + r.status); er.name = 'HttpError'; throw er; }
+        return info;
+      }));
+      await run('S8', 'тот же адрес в режиме no-cors (достижим ли сервер)', () => abortable(async (ctrl) => {
+        const r = await fetch(dlUrl, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+        const info = 'сервер ответил, тип ответа ' + r.type + ' (содержимое для страницы закрыто)';
+        try{ ctrl.abort(); }catch(_){}
+        return info;
+      }));
+    }else{ res.S7 = 'skip'; res.S8 = 'skip'; add('S7, S8 — пропущены: адрес не получен'); }
+    // Ориентировочный вывод (подсказка, не приговор)
+    add('');
+    let hint;
+    if(res.S3 === 'ok') hint = 'Через SDK (getBytes) копия скачивается. Если приложение при этом даёт «Failed to fetch», значит оно идёт запасным путём не через SDK.';
+    else if(res.S8 === 'ok' && res.S7 === 'fail' && res.S4 === 'fail') hint = 'Сервер достижим (S8), но ответ на настоящее скачивание страница прочитать не может (S4, S7). Это признак запрета CORS на скачивание файла для адреса ' + location.origin + '.';
+    else if(res.S8 === 'fail') hint = 'Сервер с этого телефона не отвечает даже в режиме no-cors: похоже на сеть, блокировку или обрыв, а не на CORS.';
+    else if(res.S7 === 'ok' && res.S4 === 'fail') hint = 'Простой запрос проходит, а запрос с Authorization — нет: дело в заголовке Authorization или предварительном запросе.';
+    else if(res.S4 === 'ok') hint = 'Запасной путь скачивания в этой проверке прошёл. Повторите проверку; если «Failed to fetch» остаётся — пришлите отчёт целиком.';
+    else hint = 'Однозначного вывода нет, отчёт нужно разобрать по шагам.';
+    add('Подсказка: ' + hint);
+  }catch(e){
+    if(!(e && e.message === 'stop')) add('Проверка прервана: ' + backupProbeErr(e, uid));
+  }finally{
+    backupProbeBusy = false;
+    if(btn){ btn.disabled = false; btn.textContent = oldLabel; }
+    backupProbeShow(lines.join('\n'));
+  }
+}
+
+function backupScheduleRetry(uid){
+  if(backupRetryTimer) return;
+  const delay = BACKUP_RETRY_DELAYS[Math.min(backupRetryStep, BACKUP_RETRY_DELAYS.length - 1)];
+  backupNextAttemptAt = Date.now() + delay; backupNextAttemptUid = uid;
+  backupRetryStep++;
+  // Таймер ставится на КАЖДОЙ ступени (последняя пауза — 1 час повторяется), но всегда один: следующий ставится
+  // только после того, как предыдущая попытка закончилась неудачей, поэтому параллельных запросов нет.
+  // Цепочка обрывается сама, если пользователь вышел из аккаунта.
+  backupRetryTimer = setTimeout(() => { backupRetryTimer = null; backupNextAttemptAt = 0; if(currentUID) maybeSaveDailyBackup(stateSnapshot(true)); }, delay);
+}
 function maybeSaveDailyBackup(snap){
   if(!currentUID) return;
-  const backupsRef = db.collection('users').doc(currentUID).collection('backups');
-  // Раньше копия делалась максимум одна за календарный день — если несколько
-  // важных изменений произошло в один день (как и случилось), только самое
-  // первое из них попадало в копию, а остальные оставались вообще без защиты.
-  // Теперь смотрим на время последней копии, а не на календарную дату: если
-  // прошло больше 3 часов с прошлой копии — делаем новую, независимо от того,
-  // тот же это день или уже другой.
-  backupsRef.orderBy('backupCreatedAt', 'desc').limit(1).get().then(snapshot => {
+  const uid = currentUID, gen = authGeneration;
+  if(backupInFlight) return;
+  const pending = backupLsGet('Pending', uid);   // начатая, но не подтверждённая копия — повторяем с ТЕМ ЖЕ ключом, чтобы не плодить копии
+  // Нет начатой копии и последняя была меньше 3 часов назад (по запомненному на этом телефоне времени) —
+  // к серверу вообще не обращаемся (раньше при каждой отправке скачивался документ последней копии).
+  if(!pending){
+    const lastKnown = (backupLsGet('Last', uid) || {}).at || 0;
+    if(Date.now() - lastKnown < BACKUP_INTERVAL_MS) return;
+  }
+  if(backupNextAttemptUid === uid && Date.now() < backupNextAttemptAt) return; // после ошибки — не чаще, чем разрешает пауза между попытками
+  backupInFlight = true;
+  const backupsRef = db.collection('users').doc(uid).collection('backups');
+  // Сколько лет копии: берём только дату последней копии (источник — сервер, не локальный кэш).
+  backupWithTimeout(backupsRef.orderBy('backupCreatedAt', 'desc').limit(1).get({ source: 'server' }), BACKUP_FS_TIMEOUT_MS).then(snapshot => {
+    if(currentUID !== uid || authGeneration !== gen) return;
     const last = snapshot.docs[0];
     const lastAt = last ? (last.data().backupCreatedAt || 0) : 0;
-    if(Date.now() - lastAt < BACKUP_INTERVAL_MS) return; // недавняя копия уже есть
-    const key = 'periodic-' + Date.now();
-    backupsRef.doc(key).set(Object.assign({}, snap, { backupCreatedAt: Date.now() }))
-      .then(() => cleanupOldBackups(backupsRef))
-      .catch(e => console.warn('Не удалось сохранить бэкап:', e));
-  }).catch(e => console.warn('Не удалось проверить бэкап:', e));
+    if(pending && lastAt >= pending.at){ backupLsSet('Pending', uid, null); backupLsSet('Last', uid, { at: lastAt }); if(Date.now() - lastAt < BACKUP_INTERVAL_MS) return; }
+    else if(!pending && Date.now() - lastAt < BACKUP_INTERVAL_MS){ backupLsSet('Last', uid, { at: lastAt }); return; } // недавняя копия уже есть
+    let cur = backupLsGet('Pending', uid);
+    if(cur && Date.now() - cur.at > BACKUP_PENDING_MAX_AGE_MS){ backupDeleteFile(uid, backupStoragePath(uid, cur.key)); cur = null; } // совсем старая неподтверждённая — бросаем
+    const key = cur ? cur.key : 'periodic-' + Date.now();
+    if(!cur) backupLsSet('Pending', uid, { key, at: Date.now() });
+    return backupWriteRecord(uid, key, snap).then(res => {
+      backupLsSet('Pending', uid, null);
+      backupLsSet('Last', uid, { at: res.createdAt }); backupLsSet('FailSince', uid, null);
+      backupLastError = null; backupRetryStep = 0; backupNextAttemptAt = 0; backupNextAttemptUid = null;
+      if(backupRetryTimer){ clearTimeout(backupRetryTimer); backupRetryTimer = null; }
+      return cleanupOldBackups(backupsRef); // копия подтверждена сервером — только теперь чистим старые
+    });
+  }).catch(e => {
+    if(currentUID !== uid || authGeneration !== gen) return;
+    backupReportFail(uid, e);
+    backupScheduleRetry(uid);
+  }).then(() => { backupInFlight = false; });
 }
+// Подтверждено ли, что список (Автосервис / «Мой автомобиль») целиком принят сервером: то же правило, по которому
+// их отправка решает, что слать, — ничего не осталось к отправке и не ждёт удаления. Только чтение, без изменений.
+function backupMapSynced(list, lastMap, pendingIds){
+  if(pendingIds && pendingIds.length) return false;
+  const local = new Set();
+  for(let i = 0; i < list.length; i++){
+    const x = list[i];
+    if(!x || x.id == null) continue;
+    const id = String(x.id);
+    local.add(id);
+    if(lastMap.get(id) !== (x.editedAt || x.createdAt || 0)) return false;
+  }
+  let extra = false;
+  lastMap.forEach((et, id) => { if(!local.has(id)) extra = true; });
+  return !extra;
+}
+// Заявки/расходы, Автосервис и «Мой автомобиль» уже сверены с сервером (первый подтверждённый снимок получен) И отправка
+// в каждом из них разрешена. Пока это не так, подтверждать нечего, а заменять данные восстановлением опасно: первый серверный
+// снимок вернул бы в списки записи, которых в восстановленной копии нет.
+function backupBaselinesReady(){
+  return initialCloudBaselineReady === true && cloudWritesAllowedThisSession === true
+    && serviceBaselineReady === true && serviceWritesAllowed === true
+    && carBaselineReady === true && carWritesAllowed === true;
+}
+// Ждём окончания текущих отправок (заявки/расходы, Автосервис, «Мой автомобиль» — до 8 раз) и отвечаем:
+// подтверждено сервером ВСЁ или нет. flushCloudSave() и отправки Автосервиса/авто ошибки глотают сами,
+// поэтому судим по состоянию: статус заявок, сообщения об ошибках разделов и сверка с подтверждённым.
+function backupWaitSynced(expect){
+  let n = 0;
+  const step = () => {
+    const pend = cloudSaveInFlight || svcFlushInFlight || carFlushInFlight;
+    if(pend && n++ < 8) return pend.then(step, step);
+    return Promise.resolve(backupBaselinesReady() && cloudSyncStatus === 'synced' && !cloudSaveAgainNeeded && !svcFlushAgain && !carFlushAgain
+      && !svcSyncErrorCode && !carSyncErrorCode
+      && backupMapSynced(serviceFolders, lastSyncedServiceFolders, svcPendingDeletedIds)
+      && backupMapSynced(serviceCarNotes, lastSyncedCarNotes, carPendingDeletedIds)
+      && backupRestoredPresent(serviceFolders, expect && expect.svc) && backupRestoredPresent(serviceCarNotes, expect && expect.car));
+  };
+  return step();
+}
+// Без связи отправка может висеть вечно — не держим окно: через 30 с считаем «не подтверждено»
+// (отправка продолжится сама, статус виден в индикаторе синхронизации).
+const BACKUP_RESTORE_WAIT_MS = 30000;
+function backupConfirmRestore(flushPromise, expect){
+  return Promise.race([flushPromise.then(() => backupWaitSynced(expect)), new Promise(res => setTimeout(() => res(false), BACKUP_RESTORE_WAIT_MS))]);
+}
+// После восстановления очередь удалений Автосервиса / «Моего автомобиля» должна соответствовать копии. Папка/запись, которая
+// была удалена на этом телефоне (удаление ещё не подтверждено сервером), а в восстановленной копии есть, больше не «удалена»:
+// убираем её из очереди (иначе отправка её пропускала бы) и помечаем «на сервере ещё не такая» (-1), чтобы она точно ушла в облако
+// и не была стёрта запоздавшим подтверждением старого удаления. Остальные записи очереди (те, которых в копии нет) остаются —
+// защита от «воскрешения» удалённого при обычной синхронизации не меняется.
+function backupReconcileDeleteQueues(){
+  const fix = (list, pending, lastMap) => {
+    const present = new Set();
+    (list || []).forEach(x => {
+      if(!x || x.id == null) return;
+      const id = String(x.id), et = x.editedAt || x.createdAt || 0;
+      present.add(id);
+      // не подтверждено сервером именно в этой версии (или было в очереди удалений) — помечаем: отправится, а запоздалое
+      // «удалено» с сервера (svcApplyRemoval/carApplyRemoval видят метку новее, чем облачная версия) её не сотрёт
+      if(pending.indexOf(id) !== -1 || lastMap.get(id) !== et) lastMap.set(id, -1);
+    });
+    const revived = pending.filter(id => present.has(id));
+    return revived.length ? pending.filter(id => !present.has(id)) : pending;
+  };
+  const s0 = svcPendingDeletedIds, c0 = carPendingDeletedIds;
+  svcPendingDeletedIds = fix(serviceFolders, svcPendingDeletedIds, lastSyncedServiceFolders);
+  carPendingDeletedIds = fix(serviceCarNotes, carPendingDeletedIds, lastSyncedCarNotes);
+  if(svcPendingDeletedIds !== s0) svcSavePendingDeleted();
+  if(carPendingDeletedIds !== c0) carSavePendingDeleted();
+}
+// Что именно восстановили (id → editedAt) — чтобы после отправки убедиться, что записи на месте и не исчезли.
+function backupExpectedFrom(list){
+  const m = new Map();
+  (list || []).forEach(x => { if(x && x.id != null) m.set(String(x.id), x.editedAt || x.createdAt || 0); });
+  return m;
+}
+function backupRestoredPresent(list, expect){
+  if(!expect) return true;
+  for(const [id, et] of expect){
+    const x = (list || []).find(y => y && String(y.id) === id);
+    if(!x || (x.editedAt || x.createdAt || 0) !== et) return false;
+  }
+  return true;
+}
+// Перед заменой данных ждём, пока закончатся уже идущие отправки Автосервиса/«Моего автомобиля»: иначе запоздавшее
+// подтверждение старого удаления сотрёт метку восстановленной записи. Не дождались за ms — восстановление отменяется.
+const BACKUP_IDLE_WAIT_MS = 15000;
+function backupWaitIdle(ms){
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const tick = () => {
+      const p = svcFlushInFlight || carFlushInFlight;
+      if(!p) return resolve(true);
+      const left = ms - (Date.now() - t0);
+      if(left <= 0) return resolve(false);
+      Promise.race([p.then(() => 0, () => 0), new Promise(r => setTimeout(r, left))]).then(() => setTimeout(tick, 0));
+    };
+    tick();
+  });
+}
+function backupWarnHtml(){
+  if(!backupLastError) return '';
+  return '<div style="font-size:12.5px;color:var(--danger);padding:8px 0 10px;">Последняя копия не создана: ' + escapeHtml(backupLastError.text) + '. Приложение повторит попытку само.</div>';
+}
+// Оставляем последние 7 копий. Выполняется только после подтверждённой записи новой копии (или после восстановления).
+// Файл Storage удаляется ТОЛЬКО после удаления его записи, только в папке своего пользователя и только если
+// на него не ссылается ни одна из оставшихся записей. Файлы без записи (загрузка прошла, запись нет)
+// чистятся через 2 суток и никогда не трогают начатую, ещё не подтверждённую копию.
 function cleanupOldBackups(backupsRef){
-  backupsRef.get().then(snapshot => {
+  const uid = currentUID;
+  if(!uid) return Promise.resolve();
+  // Только свежий ответ сервера: по устаревшему локальному кэшу ничего не удаляем.
+  return backupsRef.get({ source: 'server' }).then(snapshot => {
+    if(currentUID !== uid) return;
+    if(snapshot.metadata && snapshot.metadata.fromCache) return;
     const docs = snapshot.docs.slice().sort((a, b) => (b.data().backupCreatedAt || 0) - (a.data().backupCreatedAt || 0));
-    if(docs.length <= 7) return;
-    const toDelete = docs.slice(7);
-    toDelete.forEach(d => d.ref.delete().catch(() => {}));
+    const keep = docs.slice(0, BACKUP_KEEP), drop = docs.slice(BACKUP_KEEP);
+    const keptPaths = new Set(keep.map(d => d.data().backupPath).filter(Boolean));
+    const dropJobs = drop.map(d => {
+      const dd = d.data();
+      return d.ref.delete().then(() => {
+        if(dd.backupStorage === 'storage' && dd.backupPath && !keptPaths.has(dd.backupPath)) return backupDeleteFile(uid, dd.backupPath);
+      }).catch(() => {});
+    });
+    return Promise.all(dropJobs).then(() => {
+      const refd = new Set(docs.map(d => d.data().backupPath).filter(Boolean));
+      const pend = backupLsGet('Pending', uid);
+      const pendPath = pend ? backupStoragePath(uid, pend.key) : null;
+      // Перечень файлов (listAll) работает только с правилами Storage версии 2; если не разрешён — просто пропускаем:
+      // это лишь уборка «осиротевших» файлов, на сами копии она не влияет. Без единой записи о копиях и самый
+      // свежий файл не трогаем никогда.
+      if(!docs.length) return;
+      return storage.ref('users/' + uid + '/backups').listAll().then(res => {
+        const items = res.items || [];
+        const tsOf = it => { const mm = /^(periodic|preRestore)-(\d+)\.json$/.exec(it.name || ''); return mm ? parseInt(mm[2], 10) : 0; };
+        const newestTs = items.reduce((mx, it) => Math.max(mx, tsOf(it)), 0);
+        items.forEach(it => {
+          const m = /^(periodic|preRestore)-(\d+)\.json$/.exec(it.name || '');
+          if(!m || refd.has(it.fullPath) || it.fullPath === pendPath || parseInt(m[2], 10) === newestTs) return;
+          if(Date.now() - parseInt(m[2], 10) < BACKUP_ORPHAN_MIN_AGE_MS) return;
+          backupDeleteFile(uid, it.fullPath);
+        });
+      }).catch(() => {});
+    });
   }).catch(e => console.warn('Не удалось очистить старые бэкапы:', e));
 }
 
@@ -12992,7 +13649,7 @@ function subscribeCloud(userRef, onBaselineReady, knownNoteIdsAtStart, writesAll
       }
       if(change.type === 'removed'){
         const idxDel = notes.findIndex(n => String(n.id) === id);
-        diagSafe(() => { const ln = idxDel !== -1 ? notes[idxDel] : null; const ke = lastSyncedNotes.get(id); const le = ln ? (ln.editedAt || ln.createdAt || 0) : null; DIAG.mark('firestore.removed', 'firebase'); DIAG.log('firestore.removed', 'warn', 'firebase:onSnapshot', { id, num: ln ? ln.number : null, now: true, msg: 'Firestore прислал removed для заявки. Причина удаления в облаке неизвестна (другое устройство, этот телефон или правила Firestore).', d: { inLocalNotes: idxDel !== -1, localEditedAt: le, knownCloudEditedAt: ke == null ? null : ke, localNewerSoKept: ln ? (ke != null && le > ke) : null, fromCache: snapshot.metadata.fromCache, snapshotPending: snapshot.metadata.hasPendingWrites, docPending: change.doc.metadata.hasPendingWrites, local: ln ? DIAG.sum(ln) : (DIAG.S.gone.get(id) || null) } }); });
+        diagSafe(() => { const ln = idxDel !== -1 ? notes[idxDel] : null; const ke = lastSyncedNotes.get(id); const le = ln ? (ln.editedAt || ln.createdAt || 0) : null; DIAG.mark('firestore.removed', 'firebase'); const rop = ln ? null : DIAG.restoreExpected(id); if(rop){ const gg = DIAG.S.gone.get(id); DIAG.log('cloud.removed.expected', 'info', 'firebase:onSnapshot', { id, num: gg && gg.last ? gg.last.num : null, now: true, msg: 'Облако подтвердило удаление заявки, заменённой при восстановлении резервной копии (ожидаемо)', d: { opId: rop, fromCache: snapshot.metadata.fromCache, docPending: change.doc.metadata.hasPendingWrites } }); return; } DIAG.log('firestore.removed', 'warn', 'firebase:onSnapshot', { id, num: ln ? ln.number : null, now: true, msg: 'Firestore прислал removed для заявки. Причина удаления в облаке неизвестна (другое устройство, этот телефон или правила Firestore).', d: { inLocalNotes: idxDel !== -1, localEditedAt: le, knownCloudEditedAt: ke == null ? null : ke, localNewerSoKept: ln ? (ke != null && le > ke) : null, fromCache: snapshot.metadata.fromCache, snapshotPending: snapshot.metadata.hasPendingWrites, docPending: change.doc.metadata.hasPendingWrites, local: ln ? DIAG.sum(ln) : (DIAG.S.gone.get(id) || null) } }); });
         if(idxDel !== -1){
           const localEt = notes[idxDel].editedAt || notes[idxDel].createdAt || 0;
           const knownEt = lastSyncedNotes.get(id);
@@ -13811,14 +14468,15 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
     db.collection('users').doc(uid).collection('backups')
       .get().then(snapshot => {
       if(snapshot.empty){
-        backupsList.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Копий пока нет. Первая появится в течение суток после начала работы.</div>';
+        backupsList.innerHTML = backupWarnHtml() + '<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0;">Копий пока нет. Первая появится в течение суток после начала работы.</div>';
         return;
       }
-      backupsList.innerHTML = '';
+      backupsList.innerHTML = backupWarnHtml();
       const sortedDocs = snapshot.docs.slice().sort((a, b) => (b.data().backupCreatedAt || 0) - (a.data().backupCreatedAt || 0));
       sortedDocs.forEach(doc => {
         const data = doc.data();
-        const itemsCount = (data.notes||[]).length + (data.expenses||[]).length;
+        const isStorageBackup = data.backupStorage === 'storage'; // большая копия: файл в Storage, в Firestore только короткая запись
+        const itemsCount = isStorageBackup ? (((data.backupCounts || {}).notes || 0) + ((data.backupCounts || {}).expenses || 0)) : (data.notes||[]).length + (data.expenses||[]).length;
         const label = formatBackupLabel(doc.id);
         // Превью содержимого копии — заголовок первой заявки в ней,
         // чтобы можно было понять, какую именно копию восстанавливать,
@@ -13828,7 +14486,9 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
           .map(n => n.title || (n.text || '').split('\n')[0].replace(/^Груз:\s*/, '') || '')
           .filter(t => t.trim())
           .slice(0, 1);
-        const previewText = previewTitles.length
+        const previewText = isStorageBackup
+          ? (data.backupPreview ? escapeHtml(data.backupPreview) : 'Заявок нет')
+          : previewTitles.length
           ? escapeHtml(previewTitles[0])
           : 'Заявок нет';
         const row = document.createElement('div');
@@ -13839,8 +14499,13 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
             <div style="font-size:12px;color:var(--muted);">записей: ${itemsCount}</div>
             <div style="font-size:12px;color:var(--faint, #9aa0a6);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${previewText}</div>
           </div>
-          <button type="button" style="flex-shrink:0;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;">Восстановить</button>
+          <div style="flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:stretch;">
+            <button type="button" style="flex-shrink:0;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;">Восстановить</button>
+            ${isStorageBackup ? '<button type="button" data-probe="1" style="background:transparent;color:var(--muted);border:1px solid var(--card-line, #d0d0d0);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">Проверить скачивание</button>' : ''}
+          </div>
         `;
+        const probeBtn = row.querySelector('button[data-probe]');
+        if(probeBtn) probeBtn.addEventListener('click', () => { backupProbeDownload(currentUID, doc.id, data, probeBtn); });
         row.querySelector('button').addEventListener('click', () => {
           // Нативный confirm() ненадёжен в обёрнутом в APK WebView-приложении
           // (для RuStore) — может не показываться вовсе. Используем свой же
@@ -13849,6 +14514,15 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
             `Заменить текущие данные копией «${label.title}»? Перед заменой текущее состояние тоже будет сохранено как копия — при необходимости сможете вернуть его обратно.`,
             () => {
               const restoreBtn = row.querySelector('button');
+              // Заменять данные можно только когда все три раздела уже сверены с сервером и отправка разрешена: иначе первый
+              // серверный снимок вернул бы в Автосервис/«Мой автомобиль»/заявки старые записи, которых нет в копии.
+              const opId = diagSafe(() => DIAG.restoreBegin(doc.id, { storage: isStorageBackup, backupNotes: isStorageBackup ? ((data.backupCounts || {}).notes != null ? data.backupCounts.notes : null) : (data.notes || []).length }));
+              if(!backupBaselinesReady()){
+                diagSafe(() => DIAG.restoreFail(opId, 'not-ready', null));
+                showToast('Восстановление не начато: приложение ещё сверяет данные с сервером (или отправка в облако не разрешена). Подождите немного и повторите.', 7000);
+                return;
+              }
+              const restoreUid = currentUID;
               restoreBtn.disabled = true;
               restoreBtn.textContent = 'Восстановление...';
               // Сначала сохраняем текущее состояние отдельной "аварийной" копией —
@@ -13857,11 +14531,23 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
               const currentSnap = stateSnapshot(true);
               const preRestoreKey = 'preRestore-' + Date.now();
               const backupsRef = db.collection('users').doc(currentUID).collection('backups');
-              backupsRef.doc(preRestoreKey).set(Object.assign({}, currentSnap, { backupCreatedAt: Date.now() }))
-                .catch(e => console.warn('Не удалось сохранить аварийную копию перед восстановлением:', e))
-                .then(() => {
-                  diagSafe(() => DIAG.replaceIntent('backup.restore.cloud', 'restore', data && data.notes, { backup: String(preRestoreKey) }));
-                  applyState(data);
+              // Данные заменяются ТОЛЬКО после того, как (1) большая копия скачана и проверена и (2) сервер подтвердил
+              // аварийную копию. Если что-то из этого не удалось — ничего не меняем и говорим об этом.
+              let restoreData = data, expectRestored = null;
+              (isStorageBackup ? backupDownload(currentUID, data) : Promise.resolve(data))
+                .then(full => { restoreData = full; return backupWriteRecord(currentUID, preRestoreKey, currentSnap).catch(e => { try{ e.backupStage = 'emergency'; }catch(_){} throw e; }); })
+                .then(() => backupWaitIdle(BACKUP_IDLE_WAIT_MS))  // сначала дожидаемся уже идущих отправок Автосервиса/авто
+                .then(idle => {
+                  if(!idle) throw Object.assign(new Error('busy'), { code: 'backup/busy', backupStage: 'prep' });
+                  if(currentUID !== restoreUid || !backupBaselinesReady()) throw Object.assign(new Error('state changed'), { code: 'backup/state-changed', backupStage: 'prep' }); // пока качали и сохраняли аварийную копию, вход/сверка изменились — данные не трогаем
+                })
+                .then(() => Promise.resolve().then(() => {
+                  diagSafe(() => DIAG.restorePlan(opId, restoreData && restoreData.notes));
+                  diagSafe(() => DIAG.replaceIntent('backup.restore.cloud', 'restore', restoreData && restoreData.notes, { backup: String(preRestoreKey), opId }));
+                  applyState(restoreData);
+                  diagSafe(() => DIAG.restoreApplied(opId));
+                  backupReconcileDeleteQueues();
+                  expectRestored = { svc: backupExpectedFrom(serviceFolders), car: backupExpectedFrom(serviceCarNotes) };
                   carPersistLocal();
                   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot())); } catch(e){}
                   localUpdatedAt = Date.now();
@@ -13869,10 +14555,14 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
                   // восстановленные записи с тем, что сейчас числится отправленным
                   // (lastSyncedNotes/lastSyncedExpenses), и отправит/удалит именно
                   // то, что реально отличается — как при любой обычной правке.
-                  return flushCloudSave();
+                  // flushCloudSave() ошибки обрабатывает сам и не отклоняется, поэтому о подтверждении судим по статусу
+                  // синхронизации: сначала ставим «ожидает», и «подтверждено» — только если отправка реально дошла до 'synced'.
+                  setCloudSyncStatus('pending');
+                  return backupConfirmRestore(flushCloudSave(), expectRestored);
                 })
-                .then(() => showToast('Данные восстановлены из копии'))
+                .then(synced => { diagSafe(() => synced ? DIAG.restoreOk(opId) : DIAG.restoreFail(opId, 'cloud-confirm', null)); return showToast(synced ? 'Данные восстановлены из копии и сохранены в облаке' : 'Восстановлено только на этом телефоне: в облако ещё не отправлено, приложение повторит отправку само', synced ? undefined : 7000); })
                 .catch(e => {
+                  diagSafe(() => DIAG.restoreFail(opId, 'cloud-send', e));
                   console.warn('Не удалось сохранить восстановленные данные в облако:', e);
                   showToast('Восстановлено локально, но не удалось отправить в облако — проверьте связь');
                 })
@@ -13881,6 +14571,12 @@ document.getElementById('backupsBtn')?.addEventListener('click', (e) => {
                   renderContent();
                   svcRerenderIfVisible();
                   backupsOverlay.style.display = 'none';
+                }), e => {
+                  diagSafe(() => DIAG.restoreFail(opId, (e && e.backupStage) || 'download', e));
+                  console.warn('Восстановление отменено, данные не менялись:', e);
+                  restoreBtn.disabled = false;
+                  restoreBtn.textContent = 'Восстановить';
+                  showToast((e && e.backupStage === 'emergency' ? 'Не удалось сохранить аварийную копию (' + backupErrText(e) + ')' : e && e.backupStage === 'prep' ? 'Сейчас нельзя заменить данные (' + backupErrText(e) + ')' : 'Не удалось получить копию (' + backupErrText(e) + ')') + '. Восстановление отменено, текущие данные не изменены.', 7000);
                 });
             }
           );
@@ -14467,7 +15163,7 @@ function refreshFromCloudOnResume(){
       }
       if(!serverNoteIds.has(id)){
         const idxDel = notes.findIndex(n => String(n.id) === id);
-        diagSafe(() => { const ln = idxDel !== -1 ? notes[idxDel] : null; const ke = lastSyncedNotes.get(id); const le = ln ? (ln.editedAt || ln.createdAt || 0) : null; DIAG.mark('cloud.reload.compare', 'firebase'); DIAG.log('firestore.removed', 'warn', 'firebase:полная загрузка/возврат в приложение', { id, num: ln ? ln.number : null, now: true, msg: 'При полной загрузке заявки с сервера нет (а раньше была синхронизирована). Причина отсутствия в облаке неизвестна.', d: { inLocalNotes: idxDel !== -1, localEditedAt: le, knownCloudEditedAt: ke == null ? null : ke, localNewerSoKept: ln ? (ke != null && le > ke) : null, serverCount: serverNoteIds.size, local: ln ? DIAG.sum(ln) : null } }); });
+        diagSafe(() => { const ln = idxDel !== -1 ? notes[idxDel] : null; const ke = lastSyncedNotes.get(id); const le = ln ? (ln.editedAt || ln.createdAt || 0) : null; DIAG.mark('cloud.reload.compare', 'firebase'); const rop = ln ? null : DIAG.restoreExpected(id); if(rop){ const gg = DIAG.S.gone.get(id); DIAG.log('cloud.removed.expected', 'info', 'firebase:полная загрузка/возврат в приложение', { id, num: gg && gg.last ? gg.last.num : null, now: true, msg: 'При полной загрузке заявки нет на сервере: это заявка, заменённая при восстановлении резервной копии (ожидаемо)', d: { opId: rop, serverCount: serverNoteIds.size } }); return; } DIAG.log('firestore.removed', 'warn', 'firebase:полная загрузка/возврат в приложение', { id, num: ln ? ln.number : null, now: true, msg: 'При полной загрузке заявки с сервера нет (а раньше была синхронизирована). Причина отсутствия в облаке неизвестна.', d: { inLocalNotes: idxDel !== -1, localEditedAt: le, knownCloudEditedAt: ke == null ? null : ke, localNewerSoKept: ln ? (ke != null && le > ke) : null, serverCount: serverNoteIds.size, local: ln ? DIAG.sum(ln) : null } }); });
         // Та же защита, что и в живой подписке: не стираем локальную правку,
         // которая новее того, что мы в последний раз подтверждённо получали
         // с сервера, — иначе можно потерять правку, сделанную прямо перед тем,
