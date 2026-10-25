@@ -1172,6 +1172,7 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="searchInput" placeholder="Поиск">
     </div>
+    <button type="button" id="offlineIcon" aria-label="Нет интернета" style="display:none;width:26px;height:26px;padding:0;margin:0;align-items:center;justify-content:center;background:none;border:none;outline:none;color:#b8bbc0;flex-shrink:0;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-1.8A6.5 6.5 0 1 0 6.5 19h11z"/><line x1="4" y1="4" x2="20" y2="20"/></svg></button>
     <div id="syncIcon" style="display:none;width:26px;height:26px;align-items:center;justify-content:center;font-size:15px;color:var(--muted);flex-shrink:0;" title="Не синхронизировано — ждём связи"></div>
     <div class="avatar" id="avatar">Я</div>
   </header>
@@ -1242,7 +1243,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-25 09:03 (этап 2: диагностика восстановления копии)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-25 22:02 (значок «нет интернета»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -12593,6 +12594,19 @@ syncBadgeEl.addEventListener('click', () => {
     flushCloudSave();
   }
 });
+// Значок «нет интернета» (перечёркнутое облако в шапке между поиском и аватаркой). Показывает ТОЛЬКО то, что телефон
+// сообщает об отсутствии сети (navigator.onLine и события online/offline); к Firebase не обращается и состояние
+// синхронизации не читает и не меняет. Когда сеть вернулась, значок скрывается, но это ещё не значит, что сервер уже
+// подтвердил сохранение — подробности по-прежнему в разделе «Диагностика».
+const offlineIconEl = document.getElementById('offlineIcon');
+function updateOfflineIcon(){
+  try{ offlineIconEl.style.display = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'flex' : 'none'; }catch(_){}
+}
+window.addEventListener('online', updateOfflineIcon);
+window.addEventListener('offline', updateOfflineIcon);
+document.addEventListener('visibilitychange', () => { if(!document.hidden) updateOfflineIcon(); }); // события могли пропасть, пока приложение было свёрнуто
+offlineIconEl.addEventListener('click', () => { showToast('Нет интернета. Изменения могут ожидать отправки в облако'); });
+updateOfflineIcon();
 // Как только связь физически появилась — сразу пробуем отправить то, что не
 // дошло, не дожидаясь отдельного таймера повтора.
 window.addEventListener('online', () => {
