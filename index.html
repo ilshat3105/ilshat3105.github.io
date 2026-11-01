@@ -50,6 +50,8 @@
   .search input{border:none;background:none;outline:none;font-size:14.5px;color:var(--ink);width:100%;font-family:'Inter',sans-serif;}
   .avatar{width:28px;height:28px;border-radius:50%;background:#7c4dff;color:#fff;font-size:12.5px;
     font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  /* без сети показываем только значок «нет интернета»; значок ожидания отправки (#syncIcon) возвращается, когда сеть есть */
+  html.net-off #syncIcon{display:none !important;}
 
   main{flex:1;overflow-y:auto;padding:8px 12px 90px;position:relative;-webkit-overflow-scrolling:touch;
     overscroll-behavior-y:contain;overflow-anchor:none;}
@@ -1243,7 +1245,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-10-25 22:02 (значок «нет интернета»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-01 23:03 (офлайн-копии фото Автосервиса: уборка, место под докачку, смена аккаунта)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -3934,7 +3936,9 @@ function offlineClassify(){
     if(editingNote && Array.isArray(editingNote.photoIds)) editingNote.photoIds.forEach((id) => { if(id) protect.add(id); });
     if(lightboxPhotoIds) lightboxPhotoIds.forEach((id) => { if(id) protect.add(id); });
   } catch(e){}
-  return { active, protect };
+  let svc = new Set();
+  try{ svc = svcOfflineIds(); svcOfflineProtectIds().forEach((id) => protect.add(id)); } catch(e){} // фото Автосервиса: свой лимит 50 МБ, не вытесняются общим проходом
+  return { active, protect, svc };
 }
 // Сохраняет локальную копию фото (Blob). Повторно не пишет. Ошибка записи не ломает ни заявку, ни загрузку в Firebase.
 async function offlinePhotoStore(uid, photoId, blob){
@@ -3978,6 +3982,7 @@ function offlinePhotoRemove(photoId){
 }
 // Смена/выход из аккаунта: object URL прежнего аккаунта освобождаем (сами файлы в IndexedDB остаются).
 function offlineReset(){
+  try{ svcOfflineResetState(); } catch(e){}
   offlinePhotoUrls.forEach((u) => { try{ URL.revokeObjectURL(u); } catch(e){} });
   offlinePhotoUrls.clear();
   offlineKeySet.clear();
@@ -4074,6 +4079,7 @@ function offlineScheduleRefresh(){
 // Картинки уже на экране — заменяем заглушки/ссылки на локальные копии (не сбрасывая масштаб в lightbox).
 function offlineRefreshViews(){
   try{ renderContent(); } catch(e){}
+  try{ svcOfflineRefreshMedia(); } catch(e){} // открытые панели Автосервиса / «Мой автомобиль»
   try{ if(editingNote) renderEditorPhotos(); } catch(e){}
   try{
     const lb = document.getElementById('lightbox');
@@ -4203,15 +4209,17 @@ function offlineScheduleEnforce(){
 }
 function offlineEnforceLimit(){
   if(!offlineUid) return;
+  try{ svcOfflineSweep(); } catch(e){}   // копии удалённых фото Автосервиса
+  try{ svcOfflineEnforce(); } catch(e){} // собственный лимит копий Автосервиса (50 МБ)
   let total = 0;
   offlineMeta.forEach((m) => { total += m.size || 0; });
   if(total <= OFFLINE_LIMIT_BYTES){ offlineOverLimit = false; offlineStatusUpdate(); return; }
   let baselineOk = false;
   try{ baselineOk = initialCloudBaselineReady === true; } catch(e){}
   if(baselineOk){
-    const { active, protect } = offlineClassify();
+    const { active, protect, svc } = offlineClassify();
     const cand = [];
-    offlineMeta.forEach((m, id) => { if(!active.has(id) && !protect.has(id)) cand.push([id, m]); });
+    offlineMeta.forEach((m, id) => { if(!active.has(id) && !protect.has(id) && !(svc && svc.has(id))) cand.push([id, m]); });
     cand.sort((a, b) => (a[1].lastAccessed || a[1].updatedAt || 0) - (b[1].lastAccessed || b[1].updatedAt || 0));
     const target = OFFLINE_LIMIT_BYTES * 0.9;
     for(const [id, m] of cand){
@@ -10027,6 +10035,7 @@ function svcMoveItems(srcId, dst, itemIds){
 function svcSave(){
   saveState();
   svcScheduleFlush();
+  try{ svcOfflineScheduleSweep(); }catch(e){} // копии удалённых фото уберём, когда всё сохранится
 }
 function svcSaveSoon(){
   clearTimeout(svcSaveTimer);
@@ -10452,6 +10461,7 @@ function svcOpenFolder(id, flashItemId){
   document.getElementById('searchInput').value = '';
   renderService();
   document.getElementById('main').scrollTop = 0;
+  try{ svcOfflineWarmFolder(svcOpenFolderId); }catch(e){} // докачка копий фото только этой папки
   if(svcFlashItemId){
     const el = Array.from(document.querySelectorAll('#svcGroups [data-svc-item]'))
       .find(x => x.getAttribute('data-svc-item') === svcFlashItemId);
@@ -10978,6 +10988,10 @@ function svcApplyUploadedUrl(photoId, uid, gen, path, url){
     return;
   }
   if(found.p.url) return;
+  if(found.p.local && !(offlineUid === uid && offlineKeySet.has(String(photoId)))){
+    // копия по какой-то причине не записалась раньше — пробуем ещё раз, пока base64 не удалён
+    try{ svcOfflineStore(uid, photoId, dataURItoBlob(found.p.local), 'after-upload'); }catch(e){}
+  }
   found.p.url = url;
   delete found.p.local;
   svcPhotoError.delete(photoId);
@@ -11005,6 +11019,7 @@ async function svcUploadPhoto(photoId){
     const blob = dataURItoBlob(found.p.local);
     type = blob.type || 'image/jpeg';
     bytes = new Uint8Array(await blob.arrayBuffer());
+    await svcOfflineStore(uid, photoId, blob, 'add'); // локальная копия ДО отправки в Storage и после загрузки не удаляется
   } catch(e){
     svcPhotoPending.delete(photoId);
     svcPhotoError.set(photoId, 'не удалось подготовить файл');
@@ -11040,6 +11055,317 @@ function svcRetryPendingUploads(){
   }));
 }
 
+// ---- Офлайн-копии фото Автосервиса и «Моего автомобиля» ----
+// Копии лежат в той же локальной базе IndexedDB, что и фото заявок (vreyseOffline, ключ «uid:photoId»), и поднимаются теми же
+// функциями offline*. В Firestore, Storage и резервные копии ничего не добавляется. Свой лимит — 50 МБ (в рамках общих 300 МБ).
+// Новое фото копируется при добавлении (до отправки в облако) и после загрузки НЕ удаляется. Старые фото докачиваются только
+// при открытии конкретной папки или «Моего автомобиля», при интернете, в 1–2 потока. Удаляются лишь локальные копии.
+const SVC_OFFLINE_LIMIT_BYTES = 50 * 1024 * 1024;
+const SVC_OFFLINE_ROOM_BYTES = 2 * 1024 * 1024;   // запас под одно фото при докачке
+const SVC_WARM_LANES = 2;
+const SVC_WARM_MAX_PER_RUN = 60;
+const SVC_WARM_RETRY_MS = 10 * 60 * 1000;
+const svcOfflineFailed = new Map();   // photoId -> { at, reason } — не скачалось, повторяем не чаще, чем раз в 10 минут
+const svcOfflineQueue = [];           // [{ id, url }] — ждут скачивания
+const svcOfflineQueued = new Set();
+const svcOfflineShown = new Set();    // «photoId|источник|ok» — каждое сочетание пишем в журнал один раз за запуск
+const svcOfflineStats = { ok: 0, fail: 0, bytes: 0 };
+let svcOfflineLanes = 0;
+let svcOfflineOverWarned = false;
+let svcOfflineRefreshTimer = null;
+function svcOfflineLog(type, lv, id, msg, d){
+  diagSafe(() => DIAG.log(type, lv, 'photo:service', { id: id || undefined, msg, d }));
+}
+function svcOfflineEachPhoto(fn){
+  try{ serviceFolders.forEach(f => (f.items || []).forEach(it => (it.photos || []).forEach(p => { if(p && p.id != null) fn(p, 'service'); }))); }catch(e){}
+  try{ serviceCarNotes.forEach(en => (en.photos || []).forEach(p => { if(p && p.id != null) fn(p, 'car'); })); }catch(e){}
+}
+function svcOfflineIds(){
+  const out = new Set();
+  svcOfflineEachPhoto(p => out.add(String(p.id)));
+  return out;
+}
+// Фото, чьи копии нельзя удалять: ещё не загруженные в облако (единственная копия — base64) и открытые сейчас.
+function svcOfflineProtectIds(){
+  const out = new Set();
+  svcOfflineEachPhoto(p => { if(!p.url) out.add(String(p.id)); });
+  try{ if(svcDetail){ const tg = svcDetailTarget(); if(tg) (tg.it.photos || []).forEach(p => out.add(String(p.id))); } }catch(e){}
+  try{ if(carDetail){ const en = carTarget(); if(en) (en.photos || []).forEach(p => out.add(String(p.id))); } }catch(e){}
+  // сейчас на экране: открытая папка, список «Мой автомобиль», фото в просмотре
+  try{
+    if(currentSection === 'service'){
+      if(carOpen) serviceCarNotes.forEach(en => (en.photos || []).forEach(p => out.add(String(p.id))));
+      else if(svcOpenFolderId != null){ const f = svcFolderById(svcOpenFolderId); if(f) (f.items || []).forEach(it => (it.photos || []).forEach(p => out.add(String(p.id)))); }
+    }
+  }catch(e){}
+  try{ if(lightboxPhotoIds) lightboxPhotoIds.forEach(id => { if(id) out.add(String(id)); }); }catch(e){}
+  return out;
+}
+function svcOfflineBytes(){
+  let t = 0;
+  svcOfflineIds().forEach(id => { const m = offlineMeta.get(id); if(m) t += m.size || 0; });
+  return t;
+}
+// Что показывать в <img>: локальная копия; нет копии — ссылка Storage; ещё не загружено — base64.
+function svcPhotoSrc(p){
+  if(!p) return '';
+  if(!p.url) return p.local || '';
+  if(!offlineUid) return p.url;
+  const s = photoSrcById(p.url, String(p.id));
+  return s === NO_COPY_PHOTO_PLACEHOLDER ? p.url : s; // нет копии и нет сети: пробуем ссылку (вдруг осталась в кэше браузера); при ошибке — заглушка (см. svcOfflineImgEvent)
+}
+function svcOfflineRefreshMedia(){
+  try{ if(svcDetail) svcDetailRefreshMedia(); }catch(e){}
+  try{ if(carDetail) carDetailRefreshMedia(); }catch(e){}
+}
+function svcOfflineScheduleRefresh(){
+  clearTimeout(svcOfflineRefreshTimer);
+  svcOfflineRefreshTimer = setTimeout(svcOfflineRefreshMedia, 150);
+}
+// Сохраняет копию фото; ошибка записи не мешает ни показу, ни загрузке в облако.
+async function svcOfflineStore(uid, photoId, blob, why){
+  if(!uid || !photoId || !blob) return false;
+  const t0 = Date.now();
+  let ok = false;
+  try{ ok = await offlineWithTimeout(offlinePhotoStore(uid, String(photoId), blob), 8000, false, 'копия фото Автосервиса не записалась вовремя'); }catch(e){ ok = false; }
+  svcOfflineLog(ok ? 'photo.copy.write' : 'photo.copy.fail', ok ? 'info' : 'warn', photoId,
+    ok ? 'Локальная копия фото Автосервиса сохранена' : 'Не удалось сохранить локальную копию фото Автосервиса',
+    { why, size: blob.size || 0, ms: Date.now() - t0 });
+  if(ok){ svcOfflineKnownAdd(uid, photoId); svcOfflineScheduleRefresh(); }
+  return ok;
+}
+function svcOfflineTouch(id){
+  try{
+    const m = offlineMeta.get(id);
+    const now = Date.now();
+    if(m && now - (m.lastAccessed || 0) > 10 * 60 * 1000){ m.lastAccessed = now; offlineIdbTouch(offlineUid, id, now); }
+  }catch(e){}
+}
+// Докачка: только переданные фото, только при интернете. Файлы из облака уже лежат в Storage — тут копируется лишь локальная копия.
+function svcOfflineWarm(photos, why, attempt, ctx){
+  if(!offlineUid) return;
+  ctx = ctx || { uid: offlineUid, gen: authGeneration }; // очередь привязана к аккаунту и поколению входа
+  if(ctx.uid !== offlineUid || ctx.gen !== authGeneration) return;
+  svcOfflineScheduleSweep();
+  if(!offlineHydrated){ if((attempt || 0) < 8) setTimeout(() => svcOfflineWarm(photos, why, (attempt || 0) + 1, ctx), 800); return; }
+  const online = navigator.onLine !== false;
+  let added = 0, have = 0, skipped = 0;
+  for(const p of photos){
+    if(!p || p.id == null) continue;
+    const id = String(p.id);
+    if(offlineKeySet.has(id)){ have++; svcOfflineTouch(id); continue; }
+    if(!online || typeof p.url !== 'string' || !/^https?:/i.test(p.url)){ skipped++; continue; }
+    const fl = svcOfflineFailed.get(id);
+    if(fl && fl.uid === ctx.uid && Date.now() - fl.at < SVC_WARM_RETRY_MS){ skipped++; continue; }
+    if(svcOfflineQueued.has(id) || offlineFetching.has(id)) continue;
+    if(added >= SVC_WARM_MAX_PER_RUN){ skipped++; continue; }
+    svcOfflineQueued.add(id); svcOfflineQueue.push({ id, url: p.url, uid: ctx.uid, gen: ctx.gen }); added++;
+  }
+  if(added || (!online && skipped)){
+    svcOfflineLog('photo.warm.start', 'info', '', online ? 'Докачка фото Автосервиса: ' + added + ' шт.' : 'Докачка фото Автосервиса отложена: нет интернета',
+      { why, queued: added, haveCopy: have, skipped, online });
+  }
+  svcOfflinePump();
+}
+function svcOfflinePump(){
+  while(svcOfflineLanes < SVC_WARM_LANES && svcOfflineQueue.length){
+    svcOfflineLanes++;
+    (async () => {
+      try{
+        while(svcOfflineQueue.length){
+          const it = svcOfflineQueue.shift();
+          const uid = it.uid;
+          try{
+            // задача чужого аккаунта / прежнего входа — выбрасываем, ничего не качаем и не сохраняем
+            if(uid !== offlineUid || it.gen !== authGeneration || uid !== currentUID) continue;
+            if(navigator.onLine === false || offlineKeySet.has(it.id)) continue;
+            if(!svcOfflineMakeRoom()){
+              svcOfflineLog('photo.warm.limit', 'warn', '', 'Докачка остановлена: лимит 50 МБ занят защищёнными копиями (ожидающие отправки или открытые)', { bytes: svcOfflineBytes() });
+              svcOfflineQueue.forEach(q => svcOfflineQueued.delete(q.id)); svcOfflineQueue.length = 0;
+              continue;
+            }
+            offlineFetching.add(it.id);
+            const t0 = Date.now();
+            try{
+              const blob = await offlineFetchBlob(it.url);
+              if(uid !== offlineUid || it.gen !== authGeneration || uid !== currentUID){
+                svcOfflineLog('photo.warm.cancel', 'info', it.id, 'Скачанное фото не сохранено: за это время сменился аккаунт', {});
+                continue;
+              }
+              const ok = await svcOfflineStore(uid, it.id, blob, 'warm');
+              if(ok){ svcOfflineStats.ok++; svcOfflineStats.bytes += blob.size || 0; svcOfflineFailed.delete(it.id); }
+              else { svcOfflineStats.fail++; svcOfflineFailed.set(it.id, { at: Date.now(), reason: 'не записалось', uid }); }
+            } catch(e){
+              if(uid !== offlineUid || it.gen !== authGeneration) continue; // ошибка задачи старого аккаунта новому не относится
+              const reason = offlineFailText(e);
+              svcOfflineStats.fail++;
+              svcOfflineFailed.set(it.id, { at: Date.now(), reason, uid });
+              svcOfflineLog('photo.fetch.fail', 'warn', it.id, 'Не удалось скачать фото Автосервиса для офлайна: ' + reason, { reason, ms: Date.now() - t0, online: navigator.onLine !== false });
+            }
+          } finally {
+            offlineFetching.delete(it.id);
+            svcOfflineQueued.delete(it.id);
+          }
+        }
+      } finally {
+        svcOfflineLanes--;
+        if(!svcOfflineLanes && !svcOfflineQueue.length && (svcOfflineStats.ok || svcOfflineStats.fail)){
+          svcOfflineLog('photo.warm.done', svcOfflineStats.fail ? 'warn' : 'info', '', 'Докачка фото Автосервиса завершена: скачано ' + svcOfflineStats.ok + ', ошибок ' + svcOfflineStats.fail,
+            { ok: svcOfflineStats.ok, fail: svcOfflineStats.fail, bytes: svcOfflineStats.bytes, ownBytes: svcOfflineBytes() });
+          svcOfflineStats.ok = 0; svcOfflineStats.fail = 0; svcOfflineStats.bytes = 0;
+          offlineScheduleEnforce();
+        }
+      }
+    })();
+  }
+}
+function svcOfflineWarmFolder(fid){
+  const f = svcFolderById(fid);
+  if(!f) return;
+  const list = [];
+  (f.items || []).forEach(it => (it.photos || []).forEach(p => list.push(p)));
+  svcOfflineWarm(list, 'folder');
+}
+function svcOfflineWarmCar(){
+  const list = [];
+  serviceCarNotes.forEach(en => (en.photos || []).forEach(p => list.push(p)));
+  svcOfflineWarm(list, 'car');
+}
+function svcOfflineWarmCurrent(){
+  try{
+    if(currentSection !== 'service') return;
+    if(carOpen) svcOfflineWarmCar();
+    else if(svcOpenFolderId != null) svcOfflineWarmFolder(svcOpenFolderId);
+  }catch(e){}
+}
+// Лимит 50 МБ: удаляются только локальные копии фото Автосервиса (самые давно открытые первыми), кроме защищённых
+// (ожидающие отправки, открытая папка/панель/просмотр). Возвращает размер копий после чистки.
+function svcOfflineEvict(trigger, target, why){
+  if(!offlineUid) return 0;
+  const ids = svcOfflineIds();
+  let total = 0;
+  ids.forEach(id => { const m = offlineMeta.get(id); if(m) total += m.size || 0; });
+  if(total <= trigger) return total;
+  const protect = svcOfflineProtectIds();
+  const cand = [];
+  ids.forEach(id => { const m = offlineMeta.get(id); if(m && !protect.has(id)) cand.push([id, m]); });
+  cand.sort((a, b) => (a[1].lastAccessed || a[1].updatedAt || 0) - (b[1].lastAccessed || b[1].updatedAt || 0));
+  for(const [id, m] of cand){
+    if(total <= target) break;
+    total -= m.size || 0;
+    offlinePhotoRemove(id); // только локальная копия; в Storage ничего не удаляется
+    svcOfflineLog('photo.copy.evict', 'info', id, 'Локальная копия фото Автосервиса удалена: ' + why + ' (файл в облаке цел)', { size: m.size || 0, why });
+  }
+  return total;
+}
+function svcOfflineEnforce(){
+  const total = svcOfflineEvict(SVC_OFFLINE_LIMIT_BYTES, SVC_OFFLINE_LIMIT_BYTES * 0.9, 'лимит 50 МБ');
+  if(total <= SVC_OFFLINE_LIMIT_BYTES){ svcOfflineOverWarned = false; return; }
+  if(!svcOfflineOverWarned){
+    svcOfflineOverWarned = true;
+    svcOfflineLog('photo.copy.over-limit', 'warn', '', 'Копии фото Автосервиса больше 50 МБ, но все защищены (не загружены или открыты)', { bytes: total });
+  }
+}
+// Место под докачку: если копий уже почти на лимит, освобождаем за счёт самых старых незащищённых (других папок).
+function svcOfflineMakeRoom(){
+  const trigger = SVC_OFFLINE_LIMIT_BYTES - SVC_OFFLINE_ROOM_BYTES;
+  return svcOfflineEvict(trigger, SVC_OFFLINE_LIMIT_BYTES * 0.9, 'нужно место для папки, которую открыли') <= trigger;
+}
+// Уборка копий удалённых фото. Удаляются ТОЛЬКО локальные копии фото, которых больше нет ни в одной папке/записи
+// (известные нам «как фото Автосервиса» id хранятся отдельно по аккаунтам). Очередь удаления файлов из Storage (30 дней) не затрагивается.
+// Работает только когда списки полные: подтверждён первый снимок облака, тот же аккаунт.
+const SVC_KNOWN_KEY = 'vreyse_svcOfflineIds_';
+let svcOfflineKnown = new Set(), svcOfflineKnownUid = null, svcOfflineSweepTimer = null;
+function svcOfflineKnownLoad(uid){
+  if(svcOfflineKnownUid === uid) return;
+  svcOfflineKnownUid = uid; svcOfflineKnown = new Set();
+  try{ const a = JSON.parse(localStorage.getItem(SVC_KNOWN_KEY + uid) || '[]'); if(Array.isArray(a)) a.forEach(x => svcOfflineKnown.add(String(x))); }catch(e){}
+}
+function svcOfflineKnownSave(){
+  try{ if(svcOfflineKnownUid) localStorage.setItem(SVC_KNOWN_KEY + svcOfflineKnownUid, JSON.stringify(Array.from(svcOfflineKnown).slice(-3000))); }catch(e){}
+}
+function svcOfflineKnownAdd(uid, id){
+  try{ svcOfflineKnownLoad(uid); if(!svcOfflineKnown.has(String(id))){ svcOfflineKnown.add(String(id)); svcOfflineKnownSave(); } }catch(e){}
+}
+function svcOfflineScheduleSweep(){
+  clearTimeout(svcOfflineSweepTimer);
+  svcOfflineSweepTimer = setTimeout(svcOfflineSweep, 1500);
+}
+function svcOfflineSweep(){
+  try{
+    const uid = offlineUid;
+    if(!uid || uid !== currentUID || !offlineHydrated || !serviceBaselineReady || !carBaselineReady) return;
+    svcOfflineKnownLoad(uid);
+    const cur = svcOfflineIds();
+    let changed = false;
+    cur.forEach(id => { if(!svcOfflineKnown.has(id)){ svcOfflineKnown.add(id); changed = true; } });
+    const protect = svcOfflineProtectIds();
+    const cargo = new Set();
+    notes.forEach(n => (n && Array.isArray(n.photoIds) ? n.photoIds : []).forEach(id => cargo.add(String(id))));
+    let removed = 0, bytes = 0;
+    Array.from(svcOfflineKnown).forEach(id => {
+      if(cur.has(id)) return;
+      if(protect.has(id) || cargo.has(id) || svcOfflineQueued.has(id) || offlineFetching.has(id)) return;
+      if(offlineKeySet.has(id)){ const m = offlineMeta.get(id); bytes += (m && m.size) || 0; offlinePhotoRemove(id); removed++; }
+      svcOfflineKnown.delete(id); changed = true;
+    });
+    if(changed) svcOfflineKnownSave();
+    if(removed) svcOfflineLog('photo.copy.cleanup', 'info', '', 'Удалены локальные копии фото, которых больше нет в Автосервисе: ' + removed + ' шт. (в облаке ничего не удалялось)', { removed, bytes });
+  }catch(e){}
+}
+// Смена/выход из аккаунта: очередь, ошибки и реестр прежнего аккаунта не переносим.
+function svcOfflineResetState(){
+  svcOfflineQueue.length = 0;
+  svcOfflineQueued.clear();
+  svcOfflineFailed.clear();
+  svcOfflineShown.clear();
+  svcOfflineStats.ok = 0; svcOfflineStats.fail = 0; svcOfflineStats.bytes = 0;
+  svcOfflineKnown = new Set(); svcOfflineKnownUid = null;
+  svcOfflineOverWarned = false;
+  clearTimeout(svcOfflineSweepTimer);
+  clearTimeout(svcOfflineRefreshTimer);
+}
+// Диагностика показа: откуда на самом деле взята картинка — локальная копия, ссылка Storage или заглушка.
+function svcOfflineSrcKind(attr, ok){
+  if(!attr) return 'empty';
+  if(attr === NO_COPY_PHOTO_PLACEHOLDER) return 'placeholder-no-copy';
+  if(attr === PENDING_PHOTO_PLACEHOLDER) return 'placeholder-wait';
+  if(attr.indexOf('blob:') === 0) return 'local-copy';
+  if(attr.indexOf('data:image/svg') === 0) return 'placeholder';
+  if(attr.indexOf('data:') === 0) return 'pending-base64';
+  if(/^https?:/i.test(attr)) return (ok && navigator.onLine === false) ? 'storage-url-from-browser-cache' : 'storage-url';
+  return 'other';
+}
+function svcOfflineImgEvent(ev, ok){
+  try{
+    const el = ev.target;
+    if(!el || el.tagName !== 'IMG') return;
+    let id = el.getAttribute('data-det-photo');
+    if(!id && el.id === 'lbImg'){
+      const ids = lightboxPhotoIds;
+      id = ids && ids[lbIndex] != null ? String(ids[lbIndex]) : null;
+      if(!id || !svcOfflineIds().has(id)) return;
+    }
+    if(!id) return;
+    const attr = el.getAttribute('src') || '';
+    const kind = svcOfflineSrcKind(attr, ok);
+    if(!ok && kind === 'storage-url' && navigator.onLine === false && !el.getAttribute('data-nocopy')){
+      el.setAttribute('data-nocopy', '1');
+      el.src = NO_COPY_PHOTO_PLACEHOLDER; // нет сети и нет копии — понятная заглушка вместо сломанной картинки
+    }
+    const key = id + '|' + kind + '|' + (ok ? 1 : 0);
+    if(svcOfflineShown.has(key)) return;
+    if(svcOfflineShown.size > 600) svcOfflineShown.clear();
+    svcOfflineShown.add(key);
+    svcOfflineLog(ok ? 'photo.show' : 'photo.show.fail', ok ? 'info' : 'warn', id,
+      (ok ? 'Фото Автосервиса показано: ' : 'Фото Автосервиса не загрузилось: ') + kind,
+      { src: kind, online: navigator.onLine !== false, hasCopy: offlineKeySet.has(id), place: el.id === 'lbImg' ? 'viewer' : 'detail' });
+  }catch(e){}
+}
+document.addEventListener('load', (ev) => svcOfflineImgEvent(ev, true), true);
+document.addEventListener('error', (ev) => svcOfflineImgEvent(ev, false), true);
+window.addEventListener('online', () => { svcOfflineFailed.clear(); svcOfflineWarmCurrent(); });
+
 // ---- панель деталей пункта (по нажатию на текст пункта) ----
 const svcDetailOverlay = document.getElementById('svcDetailOverlay');
 const svcDetailEl = document.getElementById('svcDetail');
@@ -11056,7 +11382,7 @@ function svcPhotosHtml(it, withTitles){
   if(!ps.length) return '';
   return '<div class="svc-photos">' + ps.map(p => {
     const id = escapeHtml(p.id);
-    const src = p.url || p.local || '';
+    const src = svcPhotoSrc(p);
     const st = p.url ? '' : (svcPhotoError.has(p.id)
       ? `<div class="svc-ph-st err" title="${escapeHtml(svcPhotoError.get(p.id))}">ошибка загрузки</div>`
       : '<div class="svc-ph-st">загружается…</div>');
@@ -11662,6 +11988,7 @@ function carRefreshPendingStatus(){
 function carSave(){
   carPersistLocal(); // сначала отдельный ключ, потом общее состояние и облако
   saveState();
+  try{ svcOfflineScheduleSweep(); }catch(e){}
   carScheduleFlush();
   carRefreshPendingStatus();
 }
@@ -11726,6 +12053,7 @@ function carOpenList(){
   document.getElementById('searchInput').value = '';
   renderService();
   document.getElementById('main').scrollTop = 0;
+  try{ svcOfflineWarmCar(); }catch(e){} // докачка копий фото «Мой автомобиль»
 }
 function carCloseList(){
   carFlushLocalSave();
@@ -11858,6 +12186,7 @@ function carOpenDetail(id){
   svcOpenFolderId = null;
   renderService();
   carShowDetail(e);
+  try{ svcOfflineWarmCar(); }catch(e2){}
 }
 function carResetDetail(){
   carDetail = null;
@@ -12600,7 +12929,11 @@ syncBadgeEl.addEventListener('click', () => {
 // подтвердил сохранение — подробности по-прежнему в разделе «Диагностика».
 const offlineIconEl = document.getElementById('offlineIcon');
 function updateOfflineIcon(){
-  try{ offlineIconEl.style.display = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'flex' : 'none'; }catch(_){}
+  try{
+    const off = (typeof navigator !== 'undefined' && navigator.onLine === false);
+    offlineIconEl.style.display = off ? 'flex' : 'none';
+    document.documentElement.classList.toggle('net-off', off); // только скрывает обычный значок ожидания отправки (см. правило html.net-off #syncIcon); сам он и логика синхронизации не меняются
+  }catch(_){}
 }
 window.addEventListener('online', updateOfflineIcon);
 window.addEventListener('offline', updateOfflineIcon);
