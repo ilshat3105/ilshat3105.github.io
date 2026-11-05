@@ -622,6 +622,19 @@
   .exp-date-label{font-size:15px;font-weight:600;color:var(--muted);}
   .exp-date-input{border:none;outline:none;font-size:16px;font-weight:700;font-family:'Inter',sans-serif;color:var(--ink);
     background:transparent;text-align:right;min-width:0;}
+  /* Финансы → Итоги */
+  .fin-card{margin-bottom:12px;}
+  .fin-tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;}
+  .fin-tbl th{font-weight:600;color:var(--muted);text-align:right;padding:4px 0;font-size:11.5px;}
+  .fin-tbl th:first-child,.fin-tbl td:first-child{text-align:left;}
+  .fin-tbl td{padding:7px 0;text-align:right;border-top:1px solid var(--line);vertical-align:top;}
+  .fin-tbl td:first-child{font-weight:600;}
+  .fin-tbl td b{display:block;font-size:13px;}
+  .fin-tbl td small{display:block;color:var(--faint);font-size:11px;font-weight:400;}
+  .fin-tbl tr.tot td{font-weight:700;}
+  .fin-kv{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;font-size:14px;}
+  .fin-kv small{display:block;color:var(--faint);font-size:11.5px;}
+  .fin-kv.big{border-top:1px solid var(--line);margin-top:4px;padding-top:10px;font-weight:700;}
   .fuel-sync-line{font-size:12.5px;margin-top:8px;color:var(--faint);}
   .fuel-sync-line.err{color:var(--danger);font-weight:600;cursor:pointer;}
   .exp-sheet-actions{display:flex;gap:10px;}
@@ -944,7 +957,7 @@
     box-shadow:0 6px 18px rgba(15,23,42,.055);
     font-weight:700;
   }
-  #expSummaryBar{
+  #expSummaryBar,#finSummaryView .summary-bar{
     background:var(--surface);
     color:var(--ink);
     border:1px solid var(--card-line);
@@ -1219,7 +1232,7 @@
 
   <div class="top-tabs" id="topTabs">
     <button class="top-tab active" data-section="notes">Грузы</button>
-    <button class="top-tab" data-section="fuel">Финансы</button>
+    <button class="top-tab" data-section="fuel">Расходы</button>
     <button class="top-tab" data-section="service">Автосервис</button>
   </div>
 
@@ -1256,6 +1269,12 @@
     </div>
     <div id="fuelSection" style="display:none;">
       <div class="nav-bar" ><button type="button" class="nav-back" data-nav-back aria-label="Назад"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg><span>Назад</span></button><span class="nav-title">Расходы</span></div>
+      <div class="exp-view-toggle" id="finModeToggle">
+        <button class="exp-view-btn" data-finmode="summary">Итоги</button>
+        <button class="exp-view-btn active" data-finmode="expenses">Расходы</button>
+      </div>
+      <div id="finSummaryView" style="display:none;"></div>
+      <div id="finExpensesView">
       <div class="summary-bar" id="expSummaryBar" style="display:none;"></div>
       <div class="fuel-block" id="expFuelBlock" style="display:none;"></div>
       <div class="exp-view-toggle" id="expViewToggle">
@@ -1267,6 +1286,7 @@
       </div>
       <div id="expGroupsView" style="display:none;">
         <div id="expGroupsList"></div>
+      </div>
       </div>
     </div>
     <div id="serviceSection" style="display:none;">
@@ -1282,7 +1302,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-04 22:43 (Вкладка «Финансы», вкладки без подчёркивания)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-05 19:50 (Вкладка снова «Расходы», итоги внутри)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -9220,6 +9240,8 @@ let fuelBalances = {};
 let lastSyncedFuelJSON = null;   // что, как мы знаем, лежит в облаке (канонический JSON) — для сравнения «есть ли что отправлять»
 let fuelFlushInFlight = null, fuelFlushAgain = false, fuelRetryTimer = null;
 let fuelSyncError = '';          // код последней ошибки отправки остатков ('' — нет ошибки)
+let finMode = 'expenses';     // «Финансы»: 'summary' (Итоги) | 'expenses' (Расходы)
+let viewedFinMonthOffset = 0;
 let expView = 'history';     // 'history' | 'groups'
 let viewedExpMonthOffset = 0;
 let editingExpenseId = null;
@@ -9895,7 +9917,81 @@ document.getElementById('expViewToggle').addEventListener('click', (e) => {
   renderExpenses();
 });
 
+// ---- Финансы → Итоги: заключено / доставлено / оплачено по типам расчёта, долг, расходы, чистыми ----
+// Берём уже существующие расчёты (computeIncSplit, computeExpenseMonth, incCategoryOf); режим «весь период» на экране
+// «Доставлено» на эти итоги не влияет.
+function computeFinSummary(offset){
+  const now = new Date();
+  const nowKey = now.getFullYear() + '-' + (now.getMonth() + 1);
+  const key = offset ? monthKeyShift(nowKey, offset) : nowKey;
+  const mk = () => ({ nds: 0, nonds: 0, cash: 0 });
+  const conCnt = mk(), conSum = mk();
+  notes.forEach(n => {   // «Заключено» — заявки, созданные в этом месяце (кроме удалённых)
+    if(n.trashed || !n.createdAt || incMonthKeyOf(n.createdAt) !== key) return;
+    const c = incCategoryOf(n); conCnt[c]++; conSum[c] += (n.amount || 0);
+  });
+  const keep = incShowAllTime; incShowAllTime = false;
+  let sp; try{ sp = computeIncSplit(offset); } finally { incShowAllTime = keep; }
+  let owed = 0;   // как плашка «Вам должны»: неоплаченное по доставленным, за все месяцы
+  notes.forEach(n => {
+    if(n.trashed || n.archived || n.delivered !== true || !n.amount) return;
+    const st = getPaymentStatus(n);
+    if(st === 'none') owed += n.amount; else if(st === 'partial') owed += (n.amount - (n.paidAmount || 0));
+  });
+  return { key, conCnt, conSum, delCnt: sp.cnt, delSum: sp.sum, got: sp.got, owed, exp: computeExpenseMonth(offset).total };
+}
+function renderFinSummary(){
+  const el = document.getElementById('finSummaryView');
+  const d = computeFinSummary(viewedFinMonthOffset);
+  const rub = v => Math.round(v).toLocaleString('ru-RU');
+  const tot = o => o.nds + o.nonds + o.cash;
+  const cell = (sum, cnt) => '<td><b>' + rub(sum) + '</b>' + (cnt != null ? '<small>' + cnt + ' гр.</small>' : '') + '</td>';
+  const rows = [['nds', 'С НДС'], ['nonds', 'Без НДС'], ['cash', 'Нал']].map(r =>
+    '<tr><td>' + r[1] + '</td>' + cell(d.conSum[r[0]], d.conCnt[r[0]]) + cell(d.delSum[r[0]], d.delCnt[r[0]]) + cell(d.got[r[0]], null) + '</tr>').join('');
+  const net = tot(d.got) - d.exp;
+  const label = monthNameOf(d.key) + ' ' + d.key.split('-')[0];
+  el.innerHTML = `
+    <div class="summary-bar fin-card" style="display:block;">
+      <div class="summary-nav">
+        <button id="finPrevMonth">‹</button>
+        <span class="summary-month-label">${label}</span>
+        <button id="finNextMonth" ${viewedFinMonthOffset >= 0 ? 'disabled' : ''}>›</button>
+      </div>
+      <table class="fin-tbl">
+        <tr><th>₽</th><th>Заключено</th><th>Доставлено</th><th>Оплачено</th></tr>
+        ${rows}
+        <tr class="tot"><td>Всего</td>${cell(tot(d.conSum), tot(d.conCnt))}${cell(tot(d.delSum), tot(d.delCnt))}${cell(tot(d.got), null)}</tr>
+      </table>
+    </div>
+    <div class="summary-bar fin-card" style="display:block;">
+      <div class="fin-kv"><span>Ждём оплату<small>по доставленным грузам, за все месяцы</small></span><b>${formatAmount(d.owed)}</b></div>
+      <div class="fin-kv"><span>Расходы</span><b>${formatAmount(d.exp)}</b></div>
+      <div class="fin-kv big"><span>Чистыми<small>оплачено − расходы</small></span><b>${formatAmount(net)}</b></div>
+    </div>`;
+}
+// Режим экрана «Финансы». Возвращает true, если показаны «Итоги» (расходы тогда не рисуем).
+function finApplyMode(){
+  document.querySelectorAll('#finModeToggle .exp-view-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-finmode') === finMode));
+  const sum = finMode === 'summary';
+  document.getElementById('finSummaryView').style.display = sum ? 'block' : 'none';
+  document.getElementById('finExpensesView').style.display = sum ? 'none' : 'block';
+  if(currentSection === 'fuel') document.getElementById('globalFab').style.display = sum ? 'none' : 'flex';
+  if(sum) renderFinSummary();
+  return sum;
+}
+document.getElementById('finModeToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-finmode]');
+  if(!btn) return;
+  finMode = btn.getAttribute('data-finmode');
+  renderExpenses();
+});
+document.getElementById('finSummaryView').addEventListener('click', (e) => {
+  if(e.target.closest('#finPrevMonth')){ viewedFinMonthOffset--; renderFinSummary(); return; }
+  if(e.target.closest('#finNextMonth') && viewedFinMonthOffset < 0){ viewedFinMonthOffset++; renderFinSummary(); }
+});
+
 function renderExpenses(){
+  if(finApplyMode()) return;
   renderExpSummaryBar();
   renderFuelBlock();
   document.querySelectorAll('.exp-view-btn').forEach(b => {
