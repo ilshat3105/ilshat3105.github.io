@@ -1302,7 +1302,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-05 19:50 (Вкладка снова «Расходы», итоги внутри)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-07 11:40 (Расширенная проверка: чтение файла, Storage по разделам)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1366,6 +1366,17 @@
     <div class="dg-sys" id="diagSys">
       <div class="dg-sys-h" id="diagSysHead"><span class="dg-dot unk" id="diagSysDot"></span><span class="dg-sys-t">Состояние системы</span><span class="dg-sys-x" id="diagSysToggle">▾</span></div>
       <div id="diagSysBody"></div>
+    </div>
+    <div class="dg-sys" id="diagX">
+      <div class="dg-sys-h" id="diagXHead"><span class="dg-dot unk" id="diagXDot"></span><span class="dg-sys-t">Расширенная проверка (только чтение)</span><span class="dg-sys-x" id="diagXToggle">▸</span></div>
+      <div id="diagXBody" style="display:none;max-height:44vh;overflow-y:auto;padding:0 0 6px;">
+        <div class="dg-bar">
+          <button class="dg-btn" id="diagXRun" type="button">Запустить проверку</button>
+          <button class="dg-btn" id="diagXCloud" type="button">Проверить облако (нужна сеть)</button>
+          <button class="dg-btn" id="diagXCopy" type="button">Копировать отчёт</button>
+        </div>
+        <div id="diagXOut"></div>
+      </div>
     </div>
     <div class="dg-bar">
       <input id="diagFilter" type="search" placeholder="ID или № заявки" autocomplete="off">
@@ -15676,7 +15687,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
         searchActive: !!String(searchQuery || '').trim(), view, section: currentSection
       };
       const payload = { app: 'В рейсе', version: (document.getElementById('appVersionLine') || {}).textContent || '', exportedAt: new Date().toISOString(),
-        device: DIAG.dev, session: DIAG.sid, cloudHistory: DIAG.cloudOn(), state: st, events: DIAG.entries() };
+        device: DIAG.dev, session: DIAG.sid, cloudHistory: DIAG.cloudOn(), state: st, extended: window.__diagExtLast || null, events: DIAG.entries() };
       const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); const d = new Date();
@@ -15700,6 +15711,315 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
     showToast(r.ok ? 'Загружено записей с других сеансов: ' + r.count : 'Не загрузилось: ' + r.why, r.ok ? 2500 : 5000);
     render();
   });
+})();
+
+
+// ---- «Расширенная проверка» в экране «Диагностика»: ТОЛЬКО ЧТЕНИЕ ----
+// Ничего не записывает, не удаляет, не перекачивает и не запускает синхронизацию. Сеть — только по кнопке «Проверить облако».
+// В отчёт не попадают тексты заявок, телефоны, адреса ссылок на фото (в них есть токены доступа), пароли и uid.
+(function setupDiagExt(){
+  const ov = document.getElementById('diagOverlay');
+  const head = document.getElementById('diagXHead');
+  if(!ov || !head) return;
+  const body = document.getElementById('diagXBody'), out = document.getElementById('diagXOut'), dot = document.getElementById('diagXDot'), tgl = document.getElementById('diagXToggle');
+  const runBtn = document.getElementById('diagXRun'), cloudBtn = document.getElementById('diagXCloud'), copyBtn = document.getElementById('diagXCopy');
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = ts => { if(!ts) return 'нет данных'; const d = new Date(ts); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+  const sg = (fn, d) => { try{ const v = fn(); return v === undefined ? d : v; }catch(_){ return d; } };
+  const mb = (b) => (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' МБ';
+  const sid8 = (id) => String(id).slice(0, 14);
+  let open = false, last = null, cloudRes = null, busy = false;
+
+  function idbKeys(db, uid){
+    const rd = (store) => new Promise((res) => {
+      try{
+        const tx = db.transaction(store, 'readonly');
+        const rq = tx.objectStore(store).index('uid').getAllKeys(IDBKeyRange.only(uid));
+        rq.onsuccess = () => res({ ok: true, keys: rq.result || [] });
+        rq.onerror = () => res({ ok: false, keys: [], err: String(rq.error && rq.error.name || 'ошибка чтения') });
+      }catch(e){ res({ ok: false, keys: [], err: String(e && e.name || e) }); }
+    });
+    return Promise.all([rd(OFFLINE_STORE), rd(OFFLINE_META)]);
+  }
+
+  async function collect(){
+    const now = Date.now();
+    const R = { at: now, sections: [], problems: [] };
+    const add = (key, title, rows) => R.sections.push({ key, title, rows });
+    const online = typeof navigator.onLine === 'boolean' ? navigator.onLine : null;
+    const uid = sg(() => offlineUid, null);
+
+    // ---------- 1. Фотографии ----------
+    const items = [];
+    sg(() => notes, []).forEach(n => {
+      if(!n || !Array.isArray(n.photoIds)) return;
+      const st = n.trashed ? 'корзина' : n.archived ? 'архив' : 'активная';
+      n.photoIds.forEach((id, i) => { if(id) items.push({ id: String(id), where: 'заявка №' + (n.number != null ? n.number : '?'), st, p: (n.photos || [])[i], svc: false }); });
+    });
+    sg(() => svcOfflineEachPhoto((p, kind) => items.push({ id: String(p.id), where: kind === 'car' ? 'Мой автомобиль' : 'Автосервис', st: 'активная', p: p.url, svc: true, noUrl: !p.url })), null);
+    const byId = new Map();
+    items.forEach(it => { if(!byId.has(it.id)) byId.set(it.id, it); });
+    let idb = { avail: false, storeKeys: null, metaKeys: null, err: '' };
+    if(uid){
+      const db = await sg(() => offlineWithTimeout(offlineDb(), 4000, null, ''), Promise.resolve(null));
+      if(db){
+        const [a, b] = await idbKeys(db, uid);
+        idb.avail = true; idb.err = (a.ok && b.ok) ? '' : (a.err || b.err);
+        if(a.ok) idb.storeKeys = new Set(a.keys.map(k => String(k).slice(String(uid).length + 1)));
+        if(b.ok) idb.metaKeys = new Set(b.keys.map(k => String(k).slice(String(uid).length + 1)));
+      } else idb.err = 'база фото не открылась';
+    }
+    // «копия обнаружена» (есть запись/файл в кэше) и «файл успешно прочитан» (реально прочитаны первые байты) — разные вещи.
+    // Чтение только на чтение: транзакция readonly, из файла берутся 12 байт, объект URL и состояние приложения не создаются.
+    const readMap = new Map();
+    const probeRead = (db, id) => new Promise((res) => {
+      const tm = setTimeout(() => res({ st: 'timeout', ok: false }), 5000);
+      const fin = (v) => { clearTimeout(tm); res(v); };
+      try{
+        const rq = db.transaction(OFFLINE_STORE, 'readonly').objectStore(OFFLINE_STORE).get(uid + ':' + id);
+        rq.onerror = () => fin({ st: 'error', ok: false });
+        rq.onsuccess = async () => {
+          const v = rq.result;
+          if(!v || !v.blob) return fin({ st: 'missing', ok: false });
+          const b = v.blob;
+          if(!b.size) return fin({ st: 'empty', ok: false });
+          try{
+            const u = new Uint8Array(await b.slice(0, 12).arrayBuffer());
+            const fm = (u[0] === 0xFF && u[1] === 0xD8) ? 'JPEG' : (u[0] === 0x89 && u[1] === 0x50) ? 'PNG' : (u[0] === 0x52 && u[1] === 0x49) ? 'WebP' : (u[0] === 0x47 && u[1] === 0x49) ? 'GIF' : '';
+            fin({ st: u.length ? 'ok' : 'empty', ok: u.length > 0, fmt: fm, size: b.size });
+          }catch(e){ fin({ st: 'readerr', ok: false }); }
+        };
+      }catch(e){ fin({ st: 'error', ok: false }); }
+    });
+    let readCap = 0;
+    if(uid && idb.avail && idb.storeKeys){
+      const dbR = await sg(() => offlineWithTimeout(offlineDb(), 4000, null, ''), Promise.resolve(null));
+      const todo = Array.from(byId.keys()).filter(id => idb.storeKeys.has(id));
+      readCap = Math.max(0, todo.length - 500);
+      const list = todo.slice(0, 500); let nx = 0;
+      if(dbR) await Promise.all([0, 1, 2, 3].map(async () => { while(nx < list.length){ const id = list[nx++]; readMap.set(id, await probeRead(dbR, id)); } }));
+    }
+    const READ_TXT = { ok: 'прочитан', timeout: 'не прочитан (тайм-аут 5 с)', missing: 'не прочитан (файла нет)', empty: 'не прочитан (файл пустой)', readerr: 'не прочитан (ошибка чтения)', error: 'не прочитан (ошибка IndexedDB)' };
+    const keySet = sg(() => offlineKeySet, new Set()), urls = sg(() => offlinePhotoUrls, new Map()), lf = sg(() => offlineLoadFailed, new Set()), ff = sg(() => offlineFailed, new Map());
+    const journal = sg(() => DIAG.entries(), []);
+    const lastTry = (id) => { const e = journal.find(x => x.id === id && /^photo\./.test(x.type)); return e ? e.ts : 0; };
+    // точный пересчёт счётчика «Фото офлайн: X/Y» (только активные заявки, уникальные ID)
+    const cnt = { total: 0, have: 0 }, seen = new Set(), unc = [];
+    sg(() => offlinePhotoTargets(), []).forEach(t => {
+      if(seen.has(t.id)) return; seen.add(t.id); cnt.total++;
+      if(keySet.has(t.id) && !lf.has(t.id)) cnt.have++; else unc.push(String(t.id));
+    });
+    const classify = (id) => {
+      const it = byId.get(id) || {}, p = it.p;
+      const inMem = keySet.has(id), inStore = idb.storeKeys ? idb.storeKeys.has(id) : null, inMeta = idb.metaKeys ? idb.metaKeys.has(id) : null;
+      const hasUrl = urls.has(id), isData = typeof p === 'string' && p.indexOf('data:image') === 0, isHttp = typeof p === 'string' && /^https?:/i.test(p);
+      const rd = readMap.get(id) || null;
+      const copy = inStore === true ? 'обнаружена' : inStore === false ? 'не обнаружена' : 'не проверялась';
+      const readTxt = rd ? READ_TXT[rd.st] || 'не прочитан' : (inStore === true ? 'не проверялся' : 'нечего читать');
+      const opens = (rd && rd.ok) || isData;
+      let type, why;
+      if(lf.has(id)){ type = 'чтение-таймаут'; why = 'файл не прочитался из кэша за 5 с; счётчик считает копию отсутствующей' + (inStore === true ? ', хотя файл в кэше есть' : inStore === false ? ' (и файла в кэше нет)' : ''); }
+      else if(inStore === true && rd && !rd.ok){ type = 'копия-не-читается'; why = 'копия обнаружена, но файл не прочитан: ' + readTxt; }
+      else if(!inMem && inStore === true){ type = 'нет-метаданных'; why = 'файл в кэше есть, а записи-описания (meta) нет — счётчик его не видит'; }
+      else if(!inMem && isData){ type = 'base64'; why = 'фото ещё не загружено в облако (хранится как base64), копия в кэш не записана'; }
+      else if(ff.has(id)){ type = 'скачивание'; why = 'не скачалось: ' + ff.get(id); }
+      else if(!inMem && isHttp){ type = 'не-скачано'; why = 'копия ещё не скачана (очередь/нет сети)'; }
+      else if(!inMem){ type = 'нет-копии'; why = 'нет ни копии, ни ссылки'; }
+      else if(inStore === false){ type = 'нет-файла'; why = 'в описании кэша фото числится, а самого файла нет (счётчик считает его имеющимся)'; }
+      else { type = 'ок'; why = ''; }
+      return { id, where: it.where || '?', st: it.st || '', type, why, opens, inMem, inStore, copy, readTxt, readOk: !!(rd && rd.ok), last: (it.svc ? ((sg(() => svcOfflineFailed.get(id), null) || {}).at || 0) : 0) || lastTry(id) };
+    };
+    const prob = [];
+    byId.forEach((it, id) => { const c = classify(id); if(c.type !== 'ок') prob.push(c); });
+    R.problems = prob.map(c => ({ id: sid8(c.id), where: c.where, state: c.st, type: c.type, why: c.why, copyDetected: c.copy, fileRead: c.readTxt, opensOffline: c.opens, lastAttempt: c.last ? new Date(c.last).toISOString() : null }));
+    const missingLocal = Array.from(byId.keys()).filter(id => !keySet.has(id)).length;
+    const metaNoFile = idb.storeKeys && idb.metaKeys ? Array.from(idb.metaKeys).filter(k => !idb.storeKeys.has(k)).length : null;
+    const fileNoMeta = idb.storeKeys && idb.metaKeys ? Array.from(idb.storeKeys).filter(k => !idb.metaKeys.has(k)).length : null;
+    const ph = [];
+    ph.push({ l: 'Всего фото', t: byId.size + ' (заявки: ' + items.filter(i => !i.svc).length + ' шт., Автосервис и авто: ' + items.filter(i => i.svc).length + ' шт.)' });
+    ph.push({ l: 'Копия найдена', t: idb.storeKeys ? 'файлов в кэше: ' + idb.storeKeys.size + ', записей-описаний: ' + (idb.metaKeys ? idb.metaKeys.size : '?') + ' (это ещё не значит, что файл читается)' : 'не проверено' + (idb.err ? ' (' + idb.err + ')' : ''), lv: idb.storeKeys ? 'ok' : 'warn' });
+    const detN = Array.from(byId.keys()).filter(id => idb.storeKeys && idb.storeKeys.has(id)).length, readN = Array.from(readMap.values()).filter(v => v.ok).length;
+    ph.push({ l: 'Файл прочитан', t: idb.storeKeys ? readN + ' из ' + detN + ' найденных копий успешно прочитаны (проверка первых байт файла)' + (detN - readN ? '; не прочитаны: ' + (detN - readN) : '') + (readCap ? '; проверены первые 500' : '') : 'не проверено', lv: !idb.storeKeys ? 'unk' : (detN - readN) ? 'bad' : 'ok' });
+    ph.push({ l: 'Нет копии', t: missingLocal + ' из ' + byId.size, lv: missingLocal ? 'warn' : 'ok' });
+    ph.push({ l: 'Записи и файлы', t: metaNoFile === null ? 'не проверено' : (metaNoFile || fileNoMeta) ? 'расхождение: описаний без файла ' + metaNoFile + ', файлов без описания ' + fileNoMeta : 'совпадают', lv: metaNoFile === null ? 'unk' : (metaNoFile || fileNoMeta) ? 'warn' : 'ok' });
+    ph.push({ l: 'Счётчик', t: cnt.have + '/' + cnt.total + ' (считаются только активные заявки, без архива и Автосервиса)', lv: cnt.have < cnt.total ? 'warn' : 'ok' });
+    if(unc.length){
+      const rs = {}; unc.forEach(id => { const c = classify(id); rs[c.type] = (rs[c.type] || 0) + 1; });
+      const open = unc.filter(id => classify(id).opens).length;
+      ph.push({ l: 'Почему не ' + cnt.total + '/' + cnt.total, t: Object.keys(rs).map(k => k + ': ' + rs[k]).join('; ') + '. Читаются из кэша или base64: ' + open + ' из ' + unc.length, lv: 'warn' });
+    }
+    if(cloudRes){
+      const C = cloudRes, bs = Object.keys(C.bySource).map(k => k + ' ' + C.bySource[k]).join(', ');
+      const probs = C.checked - C.counts.ok;
+      ph.push({ l: 'Storage', t: 'проверено ' + C.checked + ' из ' + C.total + ' (' + bs + '), доступны: ' + C.counts.ok + ' · ' + fmt(C.at), lv: probs ? 'bad' : 'ok' });
+      [['404', 'Файла нет (404)'], ['network', 'Ошибка сети'], ['timeout', 'Тайм-аут'], ['cors', 'CORS'], ['http', 'Другие HTTP']].forEach(([k, lab]) => {
+        const n = k === 'http' ? C.lists.http.length : C.counts[k];
+        if(n) ph.push({ l: lab, t: n + ': ' + C.lists[k].slice(0, 8).join('; ') + (C.lists[k].length > 8 ? '; …' : ''), lv: 'bad' });
+      });
+      if(C.counts.cors) ph.push({ l: 'К CORS', t: 'сервер отвечает, но браузер не отдаёт ответ скрипту. Если у хранилища нет разрешения для сайта, 404 тоже выглядит как CORS.', lv: 'unk' });
+    } else ph.push({ l: 'Storage', t: 'не проверялось — кнопка «Проверить облако» (фото заявок, Автосервиса и автомобиля)', lv: 'unk' });
+    prob.slice(0, 12).forEach(c => ph.push({ l: sid8(c.id), t: c.where + (c.st ? ' · ' + c.st : '') + ' — ' + c.type + '. ' + c.why + ' Копия: ' + c.copy + '; файл: ' + c.readTxt + '.' + (c.opens ? ' Откроется без интернета.' : ' Без интернета не откроется.') + ' Последняя попытка: ' + (c.last ? fmt(c.last) : 'приложение не фиксирует'), lv: c.opens ? 'warn' : 'bad' }));
+    if(prob.length > 12) ph.push({ l: '…', t: 'ещё проблемных фото: ' + (prob.length - 12) + ' (полный список — в «Копировать отчёт»)' });
+    add('photos', 'Фотографии', ph);
+
+    // ---------- 2. Firebase ----------
+    const cs = sg(() => cloudSyncStatus, null), code = sg(() => cloudLastErrorCode, ''), base = sg(() => initialCloudBaselineReady, null), wr = sg(() => cloudWritesAllowedThisSession, null);
+    const stRows = sg(() => DIAG.status(), []), syncRow = stRows.find(r => r.key === 'sync') || {}, fbRow = stRows.find(r => r.key === 'fb') || {};
+    const mine = journal.filter(e => e.ts);
+    const lastOk = (mine.find(e => e.type === 'cloud.commit.ok') || {}).ts || 0;
+    const lastErr = mine.find(e => /^(cloud\.|sync\.|firestore\.)/.test(e.type) && e.lv !== 'info');
+    const lsn = sg(() => lastSyncedNotes, new Map()), list = sg(() => notes, []);
+    let localOnly = 0, edited = 0, cloudOnly = 0;
+    const ids = new Set();
+    list.forEach(n => { if(!n || n.id == null) return; const id = String(n.id); ids.add(id); if(!lsn.has(id)) localOnly++; else if(lsn.get(id) !== (n.editedAt || n.createdAt || 0)) edited++; });
+    lsn.forEach((v, id) => { if(!ids.has(id)) cloudOnly++; });
+    const pvc = sg(() => notesPendingVersionCheck.size, 0), txn = sg(() => notesUnderTransaction.size, 0), pdel = sg(() => pendingDeletedNoteIds.length, 0);
+    const expUnsent = sg(() => expenses.filter(x => lastSyncedExpenses.get(String(x.id)) !== (x.editedAt || x.createdAt || 0)).length, null);
+    const fuelPend = sg(() => fuelDirty(), null);
+    const waiting = localOnly + edited + cloudOnly + (expUnsent || 0);
+    const fb = [];
+    fb.push({ l: 'Сеть / Firestore', t: (online === null ? 'сеть неизвестна' : online ? 'сеть есть' : 'нет сети') + ' · ' + (fbRow.text || 'нет данных'), lv: fbRow.lv || 'unk' });
+    fb.push({ l: 'Ожидают отправки', t: 'заявок: ' + (localOnly + edited) + ', на удаление в облаке: ' + (cloudOnly + pdel) + ', расходов: ' + (expUnsent == null ? '?' : expUnsent) + ', остатки дизеля: ' + (fuelPend == null ? '?' : fuelPend ? 'да' : 'нет'), lv: waiting ? 'warn' : 'ok' });
+    fb.push({ l: 'Не подтверждено сервером', t: syncRow.text || 'нет данных', lv: syncRow.lv || 'unk' });
+    fb.push({ l: 'Статус отправки', t: String(cs) + (code ? ' · код ' + code : '') + ' · база облака: ' + (base === true ? 'подтверждена' : base === false ? 'ждём' : '?') + ' · запись в сеансе: ' + (wr === false ? 'отключена' : wr === true ? 'разрешена' : '?'), lv: cs === 'error' ? 'bad' : 'ok' });
+    fb.push({ l: 'Последняя успешная', t: lastOk ? fmt(lastOk) : 'в журнале нет' });
+    fb.push({ l: 'Последняя ошибка', t: lastErr ? fmt(lastErr.ts) + ' · ' + lastErr.type + ' · ' + String(lastErr.msg || '').slice(0, 120) : 'в журнале нет', lv: lastErr ? 'warn' : 'ok' });
+    fb.push({ l: 'Локально ↔ облако', t: 'только на телефоне: ' + localOnly + '; изменены после отправки: ' + edited + '; в облаке есть, на телефоне удалены: ' + cloudOnly + ' (сравнение с последним подтверждённым списком, облако не опрашивалось)', lv: (localOnly || edited || cloudOnly) ? 'warn' : 'ok' });
+    add('sync', 'Синхронизация Firebase', fb);
+
+    // ---------- 3. Заявки ----------
+    const conf = sg(() => list.filter(n => n && n.syncConflict).length, 0);
+    const edOpen = sg(() => !!(editingNote && editorDirty()), false);
+    const confirmed = list.filter(n => n && n.id != null && lsn.get(String(n.id)) === (n.editedAt || n.createdAt || 0)).length;
+    add('notes', 'Сохранность заявок', [
+      { l: 'В памяти телефона', t: list.length + ' (активных ' + list.filter(n => n && !n.trashed && !n.archived).length + ', архив ' + list.filter(n => n && n.archived && !n.trashed).length + ', корзина ' + list.filter(n => n && n.trashed).length + ')' },
+      { l: 'Подтверждены сервером', t: confirmed + ' из ' + list.length, lv: confirmed === list.length ? 'ok' : 'warn' },
+      { l: 'Незавершённые сохранения', t: 'ждут проверки версии: ' + pvc + ', в транзакции: ' + txn + ', удаления в очереди: ' + pdel + (edOpen ? ', открыт редактор с несохранёнными правками' : ''), lv: (pvc || txn || pdel || edOpen) ? 'warn' : 'ok' },
+      { l: 'Не подтверждены облаком', t: (localOnly + edited) + ' заявок', lv: (localOnly + edited) ? 'warn' : 'ok' },
+      { l: 'Конфликты редактирования', t: String(conf), lv: conf ? 'bad' : 'ok' }
+    ]);
+
+    // ---------- 4. Локальное хранилище ----------
+    let lsOk = true, lsBytes = 0, lsKeys = 0, parseErr = '';
+    try{ lsKeys = localStorage.length; for(let i = 0; i < lsKeys; i++){ const k = localStorage.key(i); lsBytes += (k.length + (localStorage.getItem(k) || '').length) * 2; } }catch(e){ lsOk = false; }
+    try{ const raw = localStorage.getItem(sg(() => STORAGE_KEY, 'moyreys_notes_v1')); if(raw) JSON.parse(raw); }catch(e){ parseErr = String(e && e.name || 'ошибка'); }
+    let est = null; try{ if(navigator.storage && navigator.storage.estimate) est = await navigator.storage.estimate(); }catch(_){}
+    let persisted = null; try{ if(navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted(); }catch(_){}
+    let photoBytes = 0; sg(() => offlineMeta.forEach(m => { photoBytes += m.size || 0; }), null);
+    const dErr = sg(() => DIAG.storageError(), '');
+    const wFail = journal.filter(e => e.ts >= now - 7 * 86400000 && (e.type === 'photo.copy.fail' || /Не удалось сохранить/.test(e.msg || ''))).length;
+    const lq = [];
+    lq.push({ l: 'localStorage', t: lsOk ? 'доступен, ключей ' + lsKeys + ', занято ≈ ' + mb(lsBytes) + ' (обычный лимит ≈ 5 МБ)' : 'НЕДОСТУПЕН', lv: !lsOk ? 'bad' : lsBytes > 4.2 * 1048576 ? 'warn' : 'ok' });
+    lq.push({ l: 'IndexedDB', t: idb.avail ? 'доступна, копии фото ≈ ' + mb(photoBytes) + ' (лимит приложения 300 МБ)' : 'недоступна' + (idb.err ? ': ' + idb.err : ''), lv: idb.avail ? 'ok' : 'bad' });
+    lq.push({ l: 'Квота браузера', t: est && est.quota ? 'занято ' + mb(est.usage || 0) + ' из ' + mb(est.quota) + (persisted === true ? ' · хранилище защищено от очистки' : persisted === false ? ' · система может очистить при нехватке места' : '') : 'браузер не сообщает', lv: est && est.quota && (est.usage / est.quota > 0.8) ? 'warn' : 'unk' });
+    lq.push({ l: 'Чтение данных', t: parseErr ? 'ошибка разбора основного хранилища: ' + parseErr : dErr ? 'журнал: ' + dErr : 'ошибок нет', lv: (parseErr || dErr) ? 'bad' : 'ok' });
+    lq.push({ l: 'Сохранение фото', t: 'ошибок за 7 суток: ' + wFail + (sg(() => offlineWarnedWrite, false) ? '; запись копии фото не удавалась в этом сеансе' : '') + (sg(() => offlineDiag, '') ? '; причина кэша: ' + offlineDiag : ''), lv: (wFail || sg(() => offlineWarnedWrite, false)) ? 'warn' : 'ok' });
+    const q = [
+      ['загрузка фото заявок в облако', sg(() => photoPendingUpload.size, 0)], ['загрузка PDF', sg(() => pdfPendingUpload.size, 0)],
+      ['фото Автосервиса грузятся', sg(() => svcPhotoPending.size, 0)], ['удаление файлов в Storage в очереди', sg(() => pendingPhotoDeletePaths.length, 0)],
+      ['скачивание копий (заявки)', sg(() => offlineFetching.size, 0) + (sg(() => offlineWarmRunning, false) ? 1 : 0)], ['скачивание копий (Автосервис)', sg(() => svcOfflineQueue.length, 0)]
+    ];
+    const qs = q.filter(x => x[1]);
+    lq.push({ l: 'Фоновая очередь', t: qs.length ? qs.map(x => x[0] + ': ' + x[1]).join('; ') : 'пуста', lv: qs.length ? 'warn' : 'ok' });
+    add('storage', 'Локальное хранилище', lq);
+
+    // ---------- 5. Журнал ошибок ----------
+    const groups = new Map();
+    journal.filter(e => e.lv !== 'info' && e.ts >= now - 7 * 86400000).forEach(e => {
+      const key = e.type + '|' + String(e.msg || '').replace(/\d+/g, '#').slice(0, 70);
+      let g = groups.get(key); if(!g){ g = { type: e.type, src: e.src || '', msg: String(e.msg || '').slice(0, 140), n: 0, first: e.ts, last: e.ts }; groups.set(key, g); }
+      g.n++; if(e.ts < g.first) g.first = e.ts; if(e.ts > g.last) g.last = e.ts;
+    });
+    const okType = (t) => t === 'cloud.commit.fail' || /^(cloud|firestore|sync)\./.test(t) ? 'cloud.commit.ok' : /^photo\.(fetch|copy)\.fail$/.test(t) ? 'photo.copy.write' : /\.fail$/.test(t) ? t.replace(/\.fail$/, '.ok') : null;
+    const gl = Array.from(groups.values()).sort((a, b) => b.last - a.last);
+    const er = gl.slice(0, 12).map(g => {
+      const ot = okType(g.type), rec = ot ? journal.some(e => e.type === ot && e.ts > g.last) : null;
+      g.repeated = g.n > 1; g.recovered = rec;
+      return { l: fmt(g.last), t: g.type + ' · ' + g.msg + ' — повторов: ' + g.n + (rec === null ? ', успех после повтора: н/д' : rec ? ', после этого операция прошла успешно' : ', успешного повтора не видно'), lv: rec ? 'warn' : 'bad' };
+    });
+    if(!er.length) er.push({ l: '—', t: 'за 7 суток ошибок и предупреждений нет', lv: 'ok' });
+    add('errors', 'Журнал ошибок (7 суток)', er);
+    R.errorGroups = gl.slice(0, 30).map(g => ({ time: new Date(g.last).toISOString(), firstTime: new Date(g.first).toISOString(), operation: g.src || g.type, type: g.type, message: g.msg, count: g.n, repeated: g.n > 1, recoveredAfterRetry: g.recovered === undefined ? null : g.recovered }));
+    const rank = { ok: 0, unk: 1, warn: 2, bad: 3 };
+    R.worst = R.sections.reduce((a, s) => s.rows.reduce((b, r) => (rank[r.lv || 'ok'] > rank[b] ? (r.lv || 'ok') : b), a), 'ok');
+    return R;
+  }
+
+  function render(){
+    if(!last){ out.innerHTML = '<div class="dg-note" style="margin:6px 0;">Нажмите «Запустить проверку». Она только читает данные: ничего не меняет, не удаляет, не перекачивает и не запускает синхронизацию.</div>'; return; }
+    dot.className = 'dg-dot ' + (last.worst || 'unk');
+    out.innerHTML = '<div class="dg-note" style="margin:4px 0;">Проверено: ' + fmt(last.at) + '</div>' + last.sections.map(s =>
+      '<div class="dg-note" style="font-weight:700;margin:8px 0 2px;">' + esc(s.title) + '</div>' + s.rows.map(r =>
+        '<div class="dg-st" style="cursor:default;"><span class="dg-dot ' + (r.lv || 'ok') + '"></span><span class="dg-st-l" style="white-space:normal;width:92px;">' + esc(r.l) + '</span><span class="dg-st-t">' + esc(r.t) + '</span></div>').join('')).join('');
+  }
+  function reportText(){
+    if(!last) return '';
+    const lines = ['Расширенная проверка · ' + new Date(last.at).toISOString()];
+    last.sections.forEach(s => { lines.push('', '## ' + s.title); s.rows.forEach(r => lines.push('- ' + r.l + ': ' + r.t)); });
+    lines.push('', '## Проблемные фото (полный список)');
+    last.problems.forEach(p => lines.push('- ' + p.id + ' | ' + p.where + ' | ' + p.state + ' | ' + p.type + ' | ' + p.why + ' | открывается офлайн: ' + (p.opensOffline ? 'да' : 'нет') + ' | последняя попытка: ' + (p.lastAttempt || 'не фиксируется')));
+    return lines.join('\n');
+  }
+  async function run(){
+    if(busy) return; busy = true; runBtn.disabled = true; runBtn.textContent = 'Проверяю…';
+    try{ last = await collect(); }catch(e){ try{ DIAG.internalError(e); }catch(_){} last = { at: Date.now(), worst: 'warn', sections: [{ title: 'Ошибка проверки', rows: [{ l: 'Сбой', t: String(e && e.message || e).slice(0, 200), lv: 'bad' }] }], problems: [] }; }
+    window.__diagExtLast = { at: last.at, sections: last.sections, problems: last.problems, errorGroups: last.errorGroups || [], storage: cloudRes ? { at: cloudRes.at, checked: cloudRes.checked, total: cloudRes.total, counts: cloudRes.counts, bySource: cloudRes.bySource, lists: cloudRes.lists } : null };
+    busy = false; runBtn.disabled = false; runBtn.textContent = 'Запустить проверку'; render();
+  }
+  // Один адрес: HEAD без скачивания файла. Результат: ok | 404 | http (другой код) | timeout | cors | network.
+  // Если запрос не прошёл, повторяем его в режиме no-cors: ответит сервер (пусть «непрозрачно») — значит, мешал CORS; не ответит — сеть.
+  async function probeUrl(url){
+    const one = async (opts) => { const ctrl = new AbortController(), tm = setTimeout(() => ctrl.abort(), 8000); try{ return await fetch(url, Object.assign({ method: 'HEAD', signal: ctrl.signal }, opts)); } finally{ clearTimeout(tm); } };
+    try{
+      const r = await one({});
+      if(r.ok) return { k: 'ok' };
+      return r.status === 404 ? { k: '404' } : { k: 'http', code: r.status };
+    }catch(e){
+      if(e && e.name === 'AbortError') return { k: 'timeout' };
+      if(navigator.onLine === false) return { k: 'network' };
+      try{ await one({ mode: 'no-cors' }); return { k: 'cors' }; }
+      catch(e2){ return { k: e2 && e2.name === 'AbortError' ? 'timeout' : 'network' }; }
+    }
+  }
+  // Сеть — только по нажатию: фото заявок, Автосервиса и «Моего автомобиля»; не более 40 адресов, по одному, поровну из каждого раздела.
+  async function checkCloud(){
+    if(busy) return;
+    if(navigator.onLine === false){ showToast('Нет интернета — проверка облака невозможна'); return; }
+    busy = true; cloudBtn.disabled = true; cloudBtn.textContent = 'Проверяю…';
+    try{
+      const groups = { 'заявки': [], 'Автосервис': [], 'авто': [] }, seen = new Set();
+      const put = (g, id, url) => { id = String(id); if(typeof url === 'string' && /^https?:/i.test(url) && !seen.has(id)){ seen.add(id); groups[g].push({ id, url, g, miss: !sg(() => offlineKeySet.has(id), false) }); } };
+      sg(() => notes, []).forEach(n => (n && Array.isArray(n.photoIds) ? n.photoIds : []).forEach((id, i) => { if(id) put('заявки', id, (n.photos || [])[i]); }));
+      sg(() => serviceFolders, []).forEach(f => (f.items || []).forEach(it => (it.photos || []).forEach(p => { if(p && p.id != null) put('Автосервис', p.id, p.url); })));
+      sg(() => serviceCarNotes, []).forEach(en => (en.photos || []).forEach(p => { if(p && p.id != null) put('авто', p.id, p.url); }));
+      Object.keys(groups).forEach(k => groups[k].sort((a, b) => (b.miss ? 1 : 0) - (a.miss ? 1 : 0)));
+      const total = Object.keys(groups).reduce((n, k) => n + groups[k].length, 0), part = [];
+      for(let r = 0; part.length < 40 && part.length < total; r++) Object.keys(groups).forEach(k => { if(part.length < 40 && groups[k][r]) part.push(groups[k][r]); });
+      const C = { at: 0, checked: part.length, total, counts: { ok: 0, '404': 0, network: 0, timeout: 0, cors: 0, http: 0 }, lists: { '404': [], network: [], timeout: [], cors: [], http: [] }, bySource: {} };
+      part.forEach(t => { C.bySource[t.g] = (C.bySource[t.g] || 0) + 1; });
+      for(const t of part){
+        const r = await probeUrl(t.url), tag = sid8(t.id) + ' (' + t.g + ')';
+        C.counts[r.k]++;
+        if(r.k === 'http') C.lists.http.push(tag + ' HTTP ' + r.code); else if(r.k !== 'ok') C.lists[r.k].push(tag);
+      }
+      C.at = Date.now(); cloudRes = C;
+      const bad = C.checked - C.counts.ok;
+      showToast('Облако: проблем ' + bad + ' из ' + C.checked + (C.total > C.checked ? ' (проверены первые ' + C.checked + ' из ' + C.total + ')' : ''), 3500);
+    }catch(e){ showToast('Проверка облака не удалась'); }
+    busy = false; cloudBtn.disabled = false; cloudBtn.textContent = 'Проверить облако (нужна сеть)';
+    await run();
+  }
+  head.addEventListener('click', () => { open = !open; body.style.display = open ? 'block' : 'none'; tgl.textContent = open ? '▾' : '▸'; if(open) render(); });
+  runBtn.addEventListener('click', run);
+  cloudBtn.addEventListener('click', checkCloud);
+  copyBtn.addEventListener('click', () => {
+    const t = reportText(); if(!t){ showToast('Сначала запустите проверку'); return; }
+    const done = () => showToast('Отчёт скопирован');
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, () => showToast('Не удалось скопировать'));
+    else { try{ const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(); }catch(_){ showToast('Не удалось скопировать'); } }
+  });
+  render();
 })();
 
 
