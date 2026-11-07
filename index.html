@@ -1302,7 +1302,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-07 11:40 (Расширенная проверка: чтение файла, Storage по разделам)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-07 19:40 (Расширенная диагностика фото: причины ошибок)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -15729,7 +15729,79 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   const sg = (fn, d) => { try{ const v = fn(); return v === undefined ? d : v; }catch(_){ return d; } };
   const mb = (b) => (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' МБ';
   const sid8 = (id) => String(id).slice(0, 14);
-  let open = false, last = null, cloudRes = null, busy = false;
+  let open = false, last = null, cloudRes = null, busy = false, tgtCache = [];
+
+  // ---- Пассивное наблюдение за скачиванием фото (ничего не меняет в работе приложения) ----
+  // Обе обёртки вызывают оригинальную функцию с теми же аргументами и возвращают её результат без изменений;
+  // они только запоминают в памяти: «когда пытались скачать фото и чем кончилось» и «почему фото Автосервиса не поставили в очередь».
+  // Данные живут до закрытия приложения; ссылки в отчёт не попадают (только ID).
+  const A = { dl: new Map(), warm: new Map(), since: Date.now() };
+  try{
+    if(typeof offlineFetchBlob === 'function' && !offlineFetchBlob.__dgx){
+      const orig = offlineFetchBlob;
+      const wrapped = function(url){
+        let rec = null; const t0 = Date.now();
+        try{
+          rec = A.dl.get(url) || { n: 0, ok: 0, fail: 0, last: null };
+          if(!A.dl.has(url) && A.dl.size >= 300) A.dl.delete(A.dl.keys().next().value);
+          A.dl.set(url, rec); rec.n++;
+        }catch(_){ rec = null; }
+        const pr = orig.apply(this, arguments);
+        try{
+          if(rec && pr && typeof pr.then === 'function') pr.then(
+            () => { rec.ok++; rec.last = { at: Date.now(), ms: Date.now() - t0, ok: true }; },
+            (e) => { rec.fail++; let rs = ''; try{ rs = offlineFailText(e); }catch(_){ rs = String(e && e.message || e); } rec.last = { at: Date.now(), ms: Date.now() - t0, ok: false, reason: rs, status: ((/^HTTP (\d+)/.exec(e && e.message || '')) || [])[1] || '' }; }
+          );
+        }catch(_){}
+        return pr;
+      };
+      wrapped.__dgx = true; offlineFetchBlob = wrapped;
+    }
+  }catch(_){}
+  function observeWarm(photos, why){
+    if(!offlineUid || !offlineHydrated) return;                // решение будет принято при повторном вызове
+    const online = navigator.onLine !== false; let added = 0;
+    for(const p of (photos || [])){
+      if(!p || p.id == null) continue;
+      const id = String(p.id); let d;
+      if(offlineKeySet.has(id)) d = 'копия уже есть в кэше (скачивание не нужно)';
+      else if(!online) d = 'нет интернета';
+      else if(typeof p.url !== 'string' || !/^https?:/i.test(p.url)) d = 'нет ссылки Storage (фото только локально)';
+      else {
+        const fl = svcOfflineFailed.get(id);
+        if(fl && fl.uid === offlineUid && Date.now() - fl.at < SVC_WARM_RETRY_MS) d = 'пропущено: недавняя ошибка (' + fl.reason + '), повтор не раньше ' + fmt(fl.at + SVC_WARM_RETRY_MS);
+        else if(svcOfflineQueued.has(id) || offlineFetching.has(id)) d = 'уже в очереди или качается';
+        else if(added >= SVC_WARM_MAX_PER_RUN) d = 'пропущено: лимит ' + SVC_WARM_MAX_PER_RUN + ' фото за один запуск';
+        else { added++; d = 'поставлено в очередь'; }
+      }
+      A.warm.set(id, { at: Date.now(), why: String(why || ''), decision: d });
+    }
+  }
+  try{
+    if(typeof svcOfflineWarm === 'function' && !svcOfflineWarm.__dgx){
+      const o2 = svcOfflineWarm;
+      const w2 = function(photos, why){ try{ observeWarm(photos, why); }catch(_){} return o2.apply(this, arguments); };
+      w2.__dgx = true; svcOfflineWarm = w2;
+    }
+  }catch(_){}
+
+  // Безопасное описание: без токенов, ссылок, e-mail, uid и длинных идентификаторов.
+  const safe = (x) => String(x == null ? '' : x).replace(/token=[^&\s"'<>]+/gi, 'token=…').replace(/https?:\/\/\S+/gi, '[ссылка]').replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]').replace(/users\/[^\s/"']+/g, 'users/<uid>').replace(/\b[A-Za-z0-9_-]{28,}\b/g, '…').replace(/\s+/g, ' ').trim().slice(0, 140);
+  // Тип ссылки на фото — без самой ссылки и без токена; путь Storage с замаскированным uid.
+  function linkInfo(p, hasLocal){
+    if(typeof p !== 'string' || !p) return { type: hasLocal ? 'нет ссылки (фото только на телефоне, в облако не загружено)' : 'нет ссылки', token: false, path: '' };
+    if(/^data:/i.test(p)) return { type: 'data URL (base64, ещё не загружено в облако)', token: false, path: '' };
+    if(/^blob:/i.test(p)) return { type: 'blob: (временная ссылка браузера)', token: false, path: '' };
+    if(/^gs:\/\//i.test(p)) return { type: 'gs:// путь Storage (приложение такие не скачивает)', token: false, path: '' };
+    const m = p.match(/^(https?):\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/([^?#]+)(\?[^#]*)?/i);
+    if(m){
+      let path = m[2]; try{ path = decodeURIComponent(path); }catch(_){}
+      const token = /[?&]token=/.test(m[3] || ''), media = /[?&]alt=media/.test(m[3] || '');
+      return { type: 'Firebase download URL ' + (token ? '(с токеном, не показан)' : media ? '(без токена, alt=media)' : '(без токена)') + (m[1] === 'http' ? ', http без шифрования' : ''), token, path: path.replace(/^users\/[^/]+/, 'users/<uid>') };
+    }
+    if(/^https?:/i.test(p)){ let h = ''; try{ h = new URL(p).hostname; }catch(_){} return { type: 'https-ссылка не Firebase Storage (' + h + ')', token: /[?&]token=/.test(p), path: '' }; }
+    return { type: 'не ссылка: ' + (p.indexOf('/') >= 0 ? 'путь Storage без https' : 'другой формат'), token: false, path: p.indexOf('/') >= 0 ? safe(p).replace(/^users\/[^/]+/, 'users/<uid>') : '' };
+  }
 
   function idbKeys(db, uid){
     const rd = (store) => new Promise((res) => {
@@ -15757,7 +15829,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
       const st = n.trashed ? 'корзина' : n.archived ? 'архив' : 'активная';
       n.photoIds.forEach((id, i) => { if(id) items.push({ id: String(id), where: 'заявка №' + (n.number != null ? n.number : '?'), st, p: (n.photos || [])[i], svc: false }); });
     });
-    sg(() => svcOfflineEachPhoto((p, kind) => items.push({ id: String(p.id), where: kind === 'car' ? 'Мой автомобиль' : 'Автосервис', st: 'активная', p: p.url, svc: true, noUrl: !p.url })), null);
+    sg(() => svcOfflineEachPhoto((p, kind) => items.push({ id: String(p.id), where: kind === 'car' ? 'Мой автомобиль' : 'Автосервис', st: 'активная', p: p.url, svc: true, noUrl: !p.url, hasLocal: !!p.local })), null);
     const byId = new Map();
     items.forEach(it => { if(!byId.has(it.id)) byId.set(it.id, it); });
     let idb = { avail: false, storeKeys: null, metaKeys: null, err: '' };
@@ -15824,7 +15896,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
       else if(!inMem && inStore === true){ type = 'нет-метаданных'; why = 'файл в кэше есть, а записи-описания (meta) нет — счётчик его не видит'; }
       else if(!inMem && isData){ type = 'base64'; why = 'фото ещё не загружено в облако (хранится как base64), копия в кэш не записана'; }
       else if(ff.has(id)){ type = 'скачивание'; why = 'не скачалось: ' + ff.get(id); }
-      else if(!inMem && isHttp){ type = 'не-скачано'; why = 'копия ещё не скачана (очередь/нет сети)'; }
+      else if(!inMem && isHttp){ type = 'не-скачано'; why = 'копия ещё не скачана'; }
       else if(!inMem){ type = 'нет-копии'; why = 'нет ни копии, ни ссылки'; }
       else if(inStore === false){ type = 'нет-файла'; why = 'в описании кэша фото числится, а самого файла нет (счётчик считает его имеющимся)'; }
       else { type = 'ок'; why = ''; }
@@ -15832,7 +15904,61 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
     };
     const prob = [];
     byId.forEach((it, id) => { const c = classify(id); if(c.type !== 'ок') prob.push(c); });
-    R.problems = prob.map(c => ({ id: sid8(c.id), where: c.where, state: c.st, type: c.type, why: c.why, copyDetected: c.copy, fileRead: c.readTxt, opensOffline: c.opens, lastAttempt: c.last ? new Date(c.last).toISOString() : null }));
+    const wk = 7 * 86400000;
+    // Подробности по одному фото: ссылка, очередь, попытки скачивания приложением, результат диагностической проверки.
+    const facts = (c) => {
+      const id = c.id, it = byId.get(id) || {}, url = typeof it.p === 'string' ? it.p : '';
+      const li = linkInfo(it.p, it.hasLocal), isHttp = /^https?:/i.test(url), isData = /^data:image/i.test(url);
+      const fetching = sg(() => offlineFetching.has(id), false), queued = sg(() => svcOfflineQueued.has(id) || svcOfflineQueue.some(q => q.id === id), false);
+      const qState = fetching ? 'качается сейчас' : queued ? 'в очереди Автосервиса' : 'не в очереди';
+      const rec = isHttp ? A.dl.get(url) : null, sf = sg(() => svcOfflineFailed.get(id), null), nf = ff.get(id) || null;
+      const jf = journal.filter(e => e.id === id && e.type === 'photo.fetch.fail' && e.ts >= now - wk);
+      let qWhy = '';
+      if(!fetching && !queued){
+        const w = it.svc ? A.warm.get(id) : null;
+        if(c.readOk && c.inMem) qWhy = 'копия есть и читается — скачивать не нужно';
+        else if(it.svc){
+          if(w) qWhy = w.decision + ' (запуск «' + w.why + '», ' + fmt(w.at) + ')';
+          else if(!isHttp) qWhy = 'нет ссылки Storage — качать нечего';
+          else qWhy = 'не запускалось: докачка Автосервиса стартует при открытии папки или «Мой автомобиль»; в этом сеансе для этого фото её не вызывали';
+        } else if(it.st !== 'активная') qWhy = 'заявка в состоянии «' + it.st + '»: докачка идёт только для активных заявок';
+        else if(isData) qWhy = 'base64: копия сохраняется без сети (в кэш не записалась)';
+        else if(!isHttp) qWhy = 'ссылка не http(s) — приложение её не скачивает';
+        else if(c.inMem && !c.readOk) qWhy = 'приложение считает копию имеющейся (запись в кэше есть), поэтому заново не качает, хотя файл не читается';
+        else if(nf) qWhy = 'пропускается в этом сеансе: уже была ошибка (' + nf + '); повтор по нажатию на «Фото офлайн» или после перезапуска';
+        else if(navigator.onLine === false) qWhy = 'нет интернета';
+        else qWhy = 'скачивание не запускалось (ждёт запуска докачки)';
+      }
+      const lastAt = rec && rec.last ? rec.last.at : sf ? sf.at : 0;
+      const result = rec && rec.last ? (rec.last.ok ? 'успешно' : 'ошибка: ' + safe(rec.last.reason)) : sf ? 'ошибка: ' + safe(sf.reason) : nf ? 'ошибка: ' + safe(nf) : null;
+      const started = !!(rec || sf || nf);
+      const app = { started, attempts: rec ? rec.n : 0, ok: rec ? rec.ok : 0, fail: rec ? rec.fail : 0, lastAt, result, status: rec && rec.last && rec.last.status || '', journalFails7d: jf.length, journalLastAt: jf[0] ? jf[0].ts : 0, failed: !!(result && result.indexOf('ошибка') === 0) };
+      const chk = cloudRes && cloudRes.per.get(id) || null;
+      const origin = app.failed && chk && chk.k !== 'ok' ? 'при скачивании приложением и при проверке' : app.failed ? 'при скачивании приложением' : chk && chk.k !== 'ok' ? 'только при диагностической проверке' : !app.started ? 'скачивание не запускалось' : 'ошибок скачивания нет';
+      return { li, qState, qWhy, app, chk, origin };
+    };
+    prob.forEach(c => { c.f = facts(c); });
+    // Что проверять по кнопке «облако»: только проблемные фото со ссылкой Storage + до 3 контрольных исправных (по одному из раздела).
+    tgtCache = [];
+    {
+      const secOf = (w) => w === 'Мой автомобиль' ? 'авто' : w === 'Автосервис' ? 'Автосервис' : 'заявки';
+      prob.forEach(c => { const it = byId.get(c.id) || {}; if(typeof it.p === 'string' && /^https?:/i.test(it.p) && tgtCache.length < 30) tgtCache.push({ id: c.id, url: it.p, g: secOf(c.where), control: false }); });
+      const gs = new Set();
+      byId.forEach((it, id) => { if(gs.size >= 3 || typeof it.p !== 'string' || !/^https?:/i.test(it.p)) return; const g = secOf(it.where); if(gs.has(g)) return; const c = classify(id); if(c.type === 'ок' && c.readOk){ gs.add(g); tgtCache.push({ id, url: it.p, g, control: true }); } });
+    }
+    const chkTxt = (k) => !k ? 'не выполнялась' : k.k === 'ok' ? 'файл отдаётся (HTTP ' + (k.status || 200) + (k.ct ? ', ' + safe(k.ct) : '') + ')' : k.k === '404' ? 'HTTP 404 — файла в Storage нет' + apiTxt(k) : k.k === '403' ? 'HTTP 403 — доступ запрещён' + apiTxt(k) : k.k === 'http' ? 'HTTP ' + k.status + apiTxt(k) : k.k === 'cors' ? 'браузер не отдал ответ на обычный GET (CORS) — так же будет и у скачивания приложением' : k.k === 'timeout' ? 'нет ответа за 8 с' : 'нет связи с сервером';
+    const apiTxt = (k) => (k.api ? ' · ' + [k.api.status, k.api.msg ? '«' + k.api.msg + '»' : ''].filter(Boolean).join(' ') : '') + (k.sdk ? ' · эквивалент кода SDK: ' + k.sdk : '');
+    const iso = (t) => t ? new Date(t).toISOString() : null;
+    R.problems = prob.map(c => ({ id: sid8(c.id), section: c.where, state: c.st, type: c.type, why: c.why,
+      link: { kind: c.f.li.type, hasToken: c.f.li.token, pathMasked: c.f.li.path },
+      localCopy: { detected: c.copy, fileRead: c.readTxt, opensOffline: c.opens },
+      queue: { state: c.f.qState, reasonNotQueued: c.f.qWhy || null },
+      appDownload: c.f.app.started ? { startedThisSession: true, attempts: c.f.app.attempts, okCount: c.f.app.ok, failCount: c.f.app.fail, lastAt: iso(c.f.app.lastAt), result: c.f.app.result, httpStatus: c.f.app.status || null, journalErrors7d: c.f.app.journalFails7d, journalLastAt: iso(c.f.app.journalLastAt) } : { startedThisSession: false, note: 'не запускалось с ' + iso(A.since), journalErrors7d: c.f.app.journalFails7d, journalLastAt: iso(c.f.app.journalLastAt) },
+      diagnosticCheck: c.f.chk ? { at: iso(c.f.chk.at), result: c.f.chk.k, httpStatus: c.f.chk.status || null, storageApi: c.f.chk.api || null, sdkEquivalent: c.f.chk.sdk || null, method: 'GET как у приложения, только заголовки' } : null,
+      errorOrigin: c.f.origin, opensOffline: c.opens, lastAttempt: iso(c.last) }));
+    R.appDownloads = [];
+    A.dl.forEach((rec, url) => { let id = ''; byId.forEach((it, k) => { if(!id && it.p === url) id = k; }); if(id && R.appDownloads.length < 80) R.appDownloads.push({ id: sid8(id), section: (byId.get(id) || {}).where, attempts: rec.n, ok: rec.ok, fail: rec.fail, lastAt: iso(rec.last && rec.last.at), lastResult: rec.last ? (rec.last.ok ? 'успешно' : safe(rec.last.reason)) : null }); });
+    R.observedSince = iso(A.since);
     const missingLocal = Array.from(byId.keys()).filter(id => !keySet.has(id)).length;
     const metaNoFile = idb.storeKeys && idb.metaKeys ? Array.from(idb.metaKeys).filter(k => !idb.storeKeys.has(k)).length : null;
     const fileNoMeta = idb.storeKeys && idb.metaKeys ? Array.from(idb.storeKeys).filter(k => !idb.metaKeys.has(k)).length : null;
@@ -15849,17 +15975,35 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
       const open = unc.filter(id => classify(id).opens).length;
       ph.push({ l: 'Почему не ' + cnt.total + '/' + cnt.total, t: Object.keys(rs).map(k => k + ': ' + rs[k]).join('; ') + '. Читаются из кэша или base64: ' + open + ' из ' + unc.length, lv: 'warn' });
     }
+    // Ошибки: откуда они взялись — из скачивания приложением или только из диагностической проверки
+    {
+      const failedApp = prob.filter(c => c.f.app.failed), notStarted = prob.filter(c => !c.f.app.started && !c.f.app.journalFails7d);
+      const by = {}; failedApp.forEach(c => { const k = (c.f.app.status ? 'HTTP ' + c.f.app.status : safe(String(c.f.app.result || '').replace(/^ошибка:\s*/, ''))).slice(0, 60); by[k] = (by[k] || 0) + 1; });
+      ph.push({ l: 'Ошибки скачивания', t: 'приложением зафиксировано: ' + failedApp.length + (failedApp.length ? ' (' + Object.keys(by).map(k => k + ': ' + by[k]).join('; ') + ')' : '') + '; скачивание не запускалось: ' + notStarted.length + ' · наблюдение с ' + fmt(A.since) + ' (до этого — только журнал)', lv: failedApp.length ? 'bad' : 'unk' });
+      if(cloudRes){
+        const only = prob.filter(c => c.f.origin === 'только при диагностической проверке');
+        ph.push({ l: 'Только при проверке', t: only.length ? only.length + ': ' + only.slice(0, 6).map(c => sid8(c.id)).join(', ') + ' — приложение при скачивании ошибок не видело' : 'нет: все ошибки проверки подтверждены скачиванием или проверка ошибок не нашла', lv: only.length ? 'warn' : 'ok' });
+      }
+    }
     if(cloudRes){
       const C = cloudRes, bs = Object.keys(C.bySource).map(k => k + ' ' + C.bySource[k]).join(', ');
-      const probs = C.checked - C.counts.ok;
-      ph.push({ l: 'Storage', t: 'проверено ' + C.checked + ' из ' + C.total + ' (' + bs + '), доступны: ' + C.counts.ok + ' · ' + fmt(C.at), lv: probs ? 'bad' : 'ok' });
-      [['404', 'Файла нет (404)'], ['network', 'Ошибка сети'], ['timeout', 'Тайм-аут'], ['cors', 'CORS'], ['http', 'Другие HTTP']].forEach(([k, lab]) => {
-        const n = k === 'http' ? C.lists.http.length : C.counts[k];
-        if(n) ph.push({ l: lab, t: n + ': ' + C.lists[k].slice(0, 8).join('; ') + (C.lists[k].length > 8 ? '; …' : ''), lv: 'bad' });
+      const probs = C.checkedProblem - C.problemOk;
+      ph.push({ l: 'Storage', t: 'проверка как у приложения (GET, только заголовки; файл не скачивается), ' + fmt(C.at) + ': проблемных фото ' + C.checkedProblem + ' (из них отдаются ' + C.problemOk + '), контрольных исправных ' + C.checkedControl + ' (отдаются ' + C.controlOk + ') · ' + bs, lv: probs ? 'bad' : 'ok' });
+      [['404', 'Файла нет (404)'], ['403', 'Доступ закрыт (403)'], ['http', 'Другие HTTP'], ['network', 'Ошибка сети'], ['timeout', 'Тайм-аут'], ['cors', 'CORS (GET)']].forEach(([k, lab]) => {
+        if(C.lists[k].length) ph.push({ l: lab, t: C.lists[k].length + ': ' + C.lists[k].slice(0, 8).join('; ') + (C.lists[k].length > 8 ? '; …' : ''), lv: 'bad' });
       });
-      if(C.counts.cors) ph.push({ l: 'К CORS', t: 'сервер отвечает, но браузер не отдаёт ответ скрипту. Если у хранилища нет разрешения для сайта, 404 тоже выглядит как CORS.', lv: 'unk' });
-    } else ph.push({ l: 'Storage', t: 'не проверялось — кнопка «Проверить облако» (фото заявок, Автосервиса и автомобиля)', lv: 'unk' });
-    prob.slice(0, 12).forEach(c => ph.push({ l: sid8(c.id), t: c.where + (c.st ? ' · ' + c.st : '') + ' — ' + c.type + '. ' + c.why + ' Копия: ' + c.copy + '; файл: ' + c.readTxt + '.' + (c.opens ? ' Откроется без интернета.' : ' Без интернета не откроется.') + ' Последняя попытка: ' + (c.last ? fmt(c.last) : 'приложение не фиксирует'), lv: c.opens ? 'warn' : 'bad' }));
+    } else ph.push({ l: 'Storage', t: 'не проверялось — кнопка «Проверить облако»: проверяются только проблемные фото и 3 контрольных исправных, способом как у приложения', lv: 'unk' });
+    prob.slice(0, 12).forEach(c => {
+      const f = c.f, ap = f.app;
+      ph.push({ l: sid8(c.id), t: [
+        c.where + (c.st ? ' · ' + c.st : '') + ' · ' + c.type,
+        'Ссылка: ' + f.li.type + (f.li.path ? ' · ' + f.li.path : ''),
+        'Копия: ' + c.copy + '; файл: ' + c.readTxt + (c.opens ? '; откроется без интернета' : '; без интернета не откроется'),
+        'Очередь: ' + f.qState + (f.qWhy ? ' — ' + f.qWhy : ''),
+        'Скачивание приложением: ' + (ap.started ? fmt(ap.lastAt) + ' · ' + (ap.result || '—') + ' · попыток: ' + ap.attempts : 'не запускалось (с ' + fmt(A.since) + ')') + (ap.journalFails7d ? ' · в журнале за 7 суток ошибок: ' + ap.journalFails7d + ', последняя ' + fmt(ap.journalLastAt) : ''),
+        'Проверка: ' + chkTxt(f.chk),
+        'Где ошибка: ' + f.origin].join('\n'), lv: c.opens ? 'warn' : 'bad' });
+    });
     if(prob.length > 12) ph.push({ l: '…', t: 'ещё проблемных фото: ' + (prob.length - 12) + ' (полный список — в «Копировать отчёт»)' });
     add('photos', 'Фотографии', ph);
 
@@ -15951,7 +16095,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
     dot.className = 'dg-dot ' + (last.worst || 'unk');
     out.innerHTML = '<div class="dg-note" style="margin:4px 0;">Проверено: ' + fmt(last.at) + '</div>' + last.sections.map(s =>
       '<div class="dg-note" style="font-weight:700;margin:8px 0 2px;">' + esc(s.title) + '</div>' + s.rows.map(r =>
-        '<div class="dg-st" style="cursor:default;"><span class="dg-dot ' + (r.lv || 'ok') + '"></span><span class="dg-st-l" style="white-space:normal;width:92px;">' + esc(r.l) + '</span><span class="dg-st-t">' + esc(r.t) + '</span></div>').join('')).join('');
+        '<div class="dg-st" style="cursor:default;"><span class="dg-dot ' + (r.lv || 'ok') + '"></span><span class="dg-st-l" style="white-space:normal;width:92px;">' + esc(r.l) + '</span><span class="dg-st-t" style="white-space:pre-line;">' + esc(r.t) + '</span></div>').join('')).join('');
   }
   function reportText(){
     if(!last) return '';
@@ -15964,48 +16108,61 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   async function run(){
     if(busy) return; busy = true; runBtn.disabled = true; runBtn.textContent = 'Проверяю…';
     try{ last = await collect(); }catch(e){ try{ DIAG.internalError(e); }catch(_){} last = { at: Date.now(), worst: 'warn', sections: [{ title: 'Ошибка проверки', rows: [{ l: 'Сбой', t: String(e && e.message || e).slice(0, 200), lv: 'bad' }] }], problems: [] }; }
-    window.__diagExtLast = { at: last.at, sections: last.sections, problems: last.problems, errorGroups: last.errorGroups || [], storage: cloudRes ? { at: cloudRes.at, checked: cloudRes.checked, total: cloudRes.total, counts: cloudRes.counts, bySource: cloudRes.bySource, lists: cloudRes.lists } : null };
+    window.__diagExtLast = { at: last.at, observedSince: last.observedSince || null, sections: last.sections, problems: last.problems, appDownloads: last.appDownloads || [], errorGroups: last.errorGroups || [], storage: cloudRes ? { at: cloudRes.at, method: 'GET как у приложения (offlineFetchBlob), только заголовки ответа', checkedProblem: cloudRes.checkedProblem, problemOk: cloudRes.problemOk, checkedControl: cloudRes.checkedControl, controlOk: cloudRes.controlOk, counts: cloudRes.counts, bySource: cloudRes.bySource, lists: cloudRes.lists } : null };
     busy = false; runBtn.disabled = false; runBtn.textContent = 'Запустить проверку'; render();
   }
-  // Один адрес: HEAD без скачивания файла. Результат: ok | 404 | http (другой код) | timeout | cors | network.
-  // Если запрос не прошёл, повторяем его в режиме no-cors: ответит сервер (пусть «непрозрачно») — значит, мешал CORS; не ответит — сеть.
-  async function probeUrl(url){
-    const one = async (opts) => { const ctrl = new AbortController(), tm = setTimeout(() => ctrl.abort(), 8000); try{ return await fetch(url, Object.assign({ method: 'HEAD', signal: ctrl.signal }, opts)); } finally{ clearTimeout(tm); } };
+  // Проверка тем же запросом, каким скачивает приложение (offlineFetchBlob): обычный GET без дополнительных заголовков.
+  // Берём только заголовки ответа и сразу обрываем загрузку тела — файл не скачивается. Для ответа «ошибка» читаем до 2 КБ текста
+  // (у Google это короткий JSON с кодом и описанием), токены и ссылки из него вычищаются.
+  // Итог: ok | 404 | 403 | http | timeout | cors | network. Если запрос не прошёл, повторяем его в режиме no-cors:
+  // сервер ответил (пусть «непрозрачно») — значит мешал CORS; не ответил — сеть.
+  const SDK = { 401: 'storage/unauthenticated', 403: 'storage/unauthorized', 404: 'storage/object-not-found' };
+  async function readSmall(r){
     try{
-      const r = await one({});
-      if(r.ok) return { k: 'ok' };
-      return r.status === 404 ? { k: '404' } : { k: 'http', code: r.status };
+      const rd = r.body && r.body.getReader(); if(!rd) return '';
+      let txt = '', n = 0; const dec = new TextDecoder();
+      while(n < 2048){ const x = await rd.read(); if(x.done) break; n += x.value.length; txt += dec.decode(x.value, { stream: true }); }
+      try{ const cp = rd.cancel(); if(cp && cp.catch) cp.catch(() => {}); }catch(_){}
+      return txt.slice(0, 2048);
+    }catch(_){ return ''; }
+  }
+  async function probeApp(url){
+    const mk = () => { const ctrl = new AbortController(); return { ctrl, tm: setTimeout(() => ctrl.abort(), 8000) }; };
+    let g = mk();
+    try{
+      const r = await fetch(url, { signal: g.ctrl.signal });
+      if(r.ok){ const ct = r.headers.get('content-type') || ''; try{ const cp = r.body && r.body.cancel(); if(cp && cp.catch) cp.catch(() => {}); }catch(_){} return { k: 'ok', status: r.status, ct }; }
+      const txt = await readSmall(r); let api = null;
+      try{ const j = JSON.parse(txt); if(j && j.error) api = { code: j.error.code || null, status: safe(j.error.status || ''), msg: safe(j.error.message || '') }; }catch(_){ if(txt) api = { code: null, status: '', msg: safe(txt) }; }
+      return { k: r.status === 404 ? '404' : r.status === 403 ? '403' : 'http', status: r.status, api, sdk: SDK[r.status] || '' };
     }catch(e){
       if(e && e.name === 'AbortError') return { k: 'timeout' };
       if(navigator.onLine === false) return { k: 'network' };
-      try{ await one({ mode: 'no-cors' }); return { k: 'cors' }; }
+      const g2 = mk();
+      try{ await fetch(url, { method: 'HEAD', mode: 'no-cors', signal: g2.ctrl.signal }); return { k: 'cors' }; }
       catch(e2){ return { k: e2 && e2.name === 'AbortError' ? 'timeout' : 'network' }; }
-    }
+      finally{ clearTimeout(g2.tm); }
+    }finally{ clearTimeout(g.tm); }
   }
-  // Сеть — только по нажатию: фото заявок, Автосервиса и «Моего автомобиля»; не более 40 адресов, по одному, поровну из каждого раздела.
+  // Сеть — только по нажатию: проблемные фото (до 30) и до 3 контрольных исправных, по одному.
   async function checkCloud(){
     if(busy) return;
     if(navigator.onLine === false){ showToast('Нет интернета — проверка облака невозможна'); return; }
+    if(!last) await run();
     busy = true; cloudBtn.disabled = true; cloudBtn.textContent = 'Проверяю…';
     try{
-      const groups = { 'заявки': [], 'Автосервис': [], 'авто': [] }, seen = new Set();
-      const put = (g, id, url) => { id = String(id); if(typeof url === 'string' && /^https?:/i.test(url) && !seen.has(id)){ seen.add(id); groups[g].push({ id, url, g, miss: !sg(() => offlineKeySet.has(id), false) }); } };
-      sg(() => notes, []).forEach(n => (n && Array.isArray(n.photoIds) ? n.photoIds : []).forEach((id, i) => { if(id) put('заявки', id, (n.photos || [])[i]); }));
-      sg(() => serviceFolders, []).forEach(f => (f.items || []).forEach(it => (it.photos || []).forEach(p => { if(p && p.id != null) put('Автосервис', p.id, p.url); })));
-      sg(() => serviceCarNotes, []).forEach(en => (en.photos || []).forEach(p => { if(p && p.id != null) put('авто', p.id, p.url); }));
-      Object.keys(groups).forEach(k => groups[k].sort((a, b) => (b.miss ? 1 : 0) - (a.miss ? 1 : 0)));
-      const total = Object.keys(groups).reduce((n, k) => n + groups[k].length, 0), part = [];
-      for(let r = 0; part.length < 40 && part.length < total; r++) Object.keys(groups).forEach(k => { if(part.length < 40 && groups[k][r]) part.push(groups[k][r]); });
-      const C = { at: 0, checked: part.length, total, counts: { ok: 0, '404': 0, network: 0, timeout: 0, cors: 0, http: 0 }, lists: { '404': [], network: [], timeout: [], cors: [], http: [] }, bySource: {} };
-      part.forEach(t => { C.bySource[t.g] = (C.bySource[t.g] || 0) + 1; });
+      const part = tgtCache.slice();
+      const C = { at: 0, per: new Map(), checkedProblem: 0, problemOk: 0, checkedControl: 0, controlOk: 0, counts: { ok: 0, '404': 0, '403': 0, http: 0, network: 0, timeout: 0, cors: 0 }, lists: { '404': [], '403': [], http: [], network: [], timeout: [], cors: [] }, bySource: {} };
       for(const t of part){
-        const r = await probeUrl(t.url), tag = sid8(t.id) + ' (' + t.g + ')';
-        C.counts[r.k]++;
-        if(r.k === 'http') C.lists.http.push(tag + ' HTTP ' + r.code); else if(r.k !== 'ok') C.lists[r.k].push(tag);
+        const r = await probeApp(t.url); r.at = Date.now(); C.per.set(t.id, r);
+        const tag = sid8(t.id) + ' (' + t.g + ')' + (t.control ? ' контроль' : '');
+        C.counts[r.k]++; C.bySource[t.g] = (C.bySource[t.g] || 0) + 1;
+        if(t.control){ C.checkedControl++; if(r.k === 'ok') C.controlOk++; } else { C.checkedProblem++; if(r.k === 'ok') C.problemOk++; }
+        if(r.k !== 'ok') C.lists[r.k].push(tag + (r.k === 'http' ? ' HTTP ' + r.status : ''));
       }
       C.at = Date.now(); cloudRes = C;
-      const bad = C.checked - C.counts.ok;
-      showToast('Облако: проблем ' + bad + ' из ' + C.checked + (C.total > C.checked ? ' (проверены первые ' + C.checked + ' из ' + C.total + ')' : ''), 3500);
+      const bad = C.checkedProblem - C.problemOk + (C.checkedControl - C.controlOk);
+      showToast('Облако: ошибок ' + bad + ' из ' + part.length + ' проверенных', 3500);
     }catch(e){ showToast('Проверка облака не удалась'); }
     busy = false; cloudBtn.disabled = false; cloudBtn.textContent = 'Проверить облако (нужна сеть)';
     await run();
