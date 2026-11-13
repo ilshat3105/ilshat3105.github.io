@@ -443,6 +443,12 @@
   .confirm-btn.yes{background:var(--danger);color:#fff;}
   .confirm-btn.no{background:var(--concrete);color:var(--ink);}
   .confirm-btn.yes.calm{background:var(--accent);color:#fff;}
+  /* Вопрос из трёх вариантов (Сохранить / Продолжить / Выйти без сохранения): кнопки столбиком */
+  .confirm-btns.three{flex-direction:column;}
+  .confirm-btns.three .confirm-btn.yes{order:1;}
+  .confirm-btns.three .confirm-btn.no{order:2;}
+  .confirm-btns.three .confirm-btn.third{order:3;}
+  .confirm-btn.third{background:transparent;color:var(--danger);border:1.5px solid var(--danger);}
 
   .top-tabs{display:flex;gap:4px;padding:8px 16px 0;border-bottom:1px solid var(--line);flex-shrink:0;}
   .top-tab{background:none;border:none;padding:10px 4px;margin-right:20px;font-family:'Oswald',sans-serif,'Inter';
@@ -932,6 +938,9 @@
   .svc-link-main a{display:block;font-size:14.5px;font-weight:600;color:var(--accent);text-decoration:none;word-break:break-word;}
   .svc-link-main span{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
   .svc-linkadd{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+  /* «Сохранить» внизу панели пункта ТО и записи «Мой автомобиль» — закреплена под пальцем */
+  .svc-dsavebar{position:sticky;bottom:0;z-index:2;background:var(--bg);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--card-line);}
+  .svc-dsave{width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:14px 0;font-size:16px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
   .svc-file-orig{display:block;font-size:12px;color:var(--faint);word-break:break-all;margin-top:1px;}
   .svc-file-name{display:block;font-size:14.5px;font-weight:600;color:var(--accent);cursor:pointer;word-break:break-word;-webkit-tap-highlight-color:transparent;}
   .svc-carcard{margin-bottom:14px;border-color:var(--accent);}
@@ -1310,7 +1319,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-12 23:30 (Подсказки при вводе пункта в списках Автосервиса)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-14 00:03 (Сохранение: вопрос при «Назад», кнопки «Сохранить», статус облака)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1568,6 +1577,7 @@
       <div class="confirm-btns">
         <button class="confirm-btn no" id="confirmNo">Нет</button>
         <button class="confirm-btn yes" id="confirmYes">Да</button>
+        <button class="confirm-btn third" id="confirmThird" type="button" style="display:none;"></button>
       </div>
     </div>
   </div>
@@ -3600,11 +3610,19 @@ function showConfirm(text, onYes, onNo, opts){
   const noBtn = document.getElementById('confirmNo');
   // opts (необязательно): { yes, no } — подписи кнопок, { calm } — не красная «Да», { guardMs } — игнорировать «Да» первые мс
   const shownAt = Date.now();
+  // opts.third (необязательно): { label, onClick } — третья кнопка (например, «Выйти без сохранения»).
+  // Без opts.third окно ровно прежнее: две кнопки в ряд. «Назад» на открытом окне = «Нет» (как и раньше).
+  const thirdBtn = document.getElementById('confirmThird');
+  const btnRow = yesBtn.parentNode;
+  const third = opts && opts.third && thirdBtn ? opts.third : null;
   if(opts){ if(opts.yes) yesBtn.textContent = opts.yes; if(opts.no) noBtn.textContent = opts.no; if(opts.calm) yesBtn.classList.add('calm'); }
+  if(third){ thirdBtn.textContent = third.label || 'Выйти'; thirdBtn.style.display = ''; btnRow.classList.add('three'); }
   function cleanup(){
     overlay.classList.remove('show');
     yesBtn.removeEventListener('click', onYesClick);
     noBtn.removeEventListener('click', onNoClick);
+    if(thirdBtn){ thirdBtn.removeEventListener('click', onThirdClick); thirdBtn.style.display = 'none'; thirdBtn.textContent = ''; }
+    btnRow.classList.remove('three');
     yesBtn.textContent = 'Да'; noBtn.textContent = 'Нет'; yesBtn.classList.remove('calm');
   }
   function onYesClick(){
@@ -3612,8 +3630,86 @@ function showConfirm(text, onYes, onNo, opts){
     cleanup(); onYes();
   }
   function onNoClick(){ cleanup(); if(onNo) onNo(); }
+  function onThirdClick(){
+    if(opts && opts.guardMs && Date.now() - shownAt < opts.guardMs) return;
+    cleanup(); if(third && third.onClick) third.onClick();
+  }
   yesBtn.addEventListener('click', onYesClick);
   noBtn.addEventListener('click', onNoClick);
+  if(third) thirdBtn.addEventListener('click', onThirdClick);
+}
+
+// ---- Подтверждение после явного «Сохранить»: три честных состояния ----
+// «Сохранено на телефоне» — только если запись реально лежит в локальной копии (перечитываем её);
+// «✓ Синхронизировано» — только когда облако подтвердило именно эту версию записи (те же карты
+// lastSynced…, которые заполняет код синхронизации после ответа сервера). ТОЛЬКО ЧТЕНИЕ: ничего не
+// отправляет, не меняет и не ускоряет синхронизацию. kind: 'note' | 'expense' | 'car' | 'svc' (id папки ТО).
+let saveStatusWatch = null;
+function saveStatusRecord(kind, id){
+  const key = String(id);
+  const arr = kind === 'note' ? notes : kind === 'expense' ? expenses : kind === 'car' ? serviceCarNotes : kind === 'svc' ? serviceFolders : [];
+  return (arr || []).find(x => x && String(x.id) === key) || null;
+}
+function saveStatusIsSynced(kind, id){
+  const key = String(id);
+  const r = saveStatusRecord(kind, id);
+  if(!r) return false;
+  const et = r.editedAt || r.createdAt || 0;
+  if(kind === 'note'){
+    if(notesPendingVersionCheck.has(key) || notesUnderTransaction.has(key)) return false;
+    return lastSyncedNotes.get(key) === et;
+  }
+  if(kind === 'expense') return lastSyncedExpenses.get(key) === et;
+  if(kind === 'car') return lastSyncedCarNotes.get(key) === et;
+  if(kind === 'svc') return lastSyncedServiceFolders.get(key) === et;
+  return false;
+}
+function saveStatusIsLocal(kind, id){
+  try{
+    const r = saveStatusRecord(kind, id);
+    if(!r) return false;
+    const et = r.editedAt || r.createdAt || 0;
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    const field = kind === 'note' ? 'notes' : kind === 'expense' ? 'expenses' : kind === 'car' ? 'serviceCarNotes' : 'serviceFolders';
+    const list = s && Array.isArray(s[field]) ? s[field] : [];
+    if(kind === 'car' && carLocalSaveFailed) return false;
+    return list.some(x => x && String(x.id) === String(id) && (x.editedAt || x.createdAt || 0) === et);
+  }catch(e){ return false; }
+}
+// opts.quiet — первый тост («Сохранено на телефоне») не показывать: у вызывающего уже есть свой («Расход добавлен»).
+function saveStatusNotify(kind, id, opts){
+  if(saveStatusWatch){ clearInterval(saveStatusWatch.t); saveStatusWatch = null; }
+  if(id == null || !saveStatusRecord(kind, id)) return;
+  if(!saveStatusIsLocal(kind, id)){
+    showToast('Не удалось сохранить на этом телефоне — изменения пока только в памяти. Освободите место и сохраните ещё раз.', 6000);
+    return;
+  }
+  const quiet = !!(opts && opts.quiet);
+  if(saveStatusIsSynced(kind, id)){ showToast('Сохранено · ✓ синхронизировано с облаком'); return; }
+  if(!currentUID){ if(!quiet) showToast('Сохранено на телефоне'); return; }
+  if(navigator.onLine === false){
+    if(quiet) setTimeout(() => showToast('Сохранено на телефоне · отправится в облако, когда появится интернет', 3500), 2200);
+    else showToast('Сохранено на телефоне · отправится в облако, когда появится интернет', 3500);
+    return;
+  }
+  if(!quiet) showToast('Сохранено на телефоне · отправка в облако…', 2500);
+  const started = Date.now(), uid = currentUID;
+  const w = { t: null };
+  w.t = setInterval(() => {
+    if(saveStatusWatch !== w) { clearInterval(w.t); return; }
+    if(currentUID !== uid){ clearInterval(w.t); saveStatusWatch = null; return; }
+    const age = Date.now() - started;
+    if(saveStatusIsSynced(kind, id)){
+      clearInterval(w.t); saveStatusWatch = null;
+      setTimeout(() => showToast('✓ Синхронизировано с облаком'), Math.max(0, 1800 - age)); // первый тост успевает прочитаться
+      return;
+    }
+    if(age > 30000){
+      clearInterval(w.t); saveStatusWatch = null;
+      showToast('Сохранено на телефоне. Облако пока не подтвердило — отправка продолжится сама', 4000);
+    }
+  }, 700);
+  saveStatusWatch = w;
 }
 function finishCardGesture(e){
   clearTimeout(longPressTimer);
@@ -8971,8 +9067,15 @@ function presentSyncConflictChoice(note){
 // «Сохранить»: штатное сохранение (closeEditor(true)). Если оно упало с ошибкой ДО закрытия —
 // редактор остаётся открытым со всеми введёнными данными, а не закрывается с потерей.
 function editorSaveAndClose(){
+  if(!editingNote) return; // уже закрыто (двойное нажатие на «Сохранить» / «Без НДС» / «Нал»)
+  const savedRef = editingNote;
+  const hadChanges = editorDirty();
   try{
     closeEditor(true);
+    // Подтверждение — только если что-то реально сохранялось и не открыт вопрос о конфликте с другим телефоном
+    // (там пользователь сам выбирает, и запись появится только после его ответа).
+    const conflictAsked = document.getElementById('confirmOverlay').classList.contains('show');
+    if(hadChanges && !conflictAsked && savedRef && savedRef.id != null) saveStatusNotify('note', savedRef.id);
   }catch(err){
     console.warn('Не удалось сохранить заявку:', err);
     showToast('Не удалось сохранить — данные остались в редакторе, попробуйте ещё раз', 5000);
@@ -9069,8 +9172,11 @@ function editorDiscard(){
 function editorRequestExit(){
   if(!editingNote){ editorOverlay.classList.remove('show'); return; }
   if(!editorDirty()){ editorDiscard(); return; }
-  showConfirm('Выйти без сохранения изменений?', () => { editorDiscard(); }, null,
-    { yes: 'Выйти без сохранения', no: 'Продолжить редактирование', guardMs: 450 });
+  // Три варианта: «Сохранить» идёт тем же путём, что и кнопка «Сохранить» внизу (включая вопрос «без НДС / нал»);
+  // «Продолжить редактирование» (и «Назад» на самом окне) — остаёмся в заявке; «Выйти без сохранения» — как раньше.
+  showConfirm('Сохранить изменения в заявке?', () => { editorSaveRequest(); }, null,
+    { yes: 'Сохранить', calm: true, no: 'Продолжить редактирование', guardMs: 450,
+      third: { label: 'Выйти без сохранения', onClick: () => { editorDiscard(); } } });
 }
 function closeEditor(commit){
   if(!editingNote.checklist) editingNote.text = bodyInput.value;
@@ -9175,7 +9281,9 @@ document.getElementById('edUndeliverBtn').addEventListener('click', () => {
   closeEditor(true);
   showToast('Груз возвращён в «Доставляется»');
 });
-document.getElementById('editorDone').addEventListener('click', () => {
+// Кнопка «Сохранить» в редакторе и «Сохранить» в вопросе при «Назад» — одна и та же функция.
+function editorSaveRequest(){
+  if(!editingNote || !editorOverlay.classList.contains('show')) return; // повторное (двойное) нажатие после закрытия — ничего не делаем
   // Сумма указана, а способ оплаты (без НДС / нал) не отмечен — переспрашиваем,
   // чтобы не забыть проставить нужную галочку задним числом.
   if(editingNote.amount && !editingNote.noNds && !editingNote.cash){
@@ -9183,20 +9291,24 @@ document.getElementById('editorDone').addEventListener('click', () => {
     return;
   }
   editorSaveAndClose();
-});
+}
+document.getElementById('editorDone').addEventListener('click', () => { editorSaveRequest(); });
 document.getElementById('paymentTypeNoNds').addEventListener('click', () => {
+  if(!editingNote){ document.getElementById('paymentTypeOverlay').classList.remove('show'); return; } // двойное нажатие после сохранения
   editingNote.noNds = true;
   document.getElementById('noNdsCheck').checked = true;
   document.getElementById('paymentTypeOverlay').classList.remove('show');
   editorSaveAndClose();
 });
 document.getElementById('paymentTypeCash').addEventListener('click', () => {
+  if(!editingNote){ document.getElementById('paymentTypeOverlay').classList.remove('show'); return; } // двойное нажатие после сохранения
   editingNote.cash = true;
   document.getElementById('cashCheck').checked = true;
   document.getElementById('paymentTypeOverlay').classList.remove('show');
   editorSaveAndClose();
 });
 document.getElementById('paymentTypeSkip').addEventListener('click', () => {
+  if(!editingNote){ document.getElementById('paymentTypeOverlay').classList.remove('show'); return; } // двойное нажатие после сохранения
   document.getElementById('paymentTypeOverlay').classList.remove('show');
   editorSaveAndClose();
 });
@@ -10210,16 +10322,54 @@ function openExpenseSheet(id){
   document.getElementById('expDeleteBtn').style.display = entry ? 'block' : 'none';
   updateExpSaveBtnState();
   expSheetOverlay.classList.add('show');
+  expSheetBase = expSheetFormState(); // снимок полей при открытии — по нему «Назад» понимает, есть ли что терять
   setTimeout(() => expAmountInput.focus(), 150);
 }
 function closeExpenseSheet(){
   expSheetOverlay.classList.remove('show');
   editingExpenseId = null;
+  expSheetBase = null;
+}
+// Что сейчас введено в окне расхода (только чтение полей).
+let expSheetBase = null;
+function expSheetFormState(){
+  return JSON.stringify({
+    c: expSelectedCategory || null,
+    a: expAmountInput.value.trim(),
+    d: expDateInput.value,
+    l: expLitersVisible() ? expLitersInput.value.trim() : '',
+    nf: !!expNotFuel,
+    nc: expCatNewInput.style.display !== 'none' ? expCatNewInput.value.trim() : ''
+  });
+}
+function expSheetDirty(){
+  if(!expSheetOverlay.classList.contains('show') || expSheetBase == null) return false;
+  const cur = expSheetFormState();
+  if(cur === expSheetBase) return false;
+  // Новый расход без суммы, литров и названия новой категории — терять нечего (переключили категорию и передумали).
+  if(editingExpenseId == null){
+    const o = JSON.parse(cur);
+    if(!o.a && !o.l && !o.nc) return false;
+  }
+  return true;
+}
+// «Назад» (кнопка/жест) и нажатие мимо окна: нет изменений — закрываем; есть — спрашиваем.
+function expRequestClose(){
+  if(!expSheetDirty()){ closeExpenseSheet(); return; }
+  const btn = document.getElementById('expSaveBtn');
+  const isEdit = editingExpenseId != null;
+  showConfirm(isEdit ? 'Сохранить изменения в расходе?' : 'Добавить этот расход?', () => {
+    if(btn.disabled){ showToast('Расход не сохранён: проверьте сумму, дату и литры'); expAmountInput.focus(); return; }
+    btn.click(); // тот же путь, что и кнопка в окне: никакой второй логики сохранения
+  }, () => { expAmountInput.focus(); },
+  { yes: isEdit ? 'Сохранить' : 'Добавить', calm: true, no: 'Продолжить редактирование', guardMs: 450,
+    third: { label: 'Выйти без сохранения', onClick: () => { closeExpenseSheet(); } } });
 }
 expSheetOverlay.addEventListener('click', (e) => {
-  if(e.target === expSheetOverlay) closeExpenseSheet();
+  if(e.target === expSheetOverlay) expRequestClose();
 });
 document.getElementById('expSaveBtn').addEventListener('click', () => {
+  if(!expSheetOverlay.classList.contains('show')) return; // окно уже закрыто — второе быстрое нажатие не должно создать дубль
   const amount = parseExactAmount(expAmountInput.value);
   if(!expSelectedCategory || !(amount > 0)) return;
   // Литры: поле видно -> разбираем; невидимое поле (обычный расход) литры не трогает вообще.
@@ -10262,6 +10412,8 @@ document.getElementById('expSaveBtn').addEventListener('click', () => {
       if(k !== shownKey) showToast('Расход записан в месяц «' + monthNameOf(k).toLowerCase() + '»');
     }
   }catch(e){}
+  // Облако: «✓ Синхронизировано» — только после подтверждения сервера (первый тост «Расход добавлен» уже показан).
+  try{ if(savedEntry) saveStatusNotify('expense', savedEntry.id, { quiet: true }); }catch(e){}
 });
 document.getElementById('expDeleteBtn').addEventListener('click', () => {
   if(editingExpenseId == null) return;
@@ -11033,6 +11185,23 @@ function svcCloseFolder(){
   svcOpenFolderId = null;
   renderService();
 }
+// «Назад» из списка ТО / «Перед рейсом»: если в поле «Новый пункт» остался текст — не теряем его молча.
+function svcRequestCloseFolder(){
+  const input = document.getElementById('svcNewItem');
+  const txt = input ? input.value.trim() : '';
+  if(!txt){ svcCloseFolder(); return; }
+  const shown = txt.length > 40 ? txt.slice(0, 40) + '…' : txt;
+  showConfirm('Пункт «' + shown + '» не добавлен. Добавить его?', () => {
+    const f = svcFolderById(svcOpenFolderId);
+    const inp = document.getElementById('svcNewItem');
+    if(f && inp){ svcDoAddItem(); if(inp.value.trim()) return; } // не добавился — остаёмся в списке
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    svcCloseFolder();
+    showToast('Пункт добавлен');
+  }, () => { const inp = document.getElementById('svcNewItem'); if(inp) inp.focus(); },
+  { yes: 'Добавить и выйти', calm: true, no: 'Продолжить редактирование', guardMs: 450,
+    third: { label: 'Не добавлять', onClick: () => { const inp = document.getElementById('svcNewItem'); if(inp) inp.value = ''; svcCloseFolder(); } } });
+}
 function svcDoAddItem(){
   const f = svcFolderById(svcOpenFolderId);
   const input = document.getElementById('svcNewItem');
@@ -11114,7 +11283,7 @@ svcSectionEl.addEventListener('click', (e) => {
   if(carOpenBtn){ carOpenList(); return; }
   const carEntryBtn = e.target.closest('[data-car-entry]');
   if(carEntryBtn){ carOpenDetail(carEntryBtn.getAttribute('data-car-entry')); return; }
-  if(e.target.closest('[data-svc-back]')){ svcCloseFolder(); return; }
+  if(e.target.closest('[data-svc-back]')){ svcRequestCloseFolder(); return; }
   // ---- перенос пунктов в другое ТО ----
   if(e.target.closest('[data-svc-movestart]')){
     const f = svcFolderById(svcOpenFolderId);
@@ -12029,7 +12198,8 @@ function svcDetailHtml(f, it){
         <input id="svcDetLinkUrl" class="svc-dfield" inputmode="url" autocomplete="off" placeholder="Адрес ссылки">
         <button class="svc-dbtn" type="button" data-det-addlink>+ Добавить ссылку</button>
       </div>
-    </div>`;
+    </div>
+    <div class="svc-dsavebar"><button class="svc-dsave" type="button" data-det-save>Сохранить</button></div>`;
 }
 // Перерисовывает ТОЛЬКО блоки фото и ссылок — поля ввода не трогаем, чтобы не сбить набор текста.
 function svcDetailRefreshMedia(){
@@ -12151,9 +12321,41 @@ function svcDetailAddLink(){
   tIn.value = ''; uIn.value = '';
   svcDetailRefreshMedia();
 }
+// ---- «Сохранить» и «Назад» в пункте ТО (та же логика, что в «Мой автомобиль») ----
+function svcPendingLinkState(){
+  const t = document.getElementById('svcDetLinkTitle'), u = document.getElementById('svcDetLinkUrl');
+  if(!t || !u) return null;
+  const tv = t.value.trim(), uv = u.value.trim();
+  return (tv || uv) ? { t, u, tv, uv } : null;
+}
+function svcCommitPendingLink(){
+  const p = svcPendingLinkState();
+  if(!p) return true;
+  if(!p.uv){ showToast('Введите адрес ссылки или очистите подпись'); p.u.focus(); return false; }
+  svcDetailAddLink();
+  return !p.u.value.trim();
+}
+function svcSaveAndClose(){
+  if(!svcDetail) return;
+  const tg = svcDetailTarget();
+  if(!tg){ closeSvcDetail(); return; }
+  if(!svcCommitPendingLink()) return;
+  const fid = tg.f.id;
+  closeSvcDetail();
+  saveStatusNotify('svc', fid);
+}
+function svcRequestCloseDetail(){
+  const p = svcDetail ? svcPendingLinkState() : null;
+  if(!p){ closeSvcDetail(); return; }
+  showConfirm('Ссылка не добавлена. Добавить её перед выходом?', () => { svcSaveAndClose(); },
+    () => { (p.uv ? p.t : p.u).focus(); },
+    { yes: 'Добавить и выйти', calm: true, no: 'Продолжить редактирование', guardMs: 450,
+      third: { label: 'Выйти без ссылки', onClick: () => { p.t.value = ''; p.u.value = ''; closeSvcDetail(); } } });
+}
 svcDetailEl.addEventListener('click', (e) => {
   const t = e.target;
-  if(t.closest('[data-det-close]')){ closeSvcDetail(); return; }
+  if(t.closest('[data-det-close]')){ svcRequestCloseDetail(); return; }
+  if(t.closest('[data-det-save]')){ svcSaveAndClose(); return; }
   const tg = svcDetailTarget();
   if(!tg) return;
   if(t.closest('[data-det-delete]')){
@@ -12738,7 +12940,8 @@ function carDetailHtml(e){
         <input id="carDetLinkUrl" class="svc-dfield" inputmode="url" autocomplete="off" placeholder="Адрес ссылки">
         <button class="svc-dbtn" type="button" data-cdet-addlink>+ Добавить ссылку</button>
       </div>
-    </div>`;
+    </div>
+    <div class="svc-dsavebar"><button class="svc-dsave" type="button" data-cdet-save>Сохранить</button></div>`;
 }
 function carFileSizeText(n){
   if(!(n > 0)) return '';
@@ -12950,9 +13153,46 @@ function carDetailAddLink(){
   tIn.value = ''; uIn.value = '';
   carDetailRefreshMedia();
 }
+// ---- «Сохранить» и «Назад» в записи «Мой автомобиль» ----
+// Название и заметка сохраняются сами (как и раньше). Отдельного действия требует только ссылка:
+// подпись/адрес, введённые без «+ Добавить ссылку», раньше молча пропадали при выходе.
+function carPendingLinkState(){
+  const t = document.getElementById('carDetLinkTitle'), u = document.getElementById('carDetLinkUrl');
+  if(!t || !u) return null;
+  const tv = t.value.trim(), uv = u.value.trim();
+  return (tv || uv) ? { t, u, tv, uv } : null;
+}
+// true — недописанной ссылки нет или она добавлена; false — осталась в полях (неверный адрес, лимит), панель не закрываем.
+function carCommitPendingLink(){
+  const p = carPendingLinkState();
+  if(!p) return true;
+  if(!p.uv){ showToast('Введите адрес ссылки или очистите подпись'); p.u.focus(); return false; }
+  carDetailAddLink(); // прежняя функция: проверка адреса, лимит, сохранение
+  return !p.u.value.trim();
+}
+function carSaveAndClose(){
+  if(!carDetail) return; // уже закрыто — повторное нажатие ничего не делает
+  const e = carTarget();
+  if(!e){ carCloseDetail(); return; }
+  if(!carCommitPendingLink()) return;
+  const id = e.id;
+  const emptyDraft = carDraft === e && !carHasContent(e);
+  carCloseDetail();
+  if(emptyDraft){ showToast('Пустая запись не сохранена'); return; }
+  saveStatusNotify('car', id);
+}
+function carRequestClose(){
+  const p = carDetail ? carPendingLinkState() : null;
+  if(!p){ carCloseDetail(); return; }
+  showConfirm('Ссылка не добавлена. Добавить её перед выходом?', () => { carSaveAndClose(); },
+    () => { (p.uv ? p.t : p.u).focus(); },
+    { yes: 'Добавить и выйти', calm: true, no: 'Продолжить редактирование', guardMs: 450,
+      third: { label: 'Выйти без ссылки', onClick: () => { p.t.value = ''; p.u.value = ''; carCloseDetail(); } } });
+}
 carDetailEl.addEventListener('click', (ev) => {
   const t = ev.target;
-  if(t.closest('[data-det-close]')){ carCloseDetail(); return; }
+  if(t.closest('[data-det-close]')){ carRequestClose(); return; }
+  if(t.closest('[data-cdet-save]')){ carSaveAndClose(); return; }
   const e = carTarget();
   if(!e) return;
   if(t.closest('[data-cdet-delete]')){
@@ -15180,17 +15420,17 @@ const NAV_LAYERS = [
   { n:'changePass',  open:() => navFlex('changePassOverlay'),  close:() => document.getElementById('cpCancelBtn').click() },
   { n:'pdf',         open:() => navShow('pdfViewer'),          close:() => document.getElementById('pdfClose').click() },
   { n:'lightbox',    open:() => navShow('lightbox'),           close:() => document.getElementById('lbClose').click() },
-  { n:'expSheet',    open:() => navShow('expSheetOverlay'),    close:() => closeExpenseSheet() },
+  { n:'expSheet',    open:() => navShow('expSheetOverlay'),    close:() => expRequestClose() },
   { n:'svcMove',     open:() => navShow('svcMoveOverlay'),     close:() => closeSvcMovePicker() },
   { n:'svcSheet',    open:() => navShow('svcSheetOverlay'),    close:() => closeSvcSheet() },
   // Редактор: «Назад» — выход БЕЗ сохранения. Нет изменений — сразу закрывается; есть — спрашивает
   // «Выйти без сохранения изменений?». Сохраняет только кнопка «Сохранить».
   { n:'editor',      open:() => navShow('editorOverlay'),      close:() => editorRequestExit() },
-  { n:'svcDetail',   open:() => navShow('svcDetailOverlay'),   close:() => closeSvcDetail() },
-  { n:'carDetail',   open:() => navShow('svcCarDetailOverlay'),close:() => carCloseDetail() },
+  { n:'svcDetail',   open:() => navShow('svcDetailOverlay'),   close:() => svcRequestCloseDetail() },
+  { n:'carDetail',   open:() => navShow('svcCarDetailOverlay'),close:() => carRequestClose() },
   { n:'drawer',      open:() => navShow('drawer'),             close:() => { drawer.classList.remove('show'); overlay.classList.remove('show'); } },
   { n:'svcMoveMode', open:() => currentSection === 'service' && !!svcMoveCur(), close:() => { svcMove = null; renderService(); } },
-  { n:'svcFolder',   open:() => currentSection === 'service' && !!svcOpenFolderId, close:() => svcCloseFolder() },
+  { n:'svcFolder',   open:() => currentSection === 'service' && !!svcOpenFolderId, close:() => svcRequestCloseFolder() },
   { n:'carList',     open:() => currentSection === 'service' && !!carOpen, close:() => carCloseList() },
   // Архив/корзина внутри «Грузов» — один уровень назад, к обычному списку (вкладка и поиск возвращаются).
   { n:'view',        open:() => currentSection === 'notes' && view !== 'notes', close:() => {
@@ -16008,7 +16248,8 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
       const started = !!(rec || sf || nf);
       const app = { started, attempts: rec ? rec.n : 0, ok: rec ? rec.ok : 0, fail: rec ? rec.fail : 0, lastAt, result, status: rec && rec.last && rec.last.status || '', journalFails7d: jf.length, journalLastAt: jf[0] ? jf[0].ts : 0, failed: !!(result && result.indexOf('ошибка') === 0) };
       const chk = cloudRes && cloudRes.per.get(id) || null;
-      const origin = app.failed && chk && chk.k !== 'ok' ? 'при скачивании приложением и при проверке' : app.failed ? 'при скачивании приложением' : chk && chk.k !== 'ok' ? 'только при диагностической проверке' : !app.started ? 'скачивание не запускалось' : 'ошибок скачивания нет';
+      const same = app.failed && chk && chk.k !== 'ok' && app.status && chk.status && String(app.status) === String(chk.status);
+      const origin = app.failed && chk && chk.k !== 'ok' ? 'при скачивании приложением и при проверке' + (same ? ' (одна и та же причина: HTTP ' + app.status + ')' : ' (причины разные: скачивание — ' + (app.status ? 'HTTP ' + app.status : String(app.result || '').replace(/^ошибка:\s*/, '')) + ', проверка — ' + (chk.status ? 'HTTP ' + chk.status : chk.k) + ')') : app.failed ? 'при скачивании приложением' : chk && chk.k !== 'ok' ? 'только при диагностической проверке' : !app.started ? 'скачивание не запускалось' : 'ошибок скачивания нет';
       return { li, qState, qWhy, app, chk, origin };
     };
     prob.forEach(c => { c.f = facts(c); });
@@ -16047,7 +16288,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
     if(unc.length){
       const rs = {}; unc.forEach(id => { const c = classify(id); rs[c.type] = (rs[c.type] || 0) + 1; });
       const open = unc.filter(id => classify(id).opens).length;
-      ph.push({ l: 'Почему не ' + cnt.total + '/' + cnt.total, t: Object.keys(rs).map(k => k + ': ' + rs[k]).join('; ') + '. Читаются из кэша или base64: ' + open + ' из ' + unc.length, lv: 'warn' });
+      ph.push({ l: 'Почему не ' + cnt.total + '/' + cnt.total, t: Object.keys(rs).map(k => k + ': ' + rs[k]).join('; ') + '. Не хватает: ' + unc.slice(0, 5).map(id => sid8(id) + ' (' + (byId.get(id) || {}).where + ')').join(', ') + '. Читаются из кэша или base64: ' + open + ' из ' + unc.length, lv: 'warn' });
     }
     // Ошибки: откуда они взялись — из скачивания приложением или только из диагностической проверки
     {
@@ -16126,7 +16367,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
     let persisted = null; try{ if(navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted(); }catch(_){}
     let photoBytes = 0; sg(() => offlineMeta.forEach(m => { photoBytes += m.size || 0; }), null);
     const dErr = sg(() => DIAG.storageError(), '');
-    const wFail = journal.filter(e => e.ts >= now - 7 * 86400000 && (e.type === 'photo.copy.fail' || /Не удалось сохранить/.test(e.msg || ''))).length;
+    const wFail = journal.filter(e => e.ts >= now - 7 * 86400000 && (e.type === 'photo.copy.fail' || /Не удалось сохранить[^|]*фото/i.test(e.msg || ''))).length;
     const lq = [];
     lq.push({ l: 'localStorage', t: lsOk ? 'доступен, ключей ' + lsKeys + ', занято ≈ ' + mb(lsBytes) + ' (обычный лимит ≈ 5 МБ)' : 'НЕДОСТУПЕН', lv: !lsOk ? 'bad' : lsBytes > 4.2 * 1048576 ? 'warn' : 'ok' });
     lq.push({ l: 'IndexedDB', t: idb.avail ? 'доступна, копии фото ≈ ' + mb(photoBytes) + ' (лимит приложения 300 МБ)' : 'недоступна' + (idb.err ? ': ' + idb.err : ''), lv: idb.avail ? 'ok' : 'bad' });
@@ -16176,7 +16417,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
     const lines = ['Расширенная проверка · ' + new Date(last.at).toISOString()];
     last.sections.forEach(s => { lines.push('', '## ' + s.title); s.rows.forEach(r => lines.push('- ' + r.l + ': ' + r.t)); });
     lines.push('', '## Проблемные фото (полный список)');
-    last.problems.forEach(p => lines.push('- ' + p.id + ' | ' + p.where + ' | ' + p.state + ' | ' + p.type + ' | ' + p.why + ' | открывается офлайн: ' + (p.opensOffline ? 'да' : 'нет') + ' | последняя попытка: ' + (p.lastAttempt || 'не фиксируется')));
+    last.problems.forEach(p => lines.push('- ' + p.id + ' | ' + p.section + ' | ' + p.state + ' | ' + p.type + ' | ' + p.why + ' | ссылка: ' + p.link.kind + (p.link.pathMasked ? ' ' + p.link.pathMasked : '') + ' | копия: ' + p.localCopy.detected + ', файл: ' + p.localCopy.fileRead + ' | очередь: ' + p.queue.state + (p.queue.reasonNotQueued ? ' — ' + p.queue.reasonNotQueued : '') + ' | скачивание приложением: ' + (p.appDownload.startedThisSession ? p.appDownload.lastAt + ' ' + p.appDownload.result + ', попыток ' + p.appDownload.attempts : p.appDownload.note) + ' | проверка: ' + (p.diagnosticCheck ? p.diagnosticCheck.result + (p.diagnosticCheck.httpStatus ? ' HTTP ' + p.diagnosticCheck.httpStatus : '') + (p.diagnosticCheck.storageApi ? ' ' + JSON.stringify(p.diagnosticCheck.storageApi) : '') : 'не выполнялась') + ' | где ошибка: ' + p.errorOrigin + ' | откроется без интернета: ' + (p.opensOffline ? 'да' : 'нет')));
     return lines.join('\n');
   }
   async function run(){
@@ -16252,7 +16493,6 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   });
   render();
 })();
-
 
 // ---- Экспорт / импорт данных (для переноса между версиями файла) ----
 // localStorage привязан к конкретному файлу/источнику, поэтому при получении
