@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Проверка GPS-Глаз</title>
+<style>
+:root{--bg:#fff;--fg:#111827;--mut:#6b7280;--card:#f3f4f6;--ok:#047857;--bad:#b91c1c;--warn:#b45309;--line:#d1d5db}
+@media (prefers-color-scheme:dark){:root{--bg:#111827;--fg:#f3f4f6;--mut:#9ca3af;--card:#1f2937;--ok:#34d399;--bad:#f87171;--warn:#fbbf24;--line:#374151}}
+*{box-sizing:border-box}body{font:16px/1.4 system-ui,sans-serif;margin:0;padding:16px;background:var(--bg);color:var(--fg);max-width:680px;margin-inline:auto}
+h1{font-size:20px;margin:0 0 4px}p{margin:6px 0}.mut{color:var(--mut);font-size:14px}
+input,button{font:inherit;padding:12px;margin:4px 0;width:100%;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+button{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600}button:disabled{opacity:.5}button.sec{background:var(--card);color:var(--fg);border-color:var(--line)}
+.box{background:var(--card);border-radius:10px;padding:10px 12px;margin:10px 0}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+pre{white-space:pre-wrap;word-break:break-word;font-size:12.5px;margin:0}
+</style></head><body>
+<h1>Проверка GPS-Глаз</h1>
+<p class="mut">Служебная страница, только чтение. Пароль и ключ GPS-Глаз здесь не вводятся: ключ хранится только на сервере, а вход берётся из приложения «В рейсе».</p>
+<div id="auth" class="box">Проверяю вход…</div>
+<input id="tid" inputmode="numeric" autocomplete="off" placeholder="tracker_id (оставьте пустым при первой проверке)">
+<input id="mo" autocomplete="off" placeholder="Месяц ГГГГ-ММ (пусто — текущий)">
+<button id="go" disabled>Проверить GPS-Глаз</button>
+<button id="cp" class="sec" disabled>Скопировать результат</button>
+<div id="sum"></div>
+<div class="box"><pre id="out">Ожидание.</pre></div>
+<p class="mut">В копируемом тексте скрыты токены, ключи, адреса почты, UID и координаты. Одна проверка делает несколько запросов к GPS-Глаз; не чаще раза в 30 секунд и не больше 20 раз в сутки.</p>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script>
+(function(){
+'use strict';
+var PAGE_VERSION='gps-probe 2026-11-14 16:00';
+var FN_URL='https://us-central1-v-reyse.cloudfunctions.net/gpsGlazProbe';
+firebase.initializeApp({
+    apiKey: "AIzaSyAVcifT9Ip69CSuSt_8naJHr4ZbplOMtgI",
+    authDomain: "v-reyse.firebaseapp.com",
+    projectId: "v-reyse",
+    storageBucket: "v-reyse.firebasestorage.app",
+    messagingSenderId: "200272195894",
+    appId: "1:200272195894:web:6139f885fb49e0e747c397"
+  });
+var $=function(i){return document.getElementById(i);};
+var user=null, lastText='', busy=false;
+
+// Только отображение/копирование: убираем секреты и персональные данные.
+function scrub(v,key){
+  if(v==null) return v;
+  if(typeof v==='string'){
+    if(/^(lat|lng|lon|latitude|longitude)$/i.test(key||'')) return '[скрыто]';
+    return v.replace(/eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,}/g,'[токен]')
+            .replace(/AIza[\w-]{20,}/g,'[ключ]')
+            .replace(/Bearer\s+\S+/gi,'Bearer [скрыто]')
+            .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g,'[почта]')
+            .replace(/[A-Za-z0-9_-]{36,}/g,'[скрыто]');
+  }
+  if(typeof v==='number'&&/^(lat|lng|lon|latitude|longitude)$/i.test(key||'')) return '[скрыто]';
+  if(Array.isArray(v)) return v.map(function(x){return scrub(x,key);});
+  if(typeof v==='object'){var o={};Object.keys(v).forEach(function(k){o[k]=scrub(v[k],k);});return o;}
+  return v;
+}
+function mask(s){return s&&s.length>8?s.slice(0,3)+'…'+s.slice(-3):'[скрыто]';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+firebase.auth().onAuthStateChanged(function(u){
+  user=u;
+  if(u){
+    $('auth').innerHTML='<span class="ok">Вход выполнен</span> (идентификатор '+esc(mask(u.uid))+'). Токен будет получен автоматически.';
+    $('go').disabled=busy; 
+  }else{
+    $('auth').innerHTML='<span class="bad">Вход не найден.</span> Откройте приложение «В рейсе» на vreyse.ru <b>в этом же браузере</b>, войдите в аккаунт, затем обновите эту страницу. (Приложение, установленное на экран «Домой» в iPhone, хранит вход отдельно от Safari.)';
+    $('go').disabled=true;
+  }
+});
+
+function human(status,body){
+  var m={401:'Сервер не принял вход (401). Войдите в приложение заново и повторите.',
+         403:'Нет доступа (403): UID этого аккаунта не совпадает с GPS_ALLOWED_UID на сервере, либо параметр не задан.',
+         400:'Сервер отклонил параметры (400): '+(body&&body.error||''),
+         413:'Запрос слишком большой (413).',
+         429:'Лимит проверок (429): '+(body&&body.error||'подождите 30 секунд'),
+         500:'Внутренняя ошибка функции (500). Подробности — в журнале Cloud Functions.'};
+  return m[status]||('Ответ сервера: HTTP '+status);
+}
+function renderSummary(j){
+  var h='';
+  if(!j||typeof j!=='object'){$('sum').innerHTML='';return;}
+  if(j.error){$('sum').innerHTML='<div class="box bad">'+esc(j.error)+'</div>';return;}
+  if(j.range) h+='<div class="box"><b>Период:</b> '+esc(j.range.from)+' — '+esc(j.range.to)+' ('+esc(j.range.tz)+')'+(j.range.isCurrent?' · месяц ещё идёт':'')+'</div>';
+  if(j.trackerList){var tl=j.trackerList;h+='<div class="box"><b>Список трекеров:</b> '+(tl.success?'<span class="ok">получен</span>':'<span class="bad">ошибка</span> '+esc(JSON.stringify(scrub(tl.error))))+'</div>';}
+  if(j.trackers&&j.trackers.length){h+='<div class="box"><b>Трекеры</b><table><tr><th>tracker_id</th><th>Название</th><th>Модель</th></tr>'+j.trackers.map(function(t){return '<tr><td>'+esc(t.id)+'</td><td>'+esc(scrub(t.label))+'</td><td>'+esc(t.model||'')+'</td></tr>';}).join('')+'</table></div>';}
+  if(j.note) h+='<div class="box warn">'+esc(j.note)+'</div>';
+  if(j.variants){h+='<div class="box"><b>Маршруты за период</b><table><tr><th>Вариант</th><th>Маршр.</th><th>Км</th><th>Прим.</th></tr>'+Object.keys(j.variants).map(function(k){var v=j.variants[k];return '<tr><td>'+esc(k)+'</td><td>'+(v.success?esc(v.counted+'/'+v.tracks):'—')+'</td><td>'+(v.success?esc(v.totalKm):'—')+'</td><td>'+(v.success?(v.needsReview?'<span class="warn">проверить</span>':'<span class="ok">ок</span>'):'<span class="bad">'+esc(JSON.stringify(scrub(v.error)))+'</span>')+'</td></tr>';}).join('')+'</table></div>';}
+  if(j.verdict){var c=j.verdict.status==='ok'?'ok':(j.verdict.status==='needs_review'?'warn':'bad');h+='<div class="box"><b>Вывод:</b> <span class="'+c+'">'+esc(j.verdict.status)+'</span>'+(j.verdict.monthlyKm!=null?' · '+esc(j.verdict.monthlyKm)+' км':'')+(j.verdict.reasons&&j.verdict.reasons.length?'<br>'+esc(j.verdict.reasons.join('; ')):'')+'</div>';}
+  if(j.lastPoint){var p=j.lastPoint;h+='<div class="box"><b>Последняя точка GPS:</b> '+(p.success?(p.hasPoint?'<span class="ok">получена</span>, время '+esc(p.gpsTime||'не указано')+' (координаты скрыты)':'<span class="warn">данных нет</span>'):'<span class="bad">ошибка</span> '+esc(JSON.stringify(scrub(p.error))))+'</div>';}
+  $('sum').innerHTML=h;
+}
+
+$('go').onclick=async function(){
+  if(!user||busy) return;
+  busy=true;$('go').disabled=true;$('cp').disabled=true;$('sum').innerHTML='';$('out').textContent='Проверяю…';
+  var ctl=new AbortController(),to=setTimeout(function(){ctl.abort();},85000);
+  try{
+    var token=await user.getIdToken();
+    var body={};var t=$('tid').value.trim(),m=$('mo').value.trim();
+    if(t) body.trackerId=t; if(m) body.month=m;
+    var r=await fetch(FN_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body),signal:ctl.signal});
+    token=null;
+    var j=null;try{j=await r.json();}catch(e){j={error:'Ответ не в формате JSON'};}
+    var safe=scrub(j);
+    renderSummary(safe);
+    var head='Проверка GPS-Глаз · '+PAGE_VERSION+' · '+new Date().toISOString()+'\nHTTP '+r.status+(r.ok?'':' — '+human(r.status,j))+'\n';
+    lastText=head+JSON.stringify(safe,null,2);
+    $('out').textContent=lastText;
+  }catch(e){
+    var msg=e&&e.name==='AbortError'?'Нет ответа за 85 секунд.':'Нет связи с сервером или запрос заблокирован (проверьте интернет и то, что страница открыта на vreyse.ru).';
+    lastText='Проверка GPS-Глаз · '+PAGE_VERSION+' · '+new Date().toISOString()+'\n'+msg;
+    $('sum').innerHTML='<div class="box bad">'+esc(msg)+'</div>';$('out').textContent=lastText;
+  }finally{clearTimeout(to);busy=false;$('go').disabled=!user;$('cp').disabled=!lastText;}
+};
+$('cp').onclick=function(){
+  var t=lastText;if(!t)return;
+  function done(){$('cp').textContent='Скопировано';setTimeout(function(){$('cp').textContent='Скопировать результат';},1500);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,fallback);}else fallback();
+  function fallback(){var a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy');done();}catch(e){alert('Не удалось скопировать: выделите текст вручную.');}document.body.removeChild(a);}
+};
+})();
+</script></body></html>
