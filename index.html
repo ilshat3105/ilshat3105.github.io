@@ -649,13 +649,6 @@
   .msb-t b{font-size:14px;color:var(--ink);font-weight:600;}
   .msb-x{background:none;border:none;color:var(--faint);font-size:16px;line-height:1;padding:10px 12px;cursor:pointer;}
   .fuel-sync-line.err{color:var(--danger);font-weight:600;cursor:pointer;}
-  .fuel-grp{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 0;padding-top:8px;border-top:1px solid var(--card-line);min-height:30px;font-size:11.5px;font-weight:700;color:var(--faint);letter-spacing:.04em;text-transform:uppercase;}
-  .fuel-grp.first{border-top:0;margin-top:0;padding-top:0;min-height:0;}
-  .fuel-btn{font:inherit;font-size:12.5px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--accent);background:transparent;border:1px solid var(--card-line);border-radius:999px;padding:4px 10px;min-height:28px;cursor:pointer;}
-  .fuel-btn:disabled{opacity:.55;cursor:default;}
-  .fuel-row .fuel-val.dim{opacity:.55;}
-  .fuel-row .fuel-val.mut{color:var(--muted);font-weight:600;font-size:13.5px;white-space:normal;}
-  .fuel-row .fuel-sub.warn{color:var(--warning);font-weight:600;}
   .exp-sheet-actions{display:flex;gap:10px;}
   .exp-delete-btn{flex:0 0 auto;background:var(--surface);border:1.5px solid #f28b82;color:#c5221f;
     border-radius:12px;padding:13px 18px;font-size:14.5px;font-weight:700;cursor:pointer;
@@ -1267,7 +1260,7 @@
 
   <main id="main">
     <div class="ptr-indicator" id="ptrIndicator"><div class="spinner"></div></div>
-    <div class="msb" id="monthStartBanner" role="button" aria-label="Начался новый месяц: запишите остаток топлива"><div class="msb-t"><b>Начался новый месяц</b><span>Запишите остаток топлива на начало и пробег.</span></div><button type="button" class="msb-x" id="monthStartBannerX" aria-label="Скрыть до завтра">✕</button></div>
+    <div class="msb" id="monthStartBanner" role="button" aria-label="Начался новый месяц: запишите остаток топлива и пробег"><div class="msb-t"><b>Начался новый месяц</b><span>Запишите остаток топлива на начало и пробег.</span></div><button type="button" class="msb-x" id="monthStartBannerX" aria-label="Скрыть до завтра">✕</button></div>
     <div class="cargo-toggle" id="cargoToggle" style="display:none;">
       <button type="button" class="cargo-btn active" data-cargo="active">Доставляется</button>
       <button type="button" class="cargo-btn" data-cargo="delivered">Доставлено</button>
@@ -1332,7 +1325,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-15 20:50 (Напоминание о начале месяца на главной)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-15 21:10 (Ручной пробег в блоке топлива, напоминание о начале месяца; GPS убран)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -9405,8 +9398,8 @@ let expSelectedCategory = null;
 // «Грузы»: два списка — «Доставляется» (delivered !== true) и «Доставлено» (delivered === true). Один груз — только в одном.
 function cargoDeliveredActive(){ return currentSection === 'notes' && view === 'notes' && cargoTab === 'delivered'; }
 // Показывает/прячет переключатель и нужный список (только для раздела «Грузы»).
-// Напоминание на главной: месяц начался, а остаток топлива на начало ещё не записан (и не взят из конца прошлого месяца).
-// Закрытие крестиком прячет его до завтра; запись остатка убирает насовсем. Расчёты и данные не затрагиваются.
+// Напоминание на главной: месяц начался, а остаток топлива или пробег на начало ещё не записаны (и не взяты из конца прошлого месяца).
+// Закрытие крестиком прячет его до завтра; запись значений убирает насовсем. Расчёты и данные не затрагиваются.
 const MSB_KEY = 'vreyse_month_start_banner_v1';
 function msbToday(){ const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
 function msbDismissed(key){ try{ const o = JSON.parse(localStorage.getItem(MSB_KEY) || 'null'); return !!(o && o.k === key && o.d === msbToday()); }catch(e){ return false; } }
@@ -9416,7 +9409,8 @@ function monthStartBannerUpdate(){
   try{
     if(currentUID && currentSection === 'notes' && view === 'notes'){
       const key = computeExpenseMonth(0).key;
-      show = fuelMonthData(key).start == null && !msbDismissed(key);
+      const d = fuelMonthData(key);
+      show = (d.start == null || d.odoStart == null) && !msbDismissed(key);
     }
   }catch(e){ show = false; }
   el.style.display = show ? 'flex' : 'none';
@@ -9440,9 +9434,13 @@ document.getElementById('monthStartBanner').addEventListener('click', (e) => {
     try{ localStorage.setItem(MSB_KEY, JSON.stringify({ k: computeExpenseMonth(0).key, d: msbToday() })); }catch(err){}
     monthStartBannerUpdate(); return;
   }
-  viewedExpMonthOffset = 0;                                   // открываем «Расходы» на текущем месяце, к блоку остатков
+  viewedExpMonthOffset = 0;                                   // открываем «Расходы» на текущем месяце, к блоку остатков и пробега
   const tab = document.querySelector('.top-tab[data-section="fuel"]'); if(tab) tab.click();
-  setTimeout(() => { const inp = document.getElementById('fuelStartIn'); const blk = document.getElementById('expFuelBlock'); if(blk && blk.scrollIntoView) blk.scrollIntoView({ block: 'center' }); if(inp) inp.focus(); }, 60);
+  setTimeout(() => {
+    const blk = document.getElementById('expFuelBlock'); if(blk && blk.scrollIntoView) blk.scrollIntoView({ block: 'center' });
+    const inp = ['fuelStartIn', 'odoStartIn', 'odoEndIn'].map(id => document.getElementById(id)).find(i => i && !i.value);
+    if(inp) inp.focus();
+  }, 60);
 });
 document.addEventListener('visibilitychange', () => { if(!document.hidden) diagSafe(monthStartBannerUpdate); });
 document.getElementById('cargoToggle').addEventListener('click', (e) => {
@@ -9838,6 +9836,26 @@ function fuelNum(v){ return (typeof v === 'number' && isFinite(v) && v >= 0 && v
 // (поэтому правка начала на одном телефоне и конца на другом не затирают друг друга); et = max(ts, te) — прежнее поле
 // формата (его понимают и старые версии, и записи без ts/te, созданные ими, читаются как «обе половины правились в et»).
 function fuelTime(v){ return (typeof v === 'number' && isFinite(v) && v >= 0) ? v : 0; }
+// ---- Ручной пробег (показания одометра): те же записи месяца, но поля добавляются ТОЛЬКО когда пробег введён: ms/me — показание на начало/конец, tms/tme — время правки.
+// Пока пробег нигде не вводился, запись месяца выглядит ровно так же, как раньше (в облако уходит то же самое).
+const ODO_MAX = 9999999;
+function odoNum(v){ return (typeof v === 'number' && isFinite(v) && v >= 0 && v <= ODO_MAX) ? Math.round(v) : null; }
+function odoParse(str){
+  const t = String(str == null ? '' : str).replace(/\s+/g, '').replace(/,/g, '.');
+  if(t === '') return { ok: true, value: null };
+  if(!/^\d+(\.\d+)?$/.test(t)) return { ok: false, value: null };
+  const v = Math.round(parseFloat(t));
+  if(!isFinite(v) || v > ODO_MAX) return { ok: false, value: null };
+  return { ok: true, value: v };
+}
+function odoFmt(n){ return Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' км'; }
+function odoPart(x){
+  const o = {}; if(!x) return o;
+  const ms = odoNum(x.ms), tms = fuelTime(x.tms), me = odoNum(x.me), tme = fuelTime(x.tme);
+  if(ms != null || tms > 0){ o.ms = ms; o.tms = tms; }
+  if(me != null || tme > 0){ o.me = me; o.tme = tme; }
+  return o;
+}
 function fuelSanitizeMap(m){
   const out = {};
   if(!m || typeof m !== 'object' || Array.isArray(m)) return out;
@@ -9848,14 +9866,14 @@ function fuelSanitizeMap(m){
     const et = fuelTime(x.et);
     let ts = fuelTime(x.ts), te = fuelTime(x.te);
     if(et > Math.max(ts, te)){ ts = et; te = et; }   // запись старого формата или правка старой версией
-    out[k] = { s: fuelNum(x.s), e: fuelNum(x.e), ts, te, et: Math.max(ts, te) };
+    out[k] = Object.assign({ s: fuelNum(x.s), e: fuelNum(x.e), ts, te, et: Math.max(ts, te) }, odoPart(x));
   });
   return out;
 }
 // Канонический вид (ключи и поля по порядку) — чтобы сравнение JSON не видело «изменений» там, где их нет.
 function fuelCanon(m){
   const o = {};
-  Object.keys(m).sort().forEach(k => { o[k] = { s: m[k].s, e: m[k].e, ts: m[k].ts, te: m[k].te, et: m[k].et }; });
+  Object.keys(m).sort().forEach(k => { o[k] = Object.assign({ s: m[k].s, e: m[k].e, ts: m[k].ts, te: m[k].te, et: m[k].et }, odoPart(m[k])); });
   return o;
 }
 function fuelJSON(m){ return JSON.stringify(fuelCanon(fuelSanitizeMap(m))); }
@@ -9876,7 +9894,11 @@ function fuelMergeMaps(a, b){
     if(!x){ out[k] = Object.assign({}, y); return; }
     if(!y){ out[k] = Object.assign({}, x); return; }
     const s = fuelPick(x.s, x.ts, y.s, y.ts), e = fuelPick(x.e, x.te, y.e, y.te);
-    out[k] = { s: s[0], e: e[0], ts: s[1], te: e[1], et: Math.max(s[1], e[1]) };
+    const ent = { s: s[0], e: e[0], ts: s[1], te: e[1], et: Math.max(s[1], e[1]) };
+    const ox = odoPart(x), oy = odoPart(y);
+    if('ms' in ox || 'ms' in oy){ const p = fuelPick('ms' in ox ? ox.ms : null, ox.tms || 0, 'ms' in oy ? oy.ms : null, oy.tms || 0); ent.ms = p[0]; ent.tms = p[1]; }
+    if('me' in ox || 'me' in oy){ const p = fuelPick('me' in ox ? ox.me : null, ox.tme || 0, 'me' in oy ? oy.me : null, oy.tme || 0); ent.me = p[0]; ent.tme = p[1]; }
+    out[k] = ent;
   });
   return out;
 }
@@ -9992,19 +10014,34 @@ function fuelMonthData(key){
     consumed = fuelRound(start + fuelled - end);
     if(consumed < 0){ status = 'impossible'; consumed = null; }
   }
-  return { fuelled, known, missing, start, startFromPrev, end, consumed, status };
+  // Пробег (вручную): начало = конец прошлого месяца, если он введён, иначе своё; за месяц = конец − начало
+  const prevOe = prev ? odoNum(prev.me) : null;
+  const odoStart = prevOe != null ? prevOe : (own ? odoNum(own.ms) : null);
+  const odoEnd = own ? odoNum(own.me) : null;
+  let km = null, kmStatus = 'insufficient';
+  if(odoStart != null && odoEnd != null){ if(odoEnd >= odoStart){ km = odoEnd - odoStart; kmStatus = 'ok'; } else kmStatus = 'impossible'; }
+  return { fuelled, known, missing, start, startFromPrev, end, consumed, status, odoStart, odoStartFromPrev: prevOe != null, odoEnd, km, kmStatus };
 }
 // Запись остатка месяца. field: 's' | 'e'. value: число >= 0 или null (очистить).
 function fuelSetBalance(key, field, value){
   const now = Date.now();
   const old = fuelBalances[key] || { s: null, e: null, ts: 0, te: 0, et: 0 };
-  const ent = { s: old.s, e: old.e, ts: old.ts, te: old.te, et: old.et };
-  const tk = field === 's' ? 'ts' : 'te';
+  const ent = Object.assign({}, old);
+  const tk = { s: 'ts', e: 'te', ms: 'tms', me: 'tme' }[field];
   ent[field] = value;
   ent[tk] = Math.max(now, (old[tk] || 0) + 1);   // строго новее прежней отметки этого поля
-  ent.et = Math.max(ent.ts, ent.te);
+  ent.et = Math.max(ent.ts || 0, ent.te || 0);   // et — прежнее поле формата: пробег в него не входит
   fuelBalances[key] = ent;
   let note = '';
+  // Пробег: конец месяца = начало следующего (то же правило, что у остатка)
+  if(field === 'me'){
+    const nk = fuelNextKey(key);
+    const nx = fuelBalances[nk];
+    if(nx && nx.ms != null && value != null){
+      if(nx.ms !== value) note = 'Пробег на начало месяца «' + monthNameOf(nk).toLowerCase() + '» теперь ' + odoFmt(value) + ' (было введено вручную ' + odoFmt(nx.ms) + ')';
+      fuelBalances[nk] = Object.assign({}, nx, { ms: null, tms: Math.max(now, (nx.tms || 0) + 1) });
+    }
+  }
   // Конец месяца становится началом следующего: вручную введённое начало следующего месяца больше не нужно
   // (иначе остались бы два разных значения для одной границы).
   if(field === 'e'){
@@ -10013,190 +10050,11 @@ function fuelSetBalance(key, field, value){
     if(nx && nx.s != null && value != null){
       if(Math.abs(nx.s - value) > 0.005) note = 'Начало месяца «' + monthNameOf(nk).toLowerCase() + '» теперь ' + fuelFmt(value) + ' (было введено вручную ' + fuelFmt(nx.s) + ')';
       const nts = Math.max(now, (nx.ts || 0) + 1);
-      fuelBalances[nk] = { s: null, e: nx.e, ts: nts, te: nx.te, et: Math.max(nts, nx.te || 0) };
+      fuelBalances[nk] = Object.assign({}, nx, { s: null, ts: nts, et: Math.max(nts, nx.te || 0) });
     }
   }
   saveState();
   return note;
-}
-// ---- GPS-Глаз: пробег за месяц в блоке «Топливо и пробег за месяц» ----
-// Ключ GPS-Глаз здесь не хранится: запрос идёт в Cloud Function gpsGlazProbe с ID-токеном вошедшего пользователя.
-// Результат хранится только на этом телефоне (localStorage), в Firestore и в данные заявок/расходов/топлива не пишется.
-const GPS_FN_URL = 'https://us-central1-v-reyse.cloudfunctions.net/gpsGlazProbe';
-const GPS_TRACKER_ID = '2968905';
-const GPS_VARIANT = 'filter_true';              // вариант расчёта: 'filter_true' (без коротких поездок) или 'filter_false' (все маршруты). НЕ ПОДТВЕРЖДЁН сверкой на одинаковых датах с отчётом GPS-Глаз
-const GPS_LS_KEY = 'vreyse_gps_mileage_v1';
-const GPS_STALE_MS = 5 * 60 * 1000;             // текущий месяц: при открытии раздела спрашиваем сервер, если последний ответ старше 5 минут (реальный запрос к GPS-Глаз сервер делает сам, не чаще раза в 30 минут)
-const GPS_MIN_GAP_MS = 10 * 1000;               // между обращениями к серверу не меньше 10 с
-const GPS_AUTO_RETRY_MS = 5 * 60 * 1000;        // после ошибки автоповтор не чаще раза в 5 минут
-const GPS_BUSY_RETRY_MS = 45 * 1000;            // другой телефон обновляет данные — спросим снова через 45 с
-const GPS_RATE_RETRY_MS = 30 * 1000;            // «слишком часто» — повтор через 30 с
-let gpsState = { inflight: null, lastTryAt: 0, lastErr: null, blockAuto: false };
-let gpsStore = null;                            // { uid, months: { '2026-11': {...} } }
-function gpsKeyIso(key){ const p = String(key).split('-'); return p[0] + '-' + String(p[1]).padStart(2, '0'); }
-function gpsLoad(){
-  if(gpsStore && gpsStore.uid === currentUID) return gpsStore;
-  let o = null;
-  try{ o = JSON.parse(localStorage.getItem(GPS_LS_KEY) || 'null'); }catch(e){ o = null; }
-  gpsStore = (o && o.uid === currentUID && o.months && typeof o.months === 'object') ? o : { uid: currentUID, months: {} };
-  return gpsStore;
-}
-function gpsSave(){ try{ localStorage.setItem(GPS_LS_KEY, JSON.stringify(gpsStore)); }catch(e){} }
-function gpsRec(key){
-  if(!currentUID) return null;
-  const r = gpsLoad().months[gpsKeyIso(key)];
-  return (r && Number.isFinite(r.km) && Number.isFinite(r.at)) ? r : null;
-}
-function gpsPad(n){ return String(n).padStart(2, '0'); }
-function gpsFmtAt(ts){
-  const d = new Date(ts), now = new Date();
-  return gpsPad(d.getDate()) + '.' + gpsPad(d.getMonth() + 1) + (d.getFullYear() !== now.getFullYear() ? '.' + d.getFullYear() : '') + ', ' + gpsPad(d.getHours()) + ':' + gpsPad(d.getMinutes());
-}
-function gpsFmtKm(n){ return Math.round(n).toLocaleString('ru-RU') + ' км'; }
-function gpsFmtTo(str){   // 'ГГГГ-ММ-ДД ЧЧ:ММ:СС' → 'ДД.ММ ЧЧ:ММ'
-  const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(String(str || ''));
-  return m ? m[3] + '.' + m[2] + ' ' + m[4] + ':' + m[5] : '';
-}
-function gpsCurKey(){ const n = new Date(); return n.getFullYear() + '-' + (n.getMonth() + 1); }
-const GPS_ERR_TEXT = {
-  offline: 'нет связи с интернетом', net: 'GPS-Глаз недоступен', server: 'GPS-Глаз вернул ошибку', api: 'GPS-Глаз вернул ошибку',
-  denied: 'нет доступа к GPS-Глаз для этого аккаунта', rate: 'слишком частые запросы — подождите полминуты',
-  param: 'период недоступен для запроса', tracker: 'трекер не найден в GPS-Глаз', noauth: 'нужен вход в аккаунт',
-  busy: 'Данные обновляются на другом устройстве', cap: 'суточный предел запросов к GPS-Глаз исчерпан', blocked: 'устройство заблокировано в GPS-Глаз', span: 'слишком большой период'
-};
-function gpsFail(key, kind, status){
-  gpsState.lastErr = { key: gpsKeyIso(key), kind, status: status || null, at: Date.now() };
-  if(kind === 'denied' || kind === 'param' || kind === 'tracker' || kind === 'noauth') gpsState.blockAuto = true;   // сами не повторяем
-  diagSafe(() => DIAG.log('gps.sync.fail', 'warn', 'gps:fetch', { now: true, msg: 'GPS-Глаз: пробег не получен (' + kind + (status ? ', HTTP ' + status : '') + ')', d: { kind, status: status || null } }));
-}
-// Ответ прежней версии функции (режим проверки): километры берутся из варианта «без коротких поездок» (filter_true_split_true), как в отчёте GPS-Глаз.
-// Общего серверного кэша в ней нет: время получения — время этого запроса.
-function gpsLegacyNorm(j, iso){
-  const v = j && j.variants && j.variants.filter_true_split_true;
-  const km = v ? Number(v.totalKm) : NaN;
-  if(!v || v.success !== true || !Number.isFinite(km)) return null;
-  const now = Date.now(), cur = gpsKeyIso(gpsCurKey()) === iso;
-  const Y = Number(iso.slice(0, 4)), M = Number(iso.slice(5, 7));
-  const finalAfter = Date.UTC(Y, M, 1) - 5 * 3600e3 + 48 * 3600e3;     // конец месяца по UTC+5 и 48 часов ожидания
-  return { ok: true, km, fetchedAt: now, partial: cur, final: !cur && now >= finalAfter, from: String(j.range && j.range.from || ''), to: String(j.range && j.range.to || ''),
-    review: v.needsReview === true, reasons: Array.isArray(v.reviewReasons) ? v.reviewReasons : [], limit: v.limit_exceeded === true, tracks: Number(v.counted) || 0, variant: GPS_VARIANT, cached: false, warning: null };
-}
-// Запрос месяца. Ошибка никогда не превращается в 0 км: прежнее значение остаётся как есть.
-function gpsFetchMonth(key, manual){
-  if(gpsState.inflight) return gpsState.inflight;
-  if(!currentUID) return null;
-  { const r0 = gpsRec(key); if(manual && r0 && r0.final === true && gpsKeyIso(key) !== gpsKeyIso(gpsCurKey())){ showToast('Окончательные данные за месяц уже сохранены'); return null; } }   // закрытый месяц не запрашиваем повторно
-  const now = Date.now();
-  if(now - gpsState.lastTryAt < GPS_MIN_GAP_MS){
-    if(manual) showToast('Подождите ' + Math.ceil((GPS_MIN_GAP_MS - (now - gpsState.lastTryAt)) / 1000) + ' с перед новым запросом');
-    return null;
-  }
-  if(navigator.onLine === false){
-    gpsState.lastTryAt = now; gpsFail(key, 'offline');
-    if(manual) showToast('Нет интернета — показано последнее сохранённое значение');
-    try{ renderFuelBlock(); }catch(e){}
-    return null;
-  }
-  gpsState.lastTryAt = now;
-  const uid = currentUID, gen = authGeneration, iso = gpsKeyIso(key);
-  gpsState.blockAuto = false;
-  const run = (async () => {
-    await null;   // всё остальное выполняется уже после записи gpsState.inflight (иначе быстрый отказ оставил бы флаг «идёт запрос» навсегда)
-    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 60000);
-    try{
-      const user = auth.currentUser;
-      if(!user){ gpsFail(key, 'noauth'); return; }
-      const token = await user.getIdToken();
-      const send = async (legacy) => {
-        const body = legacy ? { trackerId: GPS_TRACKER_ID, month: iso } : { mode: 'month', trackerId: GPS_TRACKER_ID, month: iso, variant: GPS_VARIANT, force: !!manual };
-        const rr = await fetch(GPS_FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(body), signal: ctl.signal });
-        let jj = null; try{ jj = await rr.json(); }catch(e){ jj = null; }
-        return { rr, jj };
-      };
-      let q = await send(!!gpsState.legacy);
-      // Прежняя версия функции отвечает на «месячный» запрос отказом 400 «Лишние параметры» (и не тратит лимит): переходим на её формат, он уже проверен в работе.
-      if(!gpsState.legacy && q.rr.status === 400 && q.jj && q.jj.error === 'Лишние параметры не принимаются'){ gpsState.legacy = true; q = await send(true); }
-      const r = q.rr; let j = q.jj;
-      if(gpsState.legacy && r.status === 200) j = gpsLegacyNorm(j, iso);
-      if(currentUID !== uid || authGeneration !== gen) return;   // за это время сменился аккаунт
-      if(r.status === 401 || r.status === 403){ gpsFail(key, 'denied', r.status); return; }
-      if(r.status === 429){ gpsFail(key, 'rate', r.status); return; }
-      if(r.status === 400){ gpsFail(key, 'param', r.status); return; }
-      if(r.status === 404){ gpsFail(key, 'tracker', r.status); return; }
-      if(r.status === 409){ gpsFail(key, 'busy', r.status); if(manual) showToast(GPS_ERR_TEXT.busy); return; }
-      if(r.status !== 200){ gpsFail(key, 'server', r.status); return; }
-      const km = j ? Number(j.km) : NaN, fa = j ? Number(j.fetchedAt) : NaN;
-      if(!j || j.ok !== true || !Number.isFinite(km) || km < 0 || !Number.isFinite(fa)){ gpsFail(key, 'api', 200); return; }
-      // Ответ сервера: общий для обоих телефонов (время fetchedAt — когда данные реально получены от GPS-Глаз).
-      const st = gpsLoad();
-      const wk = j.warning && typeof j.warning.kind === 'string' ? j.warning.kind : '';
-      const prevRec = st.months[iso];
-      // checkedAt — когда сервер подтвердил, что данные свежие. При предупреждении (идёт обновление, сбой, предел) прежнее значение сохраняем, чтобы данные не выглядели только что проверенными.
-      const chk = wk ? (prevRec && Number.isFinite(prevRec.checkedAt) ? prevRec.checkedAt : 0) : Date.now();
-      st.months[iso] = { km: Math.round(km * 100) / 100, at: fa, checkedAt: chk, partial: j.partial === true, final: j.final === true, from: String(j.from || ''), to: String(j.to || ''),
-        review: j.review === true, reasons: Array.isArray(j.reasons) ? j.reasons.slice(0, 3).map(x => String(x).slice(0, 120)) : [], limit: j.limit === true, tracks: Number(j.tracks) || 0, variant: String(j.variant || GPS_VARIANT) };
-      gpsSave();
-      const w = j.warning && typeof j.warning.kind === 'string' ? j.warning.kind : '';
-      if(w){ gpsState.lastErr = { key: iso, kind: GPS_ERR_TEXT[w] ? w : 'api', status: 200, at: Date.now() }; }   // сервер отдал прежние данные и сообщил причину
-      else gpsState.lastErr = null;
-      diagSafe(() => DIAG.log('gps.sync.ok', w ? 'warn' : 'info', 'gps:fetch', { msg: 'GPS-Глаз: пробег ' + iso + (j.cached ? ' (из общего кэша)' : ' получен') + (w ? ', предупреждение: ' + w : ''), d: { km: st.months[iso].km, tracks: st.months[iso].tracks, review: st.months[iso].review, cached: !!j.cached, warning: w || null } }));
-      if(manual){
-        if(w === 'busy') showToast(GPS_ERR_TEXT.busy);
-        else if(w) showToast('Показаны прежние данные: ' + (GPS_ERR_TEXT[w] || GPS_ERR_TEXT.api));
-        else if(j.final === true) showToast('Окончательные данные за месяц');
-        else if(j.throttled) showToast('Данные уже обновлены ' + Math.max(1, Math.round((Number(j.ageSec) || 0) / 60)) + ' мин назад');
-        else if(j.cached) showToast('Данные актуальны: получены ' + gpsFmtAt(fa));
-        else showToast('Пробег обновлён');
-      }
-    }catch(e){
-      if(currentUID === uid && authGeneration === gen) gpsFail(key, 'net');
-    }finally{
-      clearTimeout(to);
-      gpsState.inflight = null;
-      try{ if(currentSection === 'fuel') renderFuelBlock(); }catch(e){}
-    }
-  })();
-  gpsState.inflight = run;
-  try{ renderFuelBlock(); }catch(e){}
-  return run;
-}
-// Автообновление при открытии раздела: только если данных нет или они устарели; не чаще заданных пауз.
-function gpsMaybeAuto(key){
-  if(currentSection !== 'fuel' || !currentUID || gpsState.inflight || gpsState.blockAuto) return;
-  if(typeof document !== 'undefined' && document.hidden) return;
-  if(navigator.onLine === false) return;
-  const rec = gpsRec(key), now = Date.now(), cur = gpsCurKey();
-  let need = false;
-  if(!rec) need = true;
-  else if(key !== cur && rec.final !== true && now - (rec.checkedAt || 0) > GPS_STALE_MS * 6) need = true;   // месяц закончился, но данные ещё не окончательные: спрашиваем сервер не чаще раза в 30 мин (реальный запрос он делает сам, по своим правилам)
-  else if(key === cur && now - (rec.checkedAt || rec.at) > (gpsState.legacy ? GPS_STALE_MS * 6 : GPS_STALE_MS)) need = true;    // текущий месяц: давно не спрашивали сервер
-  if(!need) return;
-  const ek = gpsState.lastErr && gpsState.lastErr.kind;
-  if(now - gpsState.lastTryAt < (!gpsState.lastErr ? GPS_MIN_GAP_MS : ek === 'busy' ? GPS_BUSY_RETRY_MS : ek === 'rate' ? GPS_RATE_RETRY_MS : GPS_AUTO_RETRY_MS)) return;
-  gpsFetchMonth(key, false);
-}
-// Всё, что нужно для отрисовки блока «Пробег» и «Средний расход».
-function gpsView(key, d){
-  const rec = gpsRec(key), busy = !!gpsState.inflight, cur = gpsCurKey();
-  const err = (gpsState.lastErr && gpsState.lastErr.key === gpsKeyIso(key)) ? gpsState.lastErr : null;
-  let kmVal, atVal, subs = [], dim = '';
-  if(rec){
-    kmVal = gpsFmtKm(rec.km); atVal = gpsFmtAt(rec.at);
-    if(busy) dim = ' dim';
-    if(rec.partial && key === cur) subs.push('<span class="fuel-sub">месяц ещё идёт: до ' + escapeHtml(gpsFmtTo(rec.to)) + '</span>');
-    if(key !== cur && rec.final !== true) subs.push('<span class="fuel-sub">месяц закончился, данные ещё уточняются (до 2 суток)</span>');
-    if(rec.review) subs.push('<span class="fuel-sub warn">требует проверки' + (rec.reasons && rec.reasons[0] ? ': ' + escapeHtml(rec.reasons[0]) : '') + '</span>');
-    if(rec.limit) subs.push('<span class="fuel-sub warn">период шире хранения GPS-Глаз — данные могут быть неполными</span>');
-    if(err && !busy) subs.push('<span class="fuel-sub warn">' + escapeHtml(err.kind === 'busy' ? GPS_ERR_TEXT.busy : (GPS_ERR_TEXT[err.kind] || 'ошибка') + ' — данные могли устареть') + '</span>');
-  }else{
-    kmVal = '—'; atVal = '—';
-    if(busy) subs.push('<span class="fuel-sub">получаю данные…</span>');
-    else if(err) subs.push('<span class="fuel-sub warn">' + escapeHtml(GPS_ERR_TEXT[err.kind] || 'ошибка') + '</span>');
-    else subs.push('<span class="fuel-sub">данных ещё нет</span>');
-  }
-  let avg = null;
-  if(rec && d && d.status === 'ok' && d.consumed != null && rec.km > 0) avg = Math.round(d.consumed / rec.km * 1000) / 10;
-  return { busy, rec, kmVal, atVal, dim, subs: subs.join(''), avg, mut: rec ? '' : ' mut' };
 }
 function renderFuelBlock(){
   const box = document.getElementById('expFuelBlock');
@@ -10219,35 +10077,33 @@ function renderFuelBlock(){
   let syncLine = '';
   if(fuelSyncError) syncLine = `<div class="fuel-sync-line err" id="fuelSyncLine">Остатки не отправлены в облако (${escapeHtml(fuelSyncError)}) — нажмите, чтобы повторить</div>`;
   else if(fuelDirty() && navigator.onLine === false) syncLine = `<div class="fuel-sync-line" id="fuelSyncLine">Остатки сохранены на телефоне и отправятся, когда появится связь</div>`;
-  const g = gpsView(key, d);
-  const avgHtml = g.avg != null
-    ? `<span class="fuel-val" id="fuelAvgVal">${String(g.avg.toFixed(1)).replace('.', ',')} л/100 км</span>`
+  const odoStartRow = d.odoStartFromPrev
+    ? `<div class="fuel-row"><span class="fuel-lbl">Пробег на начало<span class="fuel-sub">= конец месяца «${prevName}» (меняется там)</span></span><span class="fuel-val" id="odoStartVal">${odoFmt(d.odoStart)}</span></div>`
+    : `<div class="fuel-row"><span class="fuel-lbl">Пробег на начало</span><span class="fuel-in-wrap"><input class="fuel-in" id="odoStartIn" data-fuel="ms" inputmode="numeric" placeholder="—" value="${d.odoStart == null ? '' : d.odoStart}"><span>км</span></span></div>`;
+  let kmCell;
+  if(d.kmStatus === 'ok') kmCell = `<span class="fuel-val" id="odoKmVal">${odoFmt(d.km)}</span>`;
+  else if(d.kmStatus === 'impossible') kmCell = `<span class="fuel-val bad" id="odoKmVal">Ошибка: пробег на конец меньше, чем на начало</span>`;
+  else kmCell = `<span class="fuel-val warn" id="odoKmVal">Недостаточно данных</span>`;
+  const avg = (d.status === 'ok' && d.consumed != null && d.kmStatus === 'ok' && d.km > 0) ? d.consumed / d.km * 100 : null;
+  const avgHtml = avg != null
+    ? `<span class="fuel-val" id="fuelAvgVal">${String(avg.toFixed(1)).replace('.', ',')} л/100 км</span>`
     : `<span class="fuel-val warn" id="fuelAvgVal" style="max-width:46%;">Недостаточно данных</span>`;
   box.innerHTML = `
     <div class="fuel-block-title">Топливо и пробег за месяц</div>
-    <div class="fuel-grp first">Топливо</div>
     ${startRow}
     <div class="fuel-row"><span class="fuel-lbl">Заправлено${fuelledSub}</span><span class="fuel-val" id="fuelFuelledVal">${fuelFmt(d.fuelled)}</span></div>
     <div class="fuel-row"><span class="fuel-lbl">Остаток на конец</span><span class="fuel-in-wrap"><input class="fuel-in" id="fuelEndIn" data-fuel="e" inputmode="decimal" placeholder="—" value="${fuelInputStr(d.end)}"><span>л</span></span></div>
     <div class="fuel-row fuel-total"><span class="fuel-lbl">Израсходовано</span>${cons}</div>
-    <div class="fuel-row"><span class="fuel-lbl">Пробег GPS-Глаз${g.subs}</span><span class="fuel-val${g.dim}${g.mut}" id="gpsKmVal">${g.kmVal}</span></div>
-    <div class="fuel-grp"><span>GPS-Глаз</span><button type="button" class="fuel-btn" id="gpsRefreshBtn"${g.busy ? ' disabled' : ''}>${g.busy ? 'Обновляю…' : '↻ Обновить GPS'}</button></div>
-    <div class="fuel-row"><span class="fuel-lbl">Последнее обновление</span><span class="fuel-val${g.dim}${g.mut}" id="gpsAtVal">${g.atVal}</span></div>
-    <div class="fuel-grp"><span>Средний расход</span></div>
-    <div class="fuel-row"><span class="fuel-lbl">Расход на 100 км<span class="fuel-sub">израсходовано ÷ пробег GPS × 100</span></span>${avgHtml}</div>
+    ${odoStartRow}
+    <div class="fuel-row"><span class="fuel-lbl">Пробег на конец</span><span class="fuel-in-wrap"><input class="fuel-in" id="odoEndIn" data-fuel="me" inputmode="numeric" placeholder="—" value="${d.odoEnd == null ? '' : d.odoEnd}"><span>км</span></span></div>
+    <div class="fuel-row fuel-total"><span class="fuel-lbl">Пробег за месяц</span>${kmCell}</div>
+    <div class="fuel-row"><span class="fuel-lbl">Расход на 100 км<span class="fuel-sub">израсходовано ÷ пробег × 100</span></span>${avgHtml}</div>
     ${syncLine}`;
   box.style.display = 'block';
   diagSafe(monthStartBannerUpdate);
-  diagSafe(() => gpsMaybeAuto(key));
 }
 document.getElementById('expFuelBlock').addEventListener('click', (e) => {
   if(e.target.closest && e.target.closest('#fuelSyncLine.err')){ flushFuelBalances(); showToast('Повторная отправка…'); }
-});
-document.getElementById('expFuelBlock').addEventListener('click', (e) => {
-  if(e.target.closest && e.target.closest('#gpsRefreshBtn')){
-    const { key } = computeExpenseMonth(viewedExpMonthOffset);
-    gpsFetchMonth(key, true);
-  }
 });
 document.getElementById('expFuelBlock').addEventListener('keydown', (e) => {
   if(e.key === 'Enter' && e.target.classList && e.target.classList.contains('fuel-in')){ e.preventDefault(); e.target.blur(); }
@@ -10257,13 +10113,14 @@ document.getElementById('expFuelBlock').addEventListener('change', (e) => {
   if(!inp || !inp.classList || !inp.classList.contains('fuel-in')) return;
   const field = inp.getAttribute('data-fuel');
   const { key } = computeExpenseMonth(viewedExpMonthOffset);
-  const r = fuelParse(inp.value, true);
+  const isOdo = field === 'ms' || field === 'me';
+  const r = isOdo ? odoParse(inp.value) : fuelParse(inp.value, true);
   if(!r.ok){
-    showToast('Введите число литров от 0 до ' + FUEL_MAX_L);
+    showToast(isOdo ? 'Введите пробег в километрах: целое число от 0 до ' + ODO_MAX : 'Введите число литров от 0 до ' + FUEL_MAX_L);
     inp.blur(); renderFuelBlock(); return;
   }
   const cur = fuelBalances[key];
-  const curVal = cur ? fuelNum(cur[field]) : null;
+  const curVal = cur ? (isOdo ? odoNum(cur[field]) : fuelNum(cur[field])) : null;
   if(curVal === r.value){ inp.blur(); renderFuelBlock(); return; }
   const note = fuelSetBalance(key, field, r.value);
   inp.blur();
