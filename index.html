@@ -618,6 +618,7 @@
   .fuel-row .fuel-val{font-weight:700;text-align:right;white-space:nowrap;}
   .fuel-row .fuel-val.warn{color:var(--warning);font-weight:600;white-space:normal;font-size:13.5px;}
   .fuel-row .fuel-val.bad{color:var(--danger);font-weight:600;white-space:normal;font-size:13.5px;}
+  .fuel-row .fuel-val.dim{color:var(--faint);font-weight:500;}
   .fuel-in-wrap{display:flex;align-items:center;gap:6px;}
   .fuel-in{width:96px;border:1.5px solid var(--card-line);border-radius:10px;padding:6px 10px;font-size:15px;
     font-weight:700;font-family:'Inter',sans-serif;color:var(--ink);text-align:right;outline:none;background:transparent;}
@@ -1325,7 +1326,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-15 21:10 (Ручной пробег в блоке топлива, напоминание о начале месяца; GPS убран)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-15 22:30 (Топливо и пробег: записывается только начало месяца, конец берётся из следующего)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -10006,7 +10007,12 @@ function fuelMonthData(key){
   const ownStart = own ? fuelNum(own.s) : null;
   const start = prevEnd != null ? prevEnd : ownStart;
   const startFromPrev = prevEnd != null;
-  const end = own ? fuelNum(own.e) : null;
+  // Конец месяца = начало следующего (его вы записываете 1-го числа). Прежний вручную введённый конец, если он есть, имеет приоритет.
+  const next = fuelBalances[fuelNextKey(key)];
+  const ownEnd = own ? fuelNum(own.e) : null;
+  const nextStart = next ? fuelNum(next.s) : null;
+  const end = ownEnd != null ? ownEnd : nextStart;
+  const endManual = ownEnd != null, endFromNext = ownEnd == null && nextStart != null;
   let status = 'ok', consumed = null;
   if(missing > 0) status = 'missing';
   else if(start == null || end == null) status = 'insufficient';
@@ -10017,10 +10023,12 @@ function fuelMonthData(key){
   // Пробег (вручную): начало = конец прошлого месяца, если он введён, иначе своё; за месяц = конец − начало
   const prevOe = prev ? odoNum(prev.me) : null;
   const odoStart = prevOe != null ? prevOe : (own ? odoNum(own.ms) : null);
-  const odoEnd = own ? odoNum(own.me) : null;
+  const ownOe = own ? odoNum(own.me) : null, nextOs = next ? odoNum(next.ms) : null;
+  const odoEnd = ownOe != null ? ownOe : nextOs;
+  const odoEndManual = ownOe != null, odoEndFromNext = ownOe == null && nextOs != null;
   let km = null, kmStatus = 'insufficient';
   if(odoStart != null && odoEnd != null){ if(odoEnd >= odoStart){ km = odoEnd - odoStart; kmStatus = 'ok'; } else kmStatus = 'impossible'; }
-  return { fuelled, known, missing, start, startFromPrev, end, consumed, status, odoStart, odoStartFromPrev: prevOe != null, odoEnd, km, kmStatus };
+  return { fuelled, known, missing, start, startFromPrev, end, consumed, status, odoStart, odoStartFromPrev: prevOe != null, odoEnd, km, kmStatus, endManual, endFromNext, odoEndManual, odoEndFromNext };
 }
 // Запись остатка месяца. field: 's' | 'e'. value: число >= 0 или null (очистить).
 function fuelSetBalance(key, field, value){
@@ -10077,6 +10085,14 @@ function renderFuelBlock(){
   let syncLine = '';
   if(fuelSyncError) syncLine = `<div class="fuel-sync-line err" id="fuelSyncLine">Остатки не отправлены в облако (${escapeHtml(fuelSyncError)}) — нажмите, чтобы повторить</div>`;
   else if(fuelDirty() && navigator.onLine === false) syncLine = `<div class="fuel-sync-line" id="fuelSyncLine">Остатки сохранены на телефоне и отправятся, когда появится связь</div>`;
+  const nextName = monthNameOf(fuelNextKey(key)).toLowerCase();
+  const endHint = (fromNext) => fromNext ? '= начало месяца «' + nextName + '»' : 'станет известно, когда запишете начало месяца «' + nextName + '»';
+  const endRow = d.endManual
+    ? `<div class="fuel-row"><span class="fuel-lbl">Остаток на конец<span class="fuel-sub">введён вручную ранее</span></span><span class="fuel-in-wrap"><input class="fuel-in" id="fuelEndIn" data-fuel="e" inputmode="decimal" placeholder="—" value="${fuelInputStr(d.end)}"><span>л</span></span></div>`
+    : `<div class="fuel-row"><span class="fuel-lbl">Остаток на конец<span class="fuel-sub">${endHint(d.endFromNext)}</span></span><span class="fuel-val${d.end == null ? ' dim' : ''}" id="fuelEndVal">${d.end == null ? '—' : fuelFmt(d.end)}</span></div>`;
+  const odoEndRow = d.odoEndManual
+    ? `<div class="fuel-row"><span class="fuel-lbl">Пробег на конец<span class="fuel-sub">введён вручную ранее</span></span><span class="fuel-in-wrap"><input class="fuel-in" id="odoEndIn" data-fuel="me" inputmode="numeric" placeholder="—" value="${d.odoEnd}"><span>км</span></span></div>`
+    : `<div class="fuel-row"><span class="fuel-lbl">Пробег на конец<span class="fuel-sub">${endHint(d.odoEndFromNext)}</span></span><span class="fuel-val${d.odoEnd == null ? ' dim' : ''}" id="odoEndVal">${d.odoEnd == null ? '—' : odoFmt(d.odoEnd)}</span></div>`;
   const odoStartRow = d.odoStartFromPrev
     ? `<div class="fuel-row"><span class="fuel-lbl">Пробег на начало<span class="fuel-sub">= конец месяца «${prevName}» (меняется там)</span></span><span class="fuel-val" id="odoStartVal">${odoFmt(d.odoStart)}</span></div>`
     : `<div class="fuel-row"><span class="fuel-lbl">Пробег на начало</span><span class="fuel-in-wrap"><input class="fuel-in" id="odoStartIn" data-fuel="ms" inputmode="numeric" placeholder="—" value="${d.odoStart == null ? '' : d.odoStart}"><span>км</span></span></div>`;
@@ -10092,10 +10108,10 @@ function renderFuelBlock(){
     <div class="fuel-block-title">Топливо и пробег за месяц</div>
     ${startRow}
     <div class="fuel-row"><span class="fuel-lbl">Заправлено${fuelledSub}</span><span class="fuel-val" id="fuelFuelledVal">${fuelFmt(d.fuelled)}</span></div>
-    <div class="fuel-row"><span class="fuel-lbl">Остаток на конец</span><span class="fuel-in-wrap"><input class="fuel-in" id="fuelEndIn" data-fuel="e" inputmode="decimal" placeholder="—" value="${fuelInputStr(d.end)}"><span>л</span></span></div>
+${endRow}
     <div class="fuel-row fuel-total"><span class="fuel-lbl">Израсходовано</span>${cons}</div>
     ${odoStartRow}
-    <div class="fuel-row"><span class="fuel-lbl">Пробег на конец</span><span class="fuel-in-wrap"><input class="fuel-in" id="odoEndIn" data-fuel="me" inputmode="numeric" placeholder="—" value="${d.odoEnd == null ? '' : d.odoEnd}"><span>км</span></span></div>
+${odoEndRow}
     <div class="fuel-row fuel-total"><span class="fuel-lbl">Пробег за месяц</span>${kmCell}</div>
     <div class="fuel-row"><span class="fuel-lbl">Расход на 100 км<span class="fuel-sub">израсходовано ÷ пробег × 100</span></span>${avgHtml}</div>
     ${syncLine}`;
