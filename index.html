@@ -765,6 +765,13 @@
   .search svg{color:#bfdbfe;}
   .search input{color:#fff;}
   .search input::placeholder{color:#94a3b8;}
+  /* крестик очистки поиска: виден только при введённом тексте (placeholder скрыт), высоту шапки не меняет */
+  .search .search-clear{flex:0 0 auto;width:18px;height:18px;margin:-3px -4px -3px 0;padding:0;border:none;border-radius:50%;
+    background:rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;
+    -webkit-tap-highlight-color:transparent;}
+  .search .search-clear::after{content:'';position:absolute;inset:-8px;}
+  .search .search-clear:active{background:rgba(255,255,255,.32);}
+  .search #searchInput:placeholder-shown + .search-clear{display:none;}
   .avatar{
     width:32px;height:32px;
     background:linear-gradient(135deg,#3b82f6,#2563eb);
@@ -1248,6 +1255,7 @@
     <div class="search">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="searchInput" placeholder="Поиск">
+      <button type="button" class="search-clear" id="searchClear" aria-label="Очистить поиск"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg></button>
     </div>
     <button type="button" id="offlineIcon" aria-label="Нет интернета" style="display:none;width:26px;height:26px;padding:0;margin:0;align-items:center;justify-content:center;background:none;border:none;outline:none;color:#b8bbc0;flex-shrink:0;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-1.8A6.5 6.5 0 1 0 6.5 19h11z"/><line x1="4" y1="4" x2="20" y2="20"/></svg></button>
     <div id="syncIcon" style="display:none;width:26px;height:26px;align-items:center;justify-content:center;font-size:15px;color:var(--muted);flex-shrink:0;" title="Не синхронизировано — ждём связи"></div>
@@ -1329,7 +1337,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-18 20:55 (Отступ между описанием груза и строкой «Фирма» увеличен на 4 px, высота карточки та же)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-18 23:30 (Поиск: крестик очистки, сброс при смене раздела и вкладки, «Ничего не найдено»)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -3240,7 +3248,7 @@ function renderContent(){
 
   if(!list.length){
     const msgs = { notes:'Здесь пока пусто. Нажмите «Новая заявка», чтобы начать.', archive:'В архиве пока ничего нет.', trash:'Корзина пуста.' };
-    content.innerHTML = navBarHtml(NAV_VIEW_TITLES[view]) + `<div class="empty">${msgs[view]}</div>`;
+    content.innerHTML = navBarHtml(NAV_VIEW_TITLES[view]) + `<div class="empty">${searchQuery.trim() ? 'Ничего не найдено.' : msgs[view]}</div>`;
     return;
   }
   content.innerHTML = navBarHtml(NAV_VIEW_TITLES[view]) + buildGrids(list);
@@ -3915,6 +3923,24 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
   else if(currentSection === 'service') renderService();
   else renderContent(); // «Грузы»: сам выбирает список (Доставляется / Доставлено)
 });
+
+// Крестик очистки поиска: очищает запрос и обновляет список тем же обработчиком, что и ввод; фокус (клавиатура) не теряется.
+(function(){
+  const clr = document.getElementById('searchClear'), inp = document.getElementById('searchInput');
+  const keepFocus = (e) => { e.preventDefault(); };
+  clr.addEventListener('pointerdown', keepFocus);
+  clr.addEventListener('mousedown', keepFocus);
+  clr.addEventListener('click', () => {
+    inp.value = '';
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+})();
+// Сброс поиска при смене раздела («Грузы» / «Расходы» / «Автосервис») и вкладки «Доставляется» ↔ «Доставлено».
+function searchReset(){
+  const inp = document.getElementById('searchInput');
+  searchQuery = '';
+  if(inp && inp.value) inp.value = '';
+}
 
 // drawer
 const drawer = document.getElementById('drawer');
@@ -9490,6 +9516,7 @@ document.getElementById('cargoToggle').addEventListener('click', (e) => {
   const next = btn.getAttribute('data-cargo');
   if(next === cargoTab) return;
   cargoTab = next;
+  searchReset();
   renderContent();
 });
 
@@ -9499,6 +9526,7 @@ document.getElementById('topTabs').addEventListener('click', (e) => {
   const prevSection = currentSection;
   if(currentSection === 'service'){ svcFlushLocalSave(); carFlushLocalSave(); }
   currentSection = btn.getAttribute('data-section');
+  if(currentSection !== prevSection) searchReset();
   if(prevSection === 'notes' && currentSection !== 'notes') navSectionReturn = { cargoTab: cargoTab, scroll: (document.getElementById('main') || {}).scrollTop || 0 };
   if(currentSection === 'notes' && prevSection !== 'notes') cargoTab = 'active';
   document.querySelectorAll('.top-tab').forEach(b => b.classList.remove('active'));
@@ -9721,7 +9749,7 @@ function renderIncome(){
   const el = document.getElementById('incList');
   if(!filtered.length){
     const anyFilter = incFilter !== 'all' || incPayType !== 'all' || !!sq;
-    el.innerHTML = `<div class="empty">${anyFilter ? 'Грузов по этому фильтру' : 'Доставленных грузов'} ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
+    el.innerHTML = sq ? '<div class="empty">Ничего не найдено.</div>' : `<div class="empty">${anyFilter ? 'Грузов по этому фильтру' : 'Доставленных грузов'} ${incShowAllTime ? 'нет' : 'за месяц нет'}.</div>`;
     return;
   }
   const sorted = filtered.slice().sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
