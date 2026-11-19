@@ -1005,12 +1005,16 @@
   .svc-carcard{margin-bottom:10px;border-color:var(--card-line);}
   .svc-card{padding-top:15px;padding-bottom:15px;}
   .svc-card .svc-title{font-weight:600;}
-  .svc-card .svc-meta{display:none;}
+  .svc-carcard:not(.svc-ptcard) .svc-meta{display:none;}
+  .svc-card .svc-status,.svc-card .svc-status.st-plan,.svc-card .svc-status.st-work,.svc-card .svc-status.st-done{background:none;padding:0;color:var(--muted);font-weight:600;font-size:12.5px;}
+  .svc-card .svc-status::before{display:none;}
+  .svc-card .svc-meta{color:var(--muted);font-weight:600;}
   .svc-card.svc-card-done{opacity:.8;}
   .svc-card.svc-card-done::before,.svc-card.svc-card-done::after{display:none;}
   .svc-card.svc-card-done .svc-title,.svc-card.svc-card-done .svc-km{color:var(--faint);}
-  .svc-chk{flex:0 0 auto;display:flex;align-items:center;color:var(--muted);margin-right:6px;}
   .svc-card .svc-handle{opacity:.35;}
+  .svc-cnt{flex:0 0 auto;font-size:14px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;margin-right:8px;}
+  .svc-card.svc-card-done .svc-meta,.svc-card.svc-card-done .svc-status{color:var(--faint);}
 
   main{padding:14px 4px 92px;}
   .compose{
@@ -1394,7 +1398,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 23:55 (Автосервис: спокойный список — без цветов и подписей, у выполненных галочка)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-20 00:40 (Автосервис: «Перед рейсом» — цифра выполненных под названием)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -11159,7 +11163,6 @@ function svcPluralPunkt(n){
   if(m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'пункта';
   return 'пунктов';
 }
-const SVC_CHK_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12.5 9.5 18 20 6.5"/></svg>';
 function svcFolderCardHtml(f, withHandle){
   const total = f.items.length, done = f.items.filter(i => i.done).length;
   const km = svcFormatKm(f.mileage);
@@ -11177,7 +11180,6 @@ function svcFolderCardHtml(f, withHandle){
       <div class="svc-title">${escapeHtml(svcFolderTitle(f))}${km ? ` <span class="svc-km">· ${escapeHtml(km)}</span>` : ''}</div>
       <div class="svc-meta">${meta}</div>
     </div>
-    ${st && st.cls === 'st-done' ? `<span class="svc-chk" aria-label="Выполнено">${SVC_CHK_SVG}</span>` : ''}
     ${withHandle ? `<button class="svc-handle" data-svc-handle type="button" aria-label="Изменить порядок">${SVC_HANDLE_SVG}</button>` : ''}
   </div>`;
 }
@@ -11188,13 +11190,12 @@ function pretripCardHtml(){
   const done = f ? f.items.filter(i => i.done).length : 0;
   const ready = total > 0 && done >= total;
   const meta = ready ? '<span class="svc-status st-done">✓ Готов к рейсу</span>'
-    : `<span class="svc-status ${done ? 'st-work' : 'st-plan'}">Перед рейсом · ${done}/${total}</span>`;
-  return `<div class="svc-card svc-carcard${ready ? ' svc-card-done' : ''}" data-svc-open="${SVC_PRETRIP_ID}">
+    : `<span class="svc-status ${done ? 'st-work' : 'st-plan'}">${done}/${total}</span>`;
+  return `<div class="svc-card svc-carcard svc-ptcard${ready ? ' svc-card-done' : ''}" data-svc-open="${SVC_PRETRIP_ID}">
     <div class="svc-main">
       <div class="svc-title">Перед рейсом</div>
       <div class="svc-meta">${meta}</div>
     </div>
-    ${ready ? `<span class="svc-chk" aria-label="Готов к рейсу">${SVC_CHK_SVG}</span>` : ''}
   </div>`;
 }
 function svcListHtml(){
