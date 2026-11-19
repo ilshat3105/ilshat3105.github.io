@@ -540,6 +540,21 @@
   #incFilterToggle .exp-view-btn.active::after{content:"";position:absolute;left:0;right:0;bottom:2px;height:1.5px;border-radius:2px;background:var(--ink);}
   #incFilterToggle .exp-view-btn .od-mark{display:none;color:var(--danger);font-weight:700;margin-left:3px;opacity:.85;}
   #incOverdueBtn.has-overdue{color:var(--muted);border-color:transparent;}
+  /* полоса месяца под шапкой: доставлено заявок, сумма, сколько дней месяца прошло */
+  .pstrip{background:var(--navy);padding:0 14px 8px;flex-shrink:0;}
+  .pstrip-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#9aa6b8;padding:0 2px 2px;}
+  .pstrip-l{display:flex;align-items:center;min-width:0;white-space:nowrap;}
+  .pstrip-mon{color:#dbe3ee;}
+  .pstrip-arr{border:0;background:none;color:#cbd5e1;font-size:18px;font-weight:700;line-height:1;padding:6px 9px;margin:0;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:inherit;}
+  .pstrip-arr:first-child{padding-left:2px;}
+  .pstrip-arr:disabled{opacity:.3;cursor:default;}
+  .pstrip-sum{color:#9aa6b8;overflow:hidden;text-overflow:ellipsis;margin-left:2px;}
+  .pstrip-sum b{color:#dbe3ee;font-weight:700;}
+  .pstrip-days{flex:0 0 auto;font-weight:500;}
+  .pstrip-bar{height:3px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;}
+  .pstrip-fill{height:100%;width:0;border-radius:3px;background:rgba(120,160,230,.55);}
+  @media (max-width:385px){ .pstrip-row{font-size:11.5px;} .pstrip-arr{padding:6px 7px;} }
+  #monthStartBanner{display:none !important;} /* плашка «Начался новый месяц» скрыта по просьбе; код и данные топлива не тронуты */
   #incOwedBanner{display:none !important;} /* баннер «Вам должны» скрыт по просьбе; код расчёта сохранён */
   #incOverdueBtn.has-overdue.active{color:var(--ink);}
   #incOverdueBtn.has-overdue .od-mark{display:inline;}
@@ -1288,6 +1303,14 @@
     <div class="avatar" id="avatar">Я</div>
   </header>
 
+  <div class="pstrip" id="progStrip" style="display:none;">
+    <div class="pstrip-row">
+      <span class="pstrip-l"><button type="button" class="pstrip-arr" id="pstripPrev" aria-label="Предыдущий месяц">‹</button><span class="pstrip-mon" id="pstripMon"></span><button type="button" class="pstrip-arr" id="pstripNext" aria-label="Следующий месяц">›</button><span class="pstrip-sum" id="pstripSum"></span></span>
+      <span class="pstrip-days" id="pstripDays"></span>
+    </div>
+    <div class="pstrip-bar"><div class="pstrip-fill" id="pstripFill"></div></div>
+  </div>
+
   <div id="syncBadge" style="display:none;padding:6px 16px;font-size:12px;text-align:center;cursor:pointer;"></div>
 
   <div class="top-tabs" id="topTabs">
@@ -1361,7 +1384,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 22:40 (Доставлено: убраны «Должны», «Частично» и баннер «Вам должны»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 23:20 (полоса месяца под шапкой в «Грузы»: заявки, сумма, дни, стрелки по месяцам)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -9628,11 +9651,39 @@ function monthStartBannerUpdate(){
   }catch(e){ show = false; }
   el.style.display = show ? 'flex' : 'none';
 }
+// Полоса месяца под шапкой (только отображение; данные и расчёты Доставлено не меняет)
+let pstripOffset = 0; // 0 — текущий месяц, -1 — прошлый и т.д.
+function pstripUpdate(){
+  const el = document.getElementById('progStrip'); if(!el) return;
+  const show = !!currentUID && currentSection === 'notes' && view === 'notes';
+  el.style.display = show ? 'block' : 'none';
+  if(!show) return;
+  const keep = incShowAllTime; incShowAllTime = false;
+  let res; try{ res = computeIncomeMonth(pstripOffset); } finally { incShowAllTime = keep; }
+  const now = new Date();
+  const curKey = now.getFullYear() + '-' + (now.getMonth() + 1);
+  const key = res.key;
+  const y = Number(key.split('-')[0]);
+  document.getElementById('pstripMon').textContent = monthNameOf(key) + (y !== now.getFullYear() ? ' ' + y : '');
+  document.getElementById('pstripSum').innerHTML = '· <b>' + incZayavok(res.list.length) + ' · ' + formatAmount(res.total) + '</b>';
+  const [ky, km] = key.split('-').map(Number);
+  const dim = new Date(ky, km, 0).getDate();
+  const cur = key === curKey;
+  const day = cur ? now.getDate() : dim;
+  document.getElementById('pstripDays').textContent = day + ' из ' + dim + ' дн.';
+  document.getElementById('pstripFill').style.width = Math.round(day / dim * 100) + '%';
+  document.getElementById('pstripNext').disabled = pstripOffset >= 0;
+}
+document.getElementById('progStrip').addEventListener('click', (e) => {
+  if(e.target.closest('#pstripPrev')){ pstripOffset--; pstripUpdate(); return; }
+  if(e.target.closest('#pstripNext') && pstripOffset < 0){ pstripOffset++; pstripUpdate(); }
+});
 function cargoApplyLayout(){
   const inNotes = currentSection === 'notes';
   const main = inNotes && view === 'notes';
   const del = main && cargoTab === 'delivered';
   monthStartBannerUpdate();
+  diagSafe(pstripUpdate);
   document.getElementById('cargoToggle').style.display = main ? 'flex' : 'none';
   document.querySelectorAll('#cargoToggle .cargo-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-cargo') === cargoTab));
   if(!inNotes) return;
@@ -9856,6 +9907,7 @@ document.getElementById('incTypeToggle').addEventListener('click', (e) => {
 });
 
 function renderIncome(){
+  diagSafe(pstripUpdate);
   renderIncSummaryBar();
   renderIncSplit();
   renderOwedBanner();
