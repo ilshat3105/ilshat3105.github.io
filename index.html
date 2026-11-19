@@ -494,6 +494,13 @@
   .inc-month-card{background:var(--surface);border:1px solid var(--card-line);border-radius:18px;box-shadow:0 6px 18px rgba(15,23,42,.055);margin-bottom:10px;overflow:hidden;}
   .inc-month-card #incSummaryBar{background:none;border:0;border-radius:0;box-shadow:none;margin:0;padding:8px 16px 10px;font-weight:600;color:var(--ink);}
   .inc-month-card .summary-nav{margin-bottom:0;}
+  .inc-mode{display:flex;align-items:center;gap:22px;margin:2px 0 8px;}
+  .inc-mode-month{display:flex;align-items:center;gap:10px;}
+  .inc-mode-btn{position:relative;border:0;background:none;padding:6px 0 8px;font:600 15px inherit;font-family:inherit;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .inc-mode-btn.on{color:var(--ink);}
+  .inc-mode-btn.on::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1.5px;border-radius:2px;background:var(--ink);}
+  .inc-mode-arrow{border:0;background:none;color:var(--ink);font-size:18px;font-weight:700;line-height:1;padding:6px 8px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .inc-mode-arrow:disabled{opacity:.25;cursor:default;}
   .inc-month-card .im-cap{font-size:11.5px;color:var(--muted);font-weight:600;}
   .inc-month-card .im-total{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0;}
   .inc-month-card .im-sum{font-size:19px;font-weight:700;color:var(--ink);white-space:nowrap;min-width:0;letter-spacing:-.3px;}
@@ -1340,7 +1347,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 17:45 (Доставлено: фильтры «Все / Оплачено / Частично / Не оплачено / Просрочено» в одну строку)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 20:55 (Доставлено: в «Весь период» убраны «Оплачено» и таблица НДС/Нал)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -9684,7 +9691,7 @@ document.getElementById('globalFab').addEventListener('click', () => {
 
 // ==================== ДОХОДЫ (считается по заявкам) ====================
 let viewedIncMonthOffset = 0;
-let incShowAllTime = false;
+let incShowAllTime = true;
 let incFilter = 'all'; // 'all' | 'full' | 'partial' | 'none' | 'overdue'
 let incPayType = 'all'; // 'all' | 'nds' | 'nonds' | 'cash' — независимый фильтр по типу расчёта (только отображение)
 // Чип-фильтр типа расчёта: каждая заявка относится ровно к одному типу (incCategoryOf, объявлена ниже).
@@ -9766,6 +9773,7 @@ function computeIncSplit(offset){
 function renderIncSplit(){
   const el = document.getElementById('incSplit');
   if(!el) return;
+  if(incShowAllTime){ el.style.display = 'none'; return; } // «Весь период»: таблица по НДС/Нал не нужна
   const { got, cnt, sum } = computeIncSplit(viewedIncMonthOffset);
   const cats = [['nds', 'НДС'], ['nonds', 'Без НДС'], ['cash', 'Нал']];
   const rub = v => v.toLocaleString('ru-RU'); // в таблице без знака ₽ (в шапке «₽»), чтобы крупные суммы не слипались
@@ -9784,23 +9792,25 @@ function renderIncSummaryBar(){
   const { total: expTotal } = computeExpenseMonth(viewedIncMonthOffset);
   const profit = paidTotal - (incShowAllTime ? 0 : expTotal);
   bar.innerHTML = `
-    <div class="summary-nav">
-      <button id="incPrevMonth" ${incShowAllTime ? 'disabled' : ''}>‹</button>
-      <span class="summary-month-label" id="incMonthLabel" style="cursor:pointer;text-decoration:underline dotted;">${monthLabel}</span>
-      <button id="incNextMonth" ${nextDisabled}>›</button>
+    <div class="inc-mode">
+      <button type="button" class="inc-mode-btn${incShowAllTime ? ' on' : ''}" id="incModeAll">Весь период</button>
+      <span class="inc-mode-month${incShowAllTime ? '' : ' on'}">${incShowAllTime
+        ? '<button type="button" class="inc-mode-btn" id="incModeMonth">Месяц</button>'
+        : `<button type="button" class="inc-mode-arrow" id="incPrevMonth" aria-label="Предыдущий месяц">‹</button><span class="inc-mode-btn on" id="incMonthLabel">${monthLabel}</span><button type="button" class="inc-mode-arrow" id="incNextMonth" aria-label="Следующий месяц" ${nextDisabled}>›</button>`}</span>
     </div>
     <div class="im-cap">${incShowAllTime ? 'Итоги за весь период' : 'Итоги месяца'}</div>
     <div class="im-total"><span class="im-sum">${formatAmount(total)}</span><span class="im-cnt">${incGruzov(list.length)}</span></div>
-    <div class="im-row${incShowAllTime ? ' one' : ''}">
-      <span class="im-cell"><span class="im-l">Оплачено</span><span class="im-v">${formatAmount(paidTotal)}</span></span>${incShowAllTime ? '' : `
+    ${incShowAllTime ? '' : `<div class="im-row">
+      <span class="im-cell"><span class="im-l">Оплачено</span><span class="im-v">${formatAmount(paidTotal)}</span></span>
       <span class="im-cell"><span class="im-l">Расходы</span><span class="im-v">${formatAmount(expTotal)}</span></span>
-      <span class="im-cell"><span class="im-l">Чистыми</span><span class="im-v">${formatAmount(profit)}</span></span>`}
-    </div>
+      <span class="im-cell"><span class="im-l">Чистыми</span><span class="im-v">${formatAmount(profit)}</span></span>
+    </div>`}
   `;
   bar.style.display = 'block';
 }
 document.getElementById('incSummaryBar').addEventListener('click', (e) => {
-  if(e.target.closest('#incMonthLabel')){ incShowAllTime = !incShowAllTime; renderIncome(); return; }
+  if(e.target.closest('#incModeAll')){ if(!incShowAllTime){ incShowAllTime = true; renderIncome(); } return; }
+  if(e.target.closest('#incModeMonth')){ incShowAllTime = false; renderIncome(); return; }
   if(incShowAllTime) return;
   if(e.target.closest('#incPrevMonth')){ viewedIncMonthOffset--; renderIncome(); return; }
   if(e.target.closest('#incNextMonth') && viewedIncMonthOffset < 0){ viewedIncMonthOffset++; renderIncome(); }
