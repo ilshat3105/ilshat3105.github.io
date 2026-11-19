@@ -1337,7 +1337,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 10:20 (Редактор заявки: после первой вставки текста — автопереход к полю «Сумма» с цифровой клавиатурой; исправления курсора и прокрутки сохранены)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 11:05 (Автопереход к «Сумме»: срабатывает и после двойного тапа, и при вставке клавиатурой; запоздалое скрытие клавиатуры не снимает фокус)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -5257,7 +5257,7 @@ function openEditor(note, isNew){
     return;
   }
   isNewNote = !!isNew;
-  pasteJumpDone = false; pasteJumpPending = false; // автопереход к «Сумме» — один раз за открытие новой заявки
+  pasteJumpDone = false; pasteJumpPending = false; jumpPrevLen = 0; // автопереход к «Сумме» — один раз за открытие новой заявки
   bodyLastTapTime = 0; // сбрасываем счётчик двойного тапа — новое открытие редактора не должно
                         // засчитываться как продолжение тапов из предыдущей сессии
   editingNote = isNew ? note : Object.assign({}, note, {
@@ -5538,6 +5538,7 @@ function updatePasteOrderBtn(){
 // не дольше 0,8 с и сразу прекращается, если пользователь коснулся экрана.
 let pasteJumpDone = false;     // автопереход в этом редакторе уже был
 let pasteJumpPending = false;  // системная вставка только что пришла в пустое поле новой заявки
+let pasteJumpAt = 0;           // когда был переход: запоздалый resize клавиатуры сразу после него не должен снимать фокус с «Суммы»
 function amountRevealOnce(){
   const sc = document.querySelector('.editor-body'), row = document.getElementById('amountRowBottom');
   if(!sc || !row || !editorOverlay.classList.contains('show')) return;
@@ -5549,12 +5550,13 @@ function amountRevealOnce(){
 function goToAmountAfterPaste(){
   if(pasteJumpDone || !isNewNote || !editingNote || editingNote.checklist) return;
   pasteJumpDone = true;
+  pasteJumpAt = Date.now();
   const amt = document.getElementById('amountInput');
   try{ amt.focus({ preventScroll: true }); }catch(err){ amt.focus(); }
   amountRevealOnce();
   const vv = window.visualViewport, sc = document.querySelector('.editor-body');
   if(!vv || !sc) return;
-  const until = Date.now() + 800;
+  const until = Date.now() + 1500;
   let timer = null;
   const stop = () => {
     vv.removeEventListener('resize', onVV);
@@ -5566,7 +5568,7 @@ function goToAmountAfterPaste(){
   vv.addEventListener('resize', onVV);
   sc.addEventListener('touchstart', stop, { passive: true });
   sc.addEventListener('wheel', stop, { passive: true });
-  timer = setTimeout(stop, 800);
+  timer = setTimeout(stop, 1500);
 }
 async function pasteOrderFromClipboard(){
   let text = '';
@@ -5699,16 +5701,29 @@ bodyInput.addEventListener('input', () => {
 });
 // Системная вставка (меню «Вставить» / долгий тап по полю): запоминаем, что вставка идёт в пустое поле новой заявки,
 // и после обработки самого ввода (обрезка хвоста, пересчёт высоты) переходим к «Сумме».
+// Вставка может прийти по-разному: событие paste (меню поля), input с inputType insertFromPaste, или сразу крупным куском
+// текста без paste (подсказка клавиатуры). Поэтому признаки независимы: любой из них + «поле было пусто» даёт переход.
+const PASTE_JUMP_MIN_CHARS = 40; // одним событием ввода так «печатается» только вставка, не ручной набор
+let jumpPrevLen = 0;
+function pasteJumpEligible(){
+  return isNewNote && !pasteJumpDone && editorOverlay.classList.contains('show') && !(editingNote && editingNote.checklist);
+}
+bodyInput.addEventListener('beforeinput', () => { jumpPrevLen = bodyInput.value.trim() ? bodyInput.value.length : 0; });
 bodyInput.addEventListener('paste', () => {
-  pasteJumpPending = isNewNote && !pasteJumpDone && !(editingNote && editingNote.checklist) && !bodyInput.value.trim();
-  setTimeout(() => { pasteJumpPending = false; }, 0);
+  pasteJumpPending = pasteJumpEligible() && !bodyInput.value.trim();
+  setTimeout(() => { pasteJumpPending = false; }, 400);
 });
-bodyInput.addEventListener('input', () => {
-  if(!pasteJumpPending) return;
+bodyInput.addEventListener('input', (e) => {
+  const it = (e && e.inputType) || '';
+  const wasEmpty = jumpPrevLen === 0;
+  const added = bodyInput.value.length - jumpPrevLen;
+  const pasteLike = pasteJumpPending || (wasEmpty && (it === 'insertFromPaste' || it === 'insertFromPasteAsQuotation' || added >= PASTE_JUMP_MIN_CHARS));
   pasteJumpPending = false;
-  if(!bodyInput.value.trim()) return;
+  jumpPrevLen = bodyInput.value.trim() ? bodyInput.value.length : 0;
+  if(!pasteLike || !pasteJumpEligible() || !bodyInput.value.trim()) return;
   requestAnimationFrame(() => setTimeout(() => {
-    if(editorOverlay.classList.contains('show') && document.activeElement === bodyInput) goToAmountAfterPaste();
+    const ae = document.activeElement;
+    if(pasteJumpEligible() && (ae === bodyInput || ae === document.body || !ae)) goToAmountAfterPaste();
   }, 0));
 });
 function updateAmountPreview(){
@@ -16889,7 +16904,8 @@ if(window.visualViewport){
   window.visualViewport.addEventListener('resize', () => {
     const vv = window.visualViewport;
     const active = document.activeElement;
-    if(vv.height > lastVVHeight + 100 && active && active.matches('textarea, input')){
+    const justJumped = active && active.id === 'amountInput' && Date.now() - pasteJumpAt < 1500; // после автоперехода клавиатура как раз открывается
+    if(vv.height > lastVVHeight + 100 && active && active.matches('textarea, input') && !justJumped){
       active.blur();
     }
     lastVVHeight = vv.height;
