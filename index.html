@@ -1337,7 +1337,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-18 23:30 (Поиск: крестик очистки, сброс при смене раздела и вкладки, «Ничего не найдено»)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-19 09:40 (Редактор заявки: курсор ставится в место тапа, экран не прыгает при открытии клавиатуры и вводе)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -5439,16 +5439,71 @@ function updateBodyPreview(){
   bodyPreview.style.display = 'block';
   bodyInput.style.display = 'none';
 }
+// Позиция символа в тексте под точкой тапа по читаемому виду. Текст читаемого вида посимвольно равен тексту поля
+// (ссылки и номера — тот же текст в <a>), поэтому смещение в нём = смещение в textarea. null — определить не удалось.
+function bodyPreviewOffsetAt(x, y){
+  try{
+    let node = null, off = 0;
+    if(document.caretPositionFromPoint){
+      const cp = document.caretPositionFromPoint(x, y);
+      if(cp){ node = cp.offsetNode; off = cp.offset; }
+    } else if(document.caretRangeFromPoint){
+      const cr = document.caretRangeFromPoint(x, y);
+      if(cr){ node = cr.startContainer; off = cr.startOffset; }
+    }
+    if(!node || !bodyPreview.contains(node)) return null;
+    const rg = document.createRange();
+    rg.selectNodeContents(bodyPreview);
+    rg.setEnd(node, off);
+    const pos = rg.toString().length;
+    return Math.max(0, Math.min(pos, bodyInput.value.length));
+  }catch(err){ return null; }
+}
 bodyPreview.addEventListener('click', (e) => {
   if(e.target.closest('a')) return; // клик по самой ссылке/номеру — обычная навигация
+  // Курсор ставим туда, куда нажали (раньше — всегда в конец текста, из-за чего экран прыгал вниз).
+  const pos = bodyPreviewOffsetAt(e.clientX, e.clientY);
   bodyPreview.style.display = 'none';
   bodyInput.style.display = 'block';
-  bodyInput.focus();
-  bodyInput.selectionStart = bodyInput.selectionEnd = bodyInput.value.length;
+  autoResizeBody(); // высота поля = высоте читаемого вида: содержимое не сдвигается при переключении
+  try{ bodyInput.focus({ preventScroll: true }); }catch(err){ bodyInput.focus(); }
+  const at = pos == null ? bodyInput.value.length : pos;
+  bodyInput.setSelectionRange(at, at);
 });
 bodyInput.addEventListener('blur', () => setTimeout(updateBodyPreview, 0));
 
+// Высота текста поля считается на отдельном невидимом textarea с теми же шрифтом, отступами и шириной.
+// Раньше настоящее поле на каждый символ сначала сжималось до 'auto': содержимое редактора на миг становилось
+// короче, прокрутка обрезалась до нового максимума и после возврата высоты экран «прыгал» (к началу заявки).
+let bodyMeasureEl = null;
+function bodyMeasureHeight(){
+  const w = bodyInput.offsetWidth;
+  if(!w) return null;
+  if(!bodyMeasureEl){
+    bodyMeasureEl = document.createElement('textarea');
+    bodyMeasureEl.setAttribute('aria-hidden', 'true');
+    bodyMeasureEl.tabIndex = -1;
+    bodyMeasureEl.readOnly = true;
+    bodyMeasureEl.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;height:0;min-height:0;overflow:hidden;resize:none;';
+    document.body.appendChild(bodyMeasureEl);
+  }
+  const cs = getComputedStyle(bodyInput), m = bodyMeasureEl;
+  ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordSpacing','textIndent','textTransform','whiteSpace','overflowWrap','wordBreak','tabSize','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','boxSizing']
+    .forEach(k => { m.style[k] = cs[k]; });
+  m.style.borderStyle = 'solid';
+  m.style.width = w + 'px';
+  m.value = bodyInput.value;
+  const border = cs.boxSizing === 'border-box' ? (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0) : 0;
+  return m.scrollHeight + border;
+}
 function autoResizeBody(){
+  if(bodyInput.value){
+    const mh = bodyMeasureHeight();
+    if(mh != null){
+      if(bodyInput.style.height !== mh + 'px') bodyInput.style.height = mh + 'px';
+      return;
+    }
+  }
   bodyInput.style.height = 'auto';
   if(bodyInput.value){
     // есть текст — поле по размеру текста, без лишнего пустого места снизу
