@@ -285,6 +285,12 @@
   .drawer button{display:flex;align-items:center;gap:18px;width:100%;background:none;border:none;
     text-align:left;padding:11px 20px;font-size:14px;color:var(--ink);cursor:pointer;border-radius:0 20px 20px 0;}
   .drawer button.active{background:#feefc3;font-weight:600;}
+  .drawer .sd-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 10px;padding:6px 6px 6px 14px;border-radius:12px;}
+  .drawer .sd-name{display:flex;align-items:center;gap:18px;flex:1;min-width:0;font-size:14px;color:var(--ink);padding:6px 0;}
+  .drawer .sd-row button{width:auto;margin:0;flex:0 0 auto;border:1px solid var(--card-line);border-radius:10px;padding:8px 9px;font-size:12.5px;font-weight:600;color:var(--accent);background:var(--surface);text-align:center;}
+  .drawer .sd-name svg{flex:0 0 18px;width:18px;height:18px;}
+  .drawer .sd-row button:disabled{opacity:.6;}
+  button[data-probe]{display:none !important;}
   .drawer button:active{background:var(--concrete);}
   .theme-switch{position:relative;flex-shrink:0;width:42px;height:24px;border-radius:12px;
     background:var(--card-line, #dadce0);transition:background .2s ease;}
@@ -582,6 +588,13 @@
   /* «Доставляется»: две колонки — слева маршрут и груз, справа сумма и тип расчёта */
   .note.lay2 .note-num{font-size:12px;font-weight:400;letter-spacing:0;line-height:1.3;color:#6B7280;margin-bottom:7px;padding-right:0;}
   .note.lay2 .note-num.fav-row{overflow:visible;}
+  .note .rm-row{margin-top:10px;padding-top:9px;border-top:1px solid var(--card-line,#e5e7eb);display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink,#111);min-height:30px;}
+  .note .rm-row svg{flex:0 0 16px;width:16px;height:16px;opacity:.45;}
+  .note .rm-row .rm-tx{flex:1;min-width:0;line-height:1.35;color:var(--muted,#8b93a1);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}
+  .note .rm-row.on svg{opacity:1;color:#e0a82e;fill:#fbe7a8;}
+  .note .rm-row.on .rm-tx{color:var(--ink,#111);}
+  .note .rm-in{flex:1;min-width:0;border:0;border-bottom:1.5px solid var(--accent,#2563eb);background:transparent;font-family:inherit;font-size:16px;padding:3px 0;outline:none;color:inherit;border-radius:0;}
+  .note .rm-ok{flex:0 0 auto;border:0;background:var(--accent,#2563eb);color:#fff;border-radius:8px;padding:6px 11px;font-weight:600;font-size:13px;font-family:inherit;}
   .note.lay2 .note-firm{font-size:14.5px;line-height:1.3;margin:0 0 6px;padding-right:0;}
   /* Фирма внизу карточки «Доставляется»: тонкая разделительная линия, отступы 12 px над ней и 13 px под ней, шрифт 13 px полужирностью 500 (по образцу) */
   .note .note-firm.firm-below{font-size:13px;font-weight:500;margin:12px 0 0;padding:13px 0 0;border-top:1px solid var(--line);padding-right:0;}
@@ -1398,7 +1411,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-21 01:30 (Кнопка назад: только стрелка)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-23 23:30 (Примечание к заявке)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -1424,10 +1437,13 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
       Резервные копии
     </button>
-    <button id="diagBtn" type="button" style="margin-top:6px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-      Диагностика
-    </button>
+    <div class="sd-row" id="sdRow" style="margin-top:6px;">
+      <div class="sd-name" id="sdName">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span>Супердиагностика</span>
+      </div>
+      <button id="sdDownload" type="button">Скачать</button>
+    </div>
     <button id="exportDataBtn" type="button" style="margin-top:6px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Экспорт данных
@@ -1822,6 +1838,8 @@ const DIAG = (() => {
   const S = { buf: [], seq: 0, flushT: null, rawLen: -1, err: '', prev: null, gone: new Map(), ctx: null, lastUI: null,
     owner: ownerInit, authAt: 0, lsCache: null, flags: {}, enableGen: 0, cleaning: false, cleanTry: 0, cleanFailLogged: false,
     cloudSent: 0, remote: [], internalErrors: 0, lastKey: '', lastKeyTs: 0, inCon: false, viewSig: '', restore: null };
+  let opGetter = null;   // Супердиагностика подставляет operationId текущей операции
+  const opNow = () => { try{ return opGetter ? (opGetter() || '') : ''; }catch(_){ return ''; } };
   let dev = '';
   try{ dev = localStorage.getItem(DEV_KEY) || ''; if(!dev){ dev = Math.random().toString(36).slice(2, 6); localStorage.setItem(DEV_KEY, dev); } }catch(e){ dev = dev || ('t' + Math.random().toString(36).slice(2, 5)); }
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
@@ -1905,7 +1923,7 @@ const DIAG = (() => {
       if(lv !== 'info' && k === S.lastKey && now - S.lastKeyTs < 30000){ S.lastKeyTs = now; return null; }
       S.lastKey = k; S.lastKeyTs = now;
       if(type === 'auth.state' && o.d && o.d.signedIn) S.authAt = now; // для панели «Состояние системы»: сколько ждём подтверждения сервера
-      const e = { ts: now, n: ++S.seq, sid, dev: devLabel, u: ('uid' in o) ? (o.uid ? hashUid(o.uid) : '') : S.owner, type, lv, src: src || '', id: o.id == null ? '' : String(o.id), num: o.num == null ? '' : String(o.num), msg };
+      const e = { ts: now, n: ++S.seq, sid, dev: devLabel, u: ('uid' in o) ? (o.uid ? hashUid(o.uid) : '') : S.owner, type, lv, src: src || '', id: o.id == null ? '' : String(o.id), num: o.num == null ? '' : String(o.num), msg, op: opNow() };
       if(o.d !== undefined){
         let j = '';
         try{ j = JSON.stringify(o.d); }catch(_){ j = '"[не сериализуется]"'; }
@@ -2529,10 +2547,906 @@ const DIAG = (() => {
   return {
     log, diff, mark, user, replaceIntent, internalError, flush, viewTick, sum, status,
     restoreBegin, restorePlan, restoreApplied, restoreOk, restoreFail, restoreExpected,
-    sid, dev: devLabel, S,
+    sid, dev: devLabel, S, setOpGetter: (f) => { opGetter = f; },
     entries: () => S.buf.filter(visible).concat(S.remote).sort((a, b) => b.ts - a.ts || (b.n || 0) - (a.n || 0)),
     setOwner, hash: hashUid, cleanupNow: maybeCleanup, cloudOn: cloudOnNow, enableCloud, disableCloud, loadRemote, storageError: () => S.err
   };
+})();
+
+// ==================== СУПЕРДИАГНОСТИКА ====================
+// Единая система записи событий для поиска ошибок. Работает постоянно, без включения. Только НАБЛЮДАЕТ:
+// ничего не меняет в данных, не отправляет в сеть, любая своя ошибка гасится и не мешает основной логике.
+// Что пишется: нажатия и касания, вызовы ключевых функций (имя, длительность, итог), операции Firebase (путь, ключи полей,
+// размер, итог), смена данных (расходы, Автосервис, «Мой автомобиль», топливо — только идентификаторы), ошибки, устройство.
+// Что НЕ пишется: тексты заявок, значения полей, имена и телефоны клиентов, пароли, токены, ссылки с токенами, uid, содержимое
+// документов Firestore. Строки в записи проходят через scrub().
+// Связанные события имеют один operationId (поле op). Хранится в localStorage отдельными сегментами (кольцевой буфер),
+// переживает перезапуск. Скачивается одним JSON через «Супердиагностика → Скачать».
+const SD = (() => {
+  const SEG = 250, MAXSEG = 12, MAX_CHARS = 700000;
+  const META = 'vreyse_sd_meta', SEGK = 'vreyse_sd_seg_', ALIVE = 'vreyse_sd_alive', VERK = 'vreyse_sd_ver';
+  const SID = DIAG.sid, DEV = DIAG.dev;
+  const TAG = String(SID).split('-').pop().slice(-3);
+  const T0 = Date.now();
+  const sg = (fn, d) => { try{ const v = fn(); return v === undefined ? d : v; }catch(_){ return d; } };
+  const st = { events: 0, dropped: 0, selfMs: 0, internal: 0, errText: '', wrapped: [], missing: [], fbPatched: [], fbSkipped: [], ael: false, fetch: false, longtasks: 0 };
+  let dead = false, Q = 0, OPN = 0, CALLN = 0;
+  let segs = [];                // [{ idx, arr, chars }]
+  let dirty = new Set(), flushT = null, lastFlushErr = '';
+  let cur = '';                 // операция, внутри которой сейчас выполняется синхронный код
+  const calls = [];             // стек вызовов обёрнутых функций
+  let uop = null;               // последнее нажатие: { id, ts }
+  const UOP_MS = 8000;
+  const opStats = new Map();    // op -> { fn, fb, st, err, ui }
+
+  // ---------- очистка строк: ничего личного в журнал не попадает ----------
+  function scrub(s, max, keepNums){
+    s = String(s == null ? '' : s);
+    try{
+      s = s.replace(/https?:\/\/[^\s"')\]]+/g, (u) => { try{ const x = new URL(u); return x.origin + x.pathname.replace(/\/o\/[^/?]+/, '/o/<path>'); }catch(_){ return '<url>'; } });
+      s = s.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '<email>');
+      const uid = sg(() => currentUID, '');
+      if(uid) s = s.split(uid).join('<uid>');
+      if(!keepNums) s = s.replace(/\+?\d[\d\s()\-]{7,}\d/g, '<num>');
+      s = s.replace(/[A-Za-z0-9_\-]{36,}/g, '<tok>');
+    }catch(_){}
+    return s.slice(0, max || 300);
+  }
+  function clip(d){
+    let j = '';
+    try{ j = JSON.stringify(d); }catch(_){ return { unserializable: true }; }
+    if(j === undefined) return undefined;
+    if(j.length > 900) return { truncated: true, head: j.slice(0, 900) };
+    return JSON.parse(j);
+  }
+  const pathScrub = (p) => scrub(String(p || '').replace(/^users\/[^/]+/, 'users/<uid>'), 120);
+
+  // ---------- операции ----------
+  const newOp = (kind) => TAG + '-' + kind + (++OPN).toString(36);
+  const userOpId = () => (uop && Date.now() - uop.ts < UOP_MS) ? uop.id : '';
+  const ambient = () => cur || userOpId();
+  DIAG.setOpGetter(ambient);
+  function bump(op, k){
+    if(!op) return;
+    let s = opStats.get(op);
+    if(!s){ s = { fn: 0, fb: 0, st: 0, err: 0, ui: 0 }; opStats.set(op, s); if(opStats.size > 300) opStats.delete(opStats.keys().next().value); }
+    s[k]++;
+  }
+
+  // ---------- хранилище: кольцевой буфер сегментами ----------
+  function loadStore(){
+    try{
+      const m = JSON.parse(localStorage.getItem(META) || 'null');
+      if(!m || typeof m.first !== 'number' || typeof m.last !== 'number') return;
+      for(let i = m.first; i <= m.last; i++){
+        const raw = localStorage.getItem(SEGK + i);
+        if(!raw) continue;
+        try{ const arr = JSON.parse(raw); if(Array.isArray(arr)) segs.push({ idx: i, arr, chars: raw.length }); }catch(_){}
+      }
+    }catch(e){ internal(e); }
+  }
+  function lastSeg(){
+    let s = segs[segs.length - 1];
+    if(!s || s.arr.length >= SEG){ s = { idx: s ? s.idx + 1 : 0, arr: [], chars: 2 }; segs.push(s); }
+    return s;
+  }
+  function total(){ return segs.reduce((a, s) => a + s.chars, 0); }
+  function dropOldest(){
+    const s = segs.shift();
+    if(s){ try{ localStorage.removeItem(SEGK + s.idx); }catch(_){} dirty.delete(s.idx); }
+  }
+  function flush(){
+    try{
+      if(flushT){ clearTimeout(flushT); flushT = null; }
+      if(!dirty.size) return;
+      const idxs = Array.from(dirty); dirty = new Set();
+      for(const idx of idxs){
+        const s = segs.find(x => x.idx === idx); if(!s) continue;
+        const raw = JSON.stringify(s.arr); s.chars = raw.length;
+        try{ localStorage.setItem(SEGK + idx, raw); lastFlushErr = ''; }
+        catch(err){
+          // не хватило места: сначала режем СВОЙ журнал; заявки и состояние приложения не трогаем
+          let ok = false;
+          for(let k = 0; k < 4 && segs.length > 1 && !ok; k++){
+            dropOldest();
+            try{ localStorage.setItem(SEGK + idx, raw); ok = true; lastFlushErr = 'хранилище почти заполнено: старые записи Супердиагностики обрезаны'; }catch(_){}
+          }
+          if(!ok) lastFlushErr = 'не удалось записать Супердиагностику: ' + (err && err.name || err);
+        }
+      }
+      while(segs.length > MAXSEG || (segs.length > 1 && total() > MAX_CHARS)) dropOldest();
+      try{ localStorage.setItem(META, JSON.stringify({ first: segs.length ? segs[0].idx : 0, last: segs.length ? segs[segs.length - 1].idx : 0 })); }catch(_){}
+    }catch(e){ internal(e); }
+  }
+  function schedule(ms){ if(flushT) return; flushT = setTimeout(flush, ms); }
+  const all = () => { const r = []; segs.forEach(s => s.arr.forEach(e => r.push(e))); return r; };
+
+  function internal(e){
+    st.internal++;
+    st.errText = scrub(e && (e.message || e), 160);
+    if(st.internal > 40) dead = true;
+  }
+
+  // ---------- запись события ----------
+  let rlT = 0, rlN = 0, rlDrop = 0;
+  function ev(type, lv, msg, d, o){
+    if(dead) return null;
+    const p0 = performance.now();
+    try{
+      o = o || {};
+      lv = lv || 'info';
+      const now = Date.now();
+      if(now - rlT > 1000){
+        if(rlDrop){ const sum = { ts: now, q: ++Q, pt: Math.round(p0), sid: SID, dev: DEV, type: 'sd.dropped', lv: 'warn', src: 'sd', op: '', msg: 'Сброшено событий из-за частоты (защита от тормозов): ' + rlDrop }; const ls = lastSeg(); ls.arr.push(sum); dirty.add(ls.idx); }
+        rlT = now; rlN = 0; rlDrop = 0;
+      }
+      if(++rlN > 90 && lv === 'info'){ rlDrop++; st.dropped++; return null; }
+      const e = { ts: now, q: ++Q, pt: Math.round(p0), sid: SID, dev: DEV, type, lv, src: o.src || '', op: o.op != null ? o.op : ambient(), msg: scrub(msg) };
+      if(o.par) e.par = o.par;
+      if(o.id != null) e.id = String(o.id).slice(0, 40);
+      if(o.dur != null) e.dur = Math.round(o.dur);
+      if(d !== undefined) e.d = clip(d);
+      const s = lastSeg();
+      s.arr.push(e); dirty.add(s.idx); st.events++;
+      if(e.op){
+        const k = type.slice(0, 3);
+        if(lv === 'error' || lv === 'warn') bump(e.op, 'err');
+        if(k === 'fn.'){ if(type !== 'fn.handler') bump(e.op, 'fn'); } else if(k === 'fb.') bump(e.op, 'fb'); else if(k === 'st.') bump(e.op, 'st'); else if(k === 'ui.') bump(e.op, 'ui');
+      }
+      if(lv !== 'info') schedule(0); else schedule(2500);
+      return e;
+    }catch(err){ internal(err); return null; }
+    finally{ st.selfMs += performance.now() - p0; }
+  }
+
+  // ---------- описание элемента (без текста) ----------
+  function descr(t){
+    try{
+      if(!t || !t.tagName) return '';
+      let s = t.tagName.toLowerCase();
+      if(t.id) s += '#' + t.id;
+      const cl = (typeof t.className === 'string' ? t.className : '').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+      if(cl.length) s += '.' + cl.join('.');
+      ['data-open', 'data-cargo', 'data-view', 'data-incopen', 'data-section', 'data-nav-back', 'data-finmode', 'data-svc-back', 'data-det-close', 'data-car-back'].forEach(a => { if(t.hasAttribute && t.hasAttribute(a)) s += '[' + a + '=' + String(t.getAttribute(a)).slice(0, 12) + ']'; });
+      if(!t.id){ const p = t.closest && t.closest('[id]'); if(p && p !== t) s += ' ⊂#' + p.id; }
+      return s.slice(0, 90);
+    }catch(_){ return ''; }
+  }
+  const ACTION_RE = /fab|add|save|create|done|delete|remove|confirm|submit|compose|ok$|commit|paste/i;
+  const isAction = (d) => ACTION_RE.test(d || '');
+
+  function overlaysOpen(){
+    const r = [];
+    try{
+      document.querySelectorAll('[id$="Overlay"],[id$="Sheet"],[id$="Modal"],.drawer.show').forEach(el => {
+        if(r.length >= 6) return;
+        const cs = getComputedStyle(el);
+        if(cs.display === 'none' || cs.visibility === 'hidden') return;
+        if(el.classList.contains('drawer') && !el.classList.contains('show')) return;
+        const b = el.getBoundingClientRect(); if(b.width < 2 || b.height < 2) return;
+        r.push(el.id || el.className);
+      });
+    }catch(_){}
+    return r;
+  }
+  function uiCtx(){
+    const o = { sec: sg(() => currentSection, '?'), view: sg(() => view, '?'), tab: sg(() => cargoTab, '?'), sq: String(sg(() => searchQuery, '') || '').trim().length, ov: overlaysOpen(), on: navigator.onLine !== false };
+    try{ const vv = window.visualViewport; if(vv){ o.vv = Math.round(vv.height); o.ih = window.innerHeight; if(window.innerHeight - vv.height > 120) o.kb = true; } }catch(_){}
+    return o;
+  }
+  function fabInfo(){
+    try{
+      const f = document.getElementById('globalFab'); if(!f) return null;
+      const cs = getComputedStyle(f), b = f.getBoundingClientRect();
+      const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { shown: cs.display !== 'none', disabled: !!f.disabled, covered: !!(top && top !== f && !f.contains(top)), coveredBy: top && top !== f && !f.contains(top) ? descr(top) : '' };
+    }catch(_){ return null; }
+  }
+
+  // ---------- нажатия и касания ----------
+  let touch = null, clickAt = 0;
+  function onClick(e){
+    try{
+      const t = e.target, d = descr(t);
+      const id = newOp('u');
+      uop = { id, ts: Date.now() };
+      clickAt = Date.now();
+      const act = isAction(d) || !!(t && t.closest && t.closest('#globalFab,#composeBar'));
+      const o = { x: Math.round(e.clientX || 0), y: Math.round(e.clientY || 0), trusted: !!e.isTrusted, disabled: !!(t && t.disabled), ctx: uiCtx() };
+      if(act){ const f = fabInfo(); if(f) o.fab = f; }
+      ev('ui.click', 'info', d, o, { op: id, src: 'ui' });
+      if(act) setTimeout(() => opCheck(id, d), 1800);
+    }catch(err){ internal(err); }
+  }
+  function opCheck(id, d){
+    try{
+      const s = opStats.get(id) || { fn: 0, fb: 0, st: 0, err: 0, ui: 0 };
+      const eff = s.fn + s.fb + s.st;
+      ev('ui.result', (eff === 0 || s.err) ? 'warn' : 'info', (eff === 0 ? 'Нажатие без видимых последствий: ' : 'Итог нажатия: ') + d,
+        { fn: s.fn, fb: s.fb, st: s.st, problems: s.err }, { op: id, src: 'ui' });
+    }catch(err){ internal(err); }
+  }
+  function onTouchStart(e){
+    try{ const t = e.changedTouches && e.changedTouches[0]; if(!t) return; touch = { x: t.clientX, y: t.clientY, ts: Date.now(), tgt: e.target }; }catch(_){}
+  }
+  function onTouchEnd(e){
+    try{
+      const t = e.changedTouches && e.changedTouches[0];
+      if(!t || !touch) return;
+      const mv = Math.hypot(t.clientX - touch.x, t.clientY - touch.y), dur = Date.now() - touch.ts, tgt = touch.tgt; touch = null;
+      if(mv > 12 || dur > 700) return;                       // прокрутка или долгое нажатие — не касание-«тап»
+      const d = descr(tgt), top = document.elementFromPoint(t.clientX, t.clientY), td = descr(top);
+      const stamp = Date.now();
+      ev('ui.tap', 'info', d, { top: td !== d ? td : undefined, x: Math.round(t.clientX), y: Math.round(t.clientY), ms: dur }, { src: 'ui' });
+      setTimeout(() => {
+        if(clickAt < stamp){
+          const act = isAction(d) || isAction(td);
+          ev('ui.tap.noclick', act ? 'warn' : 'info', 'Касание без клика: ' + d + (td !== d ? ' (сверху ' + td + ')' : ''), { prevented: !!e.defaultPrevented }, { src: 'ui' });
+        }
+      }, 700);
+    }catch(err){ internal(err); }
+  }
+  const inputAt = new WeakMap();
+  function onInput(e){
+    try{
+      const t = e.target; if(!t) return;
+      const now = Date.now(), last = inputAt.get(t) || 0;
+      if(now - last < 2500) return; inputAt.set(t, now);
+      const len = (typeof t.value === 'string') ? t.value.length : (t.isContentEditable ? (t.textContent || '').length : -1);
+      ev('ui.input', 'info', descr(t), { len, type: t.type || t.tagName.toLowerCase() }, { src: 'ui' });
+    }catch(err){ internal(err); }
+  }
+  function onFocus(e){ try{ ev('ui.focus', 'info', descr(e.target), { kb: uiCtx().kb === true }, { src: 'ui' }); }catch(err){ internal(err); } }
+  function onBlur(e){ try{ ev('ui.blur', 'info', descr(e.target), undefined, { src: 'ui' }); }catch(err){ internal(err); } }
+  function onPaste(e){ try{ let n = -1; try{ n = (e.clipboardData && e.clipboardData.getData('text') || '').length; }catch(_){} ev('ui.paste', 'info', descr(e.target), { len: n }, { src: 'ui' }); }catch(err){ internal(err); } }
+
+  // ---------- устройство, экран, сеть ----------
+  function devInfo(){
+    const o = {};
+    try{ o.ua = scrub(navigator.userAgent, 160); o.lang = navigator.language; o.tzOffsetMin = new Date().getTimezoneOffset(); }catch(_){}
+    try{ o.screen = [screen.width, screen.height, window.devicePixelRatio]; o.inner = [window.innerWidth, window.innerHeight]; const vv = window.visualViewport; if(vv) o.vv = [Math.round(vv.width), Math.round(vv.height), +vv.scale.toFixed(2)]; }catch(_){}
+    try{ o.orient = (screen.orientation && screen.orientation.type) || ''; }catch(_){}
+    try{ o.standalone = !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }catch(_){}
+    try{ o.dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); o.theme = document.documentElement.getAttribute('data-theme') || ''; }catch(_){}
+    try{ o.online = navigator.onLine; const c = navigator.connection; if(c) o.net = { type: c.effectiveType, down: c.downlink, rtt: c.rtt, save: c.saveData }; }catch(_){}
+    try{ const m = performance.memory; if(m) o.heapMB = [Math.round(m.usedJSHeapSize / 1048576), Math.round(m.jsHeapSizeLimit / 1048576)]; }catch(_){}
+    try{ o.cores = navigator.hardwareConcurrency; o.devMem = navigator.deviceMemory; }catch(_){}
+    try{ o.vis = document.visibilityState; o.sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller); }catch(_){}
+    try{ o.native = !!sg(() => isNativeApp(), false); }catch(_){}
+    return o;
+  }
+  function devSnap(why){ ev('dev.snap', 'info', why, devInfo(), { op: '' , src: 'device' }); }
+  let vvT = null;
+  function onViewport(){
+    if(vvT) return;
+    vvT = setTimeout(() => { vvT = null; try{ const vv = window.visualViewport; ev('dev.viewport', 'info', 'Размер видимой области', { vv: vv ? [Math.round(vv.width), Math.round(vv.height), +vv.scale.toFixed(2)] : null, inner: [window.innerWidth, window.innerHeight], kb: !!(vv && window.innerHeight - vv.height > 120) }, { src: 'device' }); }catch(_){} }, 250);
+  }
+
+  // ---------- жизненный цикл: запуск, смена версии, аварийное завершение ----------
+  const verNow = () => String(sg(() => (document.getElementById('appVersionLine') || {}).textContent, '') || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  function aliveWrite(state){ try{ localStorage.setItem(ALIVE, JSON.stringify({ sid: SID, ts: Date.now(), state })); }catch(_){} }
+  function lifeStart(){
+    try{
+      let prev = null; try{ prev = JSON.parse(localStorage.getItem(ALIVE) || 'null'); }catch(_){}
+      const now = Date.now();
+      if(!prev) ev('life.first', 'info', 'Первый запуск с Супердиагностикой', undefined, { op: '', src: 'life' });
+      else if(prev.sid !== SID){
+        const gap = now - prev.ts;
+        const d = { prevSid: prev.sid, prevState: prev.state, gapSec: Math.round(gap / 1000) };
+        if(prev.state === 'visible' && gap > 40000) ev('life.restart.unclean', 'warn', 'Прошлый сеанс оборвался: приложение было на экране, а признаки жизни пропали (сбой, перезагрузка телефона или выгрузка системой)', d, { op: '', src: 'life' });
+        else if(prev.state === 'hidden') ev('life.restart.after-background', 'info', 'Запуск после фона: система могла выгрузить приложение из памяти', d, { op: '', src: 'life' });
+        else ev('life.restart', 'info', 'Обычный перезапуск', d, { op: '', src: 'life' });
+      }
+      const v = verNow(); let pv = ''; try{ pv = localStorage.getItem(VERK) || ''; }catch(_){}
+      if(pv && pv !== v) ev('life.version', 'warn', 'Сменилась версия приложения', { from: pv, to: v }, { op: '', src: 'life' });
+      try{ localStorage.setItem(VERK, v); }catch(_){}
+      ev('life.start', 'info', 'Запуск. Версия: ' + v, { sid: SID }, { op: '', src: 'life' });
+      devSnap('запуск');
+      aliveWrite(document.visibilityState === 'hidden' ? 'hidden' : 'visible');
+      setInterval(() => { if(document.visibilityState === 'visible') aliveWrite('visible'); }, 15000);
+      let closing = false;
+      document.addEventListener('visibilitychange', () => {
+        if(!closing) aliveWrite(document.visibilityState === 'hidden' ? 'hidden' : 'visible');
+        ev('life.visibility', 'info', document.visibilityState, undefined, { op: '', src: 'life' });
+        if(document.visibilityState === 'hidden') flush(); else devSnap('возврат в приложение');
+      });
+      window.addEventListener('pageshow', () => { closing = false; aliveWrite(document.visibilityState === 'hidden' ? 'hidden' : 'visible'); });
+      window.addEventListener('pagehide', () => { closing = true; aliveWrite('pagehide'); ev('life.pagehide', 'info', 'Закрытие страницы', undefined, { op: '', src: 'life' }); flush(); });
+      document.addEventListener('freeze', () => { ev('life.freeze', 'info', 'Страница заморожена системой', undefined, { op: '', src: 'life' }); flush(); });
+      document.addEventListener('resume', () => ev('life.resume', 'info', 'Страница разморожена', undefined, { op: '', src: 'life' }));
+      window.addEventListener('online', () => devSnap('сеть появилась'));
+      window.addEventListener('offline', () => devSnap('сеть пропала'));
+      window.addEventListener('orientationchange', () => setTimeout(() => devSnap('поворот экрана'), 300));
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- сводки значений для вызовов функций: только структура, без содержимого ----------
+  function av(v, isId){
+    const t = typeof v;
+    if(v == null) return v;
+    if(t === 'boolean') return v;
+    if(t === 'number') return isId ? v : 'n';
+    if(t === 'string') return isId ? scrub(v, 24) : 's' + v.length;
+    if(Array.isArray(v)) return 'arr' + v.length;
+    if(t === 'function') return 'fn';
+    if(t === 'object'){
+      if(typeof Event !== 'undefined' && v instanceof Event) return 'ev:' + v.type;
+      if(v.id != null && (typeof v.id === 'string' || typeof v.id === 'number')) return 'obj#' + scrub(v.id, 20);
+      return 'obj';
+    }
+    return t;
+  }
+  function argSum(args, ids){
+    const r = []; for(let i = 0; i < args.length && i < 4; i++) r.push(av(args[i], ids && ids.indexOf(i) !== -1)); return r;
+  }
+  function resSum(r){
+    if(r === undefined) return 'void';
+    if(r && typeof r.then === 'function') return 'promise';
+    return av(r, false);
+  }
+  const errText = (e) => scrub(e && (e.code ? e.code + ': ' : '') + (e && (e.message || e)), 220);
+
+  // ---------- обёртки ключевых функций ----------
+  const hot = new Map();
+  function wrapFn(name, o){
+    o = o || {};
+    try{
+      const orig = window[name];
+      if(typeof orig !== 'function'){ st.missing.push(name); return; }
+      if(orig.__sd) return;
+      const w = function(){
+        if(dead) return orig.apply(this, arguments);
+        let c = null, t0 = 0;
+        try{
+          const par = calls.length ? calls[calls.length - 1] : null;
+          const op = par ? par.op : (userOpId() || newOp('a'));
+          c = { id: 'c' + (++CALLN).toString(36), op, name, par: par ? par.id : '' };
+          calls.push(c); cur = op; t0 = performance.now();
+          if(o.start) ev('fn.start', 'info', name, { a: argSum(arguments, o.ids) }, { op, par: c.par, id: c.id, src: 'fn' });
+        }catch(e){ c = null; internal(e); }
+        let r, thr = null, threw = false;
+        try{ r = orig.apply(this, arguments); }catch(e){ thr = e; threw = true; }
+        try{
+          if(c){
+            const i = calls.lastIndexOf(c); if(i >= 0) calls.length = i;
+            cur = calls.length ? calls[calls.length - 1].op : '';
+            const dur = performance.now() - t0;
+            let quiet = false, sup = 0;
+            if(o.hot && !threw){
+              const now = Date.now(); let h = hot.get(name);
+              if(!h || now - h.t > 1000){ sup = h ? h.n : 0; h = { t: now, n: 0, k: 0 }; hot.set(name, h); }
+              if(++h.k > 3){ h.n++; quiet = true; }
+            }
+            if(!quiet){
+              const d = { a: argSum(arguments, o.ids) };
+              if(threw) d.err = errText(thr); else d.r = resSum(r);
+              if(sup) d.suppressed = sup;
+              ev('fn.call', threw ? 'error' : 'info', name, d, { op: c.op, par: c.par, id: c.id, dur, src: 'fn' });
+            }
+            if(!threw && r && typeof r.then === 'function'){
+              const op = c.op, cid = c.id, ts0 = t0;
+              r.then(() => { if(!quiet) ev('fn.settle', 'info', name + ': завершено', undefined, { op, id: cid, dur: performance.now() - ts0, src: 'fn' }); },
+                (e) => { ev('fn.settle', 'warn', name + ': отклонено', { err: errText(e) }, { op, id: cid, dur: performance.now() - ts0, src: 'fn' }); });
+            }
+            if(o.st) stSoon(name);
+          }
+        }catch(e){ internal(e); cur = calls.length ? calls[calls.length - 1].op : ''; }
+        if(threw) throw thr;
+        return r;
+      };
+      w.__sd = true;
+      try{ Object.defineProperty(w, 'name', { value: name }); }catch(_){}
+      window[name] = w;
+      st.wrapped.push(name);
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- обёртка обработчиков click у элементов с id ----------
+  function installListeners(){
+    try{
+      const AEL = EventTarget.prototype.addEventListener, REL = EventTarget.prototype.removeEventListener;
+      const wm = new WeakMap();
+      const capOf = (opt) => (typeof opt === 'boolean') ? opt : !!(opt && opt.capture);
+      EventTarget.prototype.addEventListener = function(type, fn, opt){
+        try{
+          if(type === 'click' && typeof fn === 'function' && !dead && this && this.nodeType === 1 && this.id){
+            const key = capOf(opt) ? 'c' : 'b';
+            let m = wm.get(fn); if(!m){ m = {}; wm.set(fn, m); }
+            let w = m[key];
+            if(!w){
+              w = function(e){
+                let c = null, t0 = performance.now(), threw = false, thr = null, r;
+                try{ const op = ambient() || newOp('a'); c = { id: 'h' + (++CALLN).toString(36), op, name: 'click', par: calls.length ? calls[calls.length - 1].id : '' }; calls.push(c); cur = op; }catch(_){ c = null; }
+                try{ r = fn.apply(this, arguments); }catch(err){ thr = err; threw = true; }
+                try{
+                  if(c){
+                    const i = calls.lastIndexOf(c); if(i >= 0) calls.length = i;
+                    cur = calls.length ? calls[calls.length - 1].op : '';
+                    ev('fn.handler', threw ? 'error' : 'info', 'click#' + (this && this.id || ''), threw ? { err: errText(thr) } : (r && typeof r.then === 'function' ? { async: true } : undefined), { op: c.op, par: c.par, id: c.id, dur: performance.now() - t0, src: 'handler' });
+                  }
+                }catch(err){ internal(err); }
+                if(threw) throw thr;
+                return r;
+              };
+              m[key] = w;
+            }
+            return AEL.call(this, type, w, opt);
+          }
+        }catch(e){ internal(e); }
+        return AEL.apply(this, arguments);
+      };
+      EventTarget.prototype.removeEventListener = function(type, fn, opt){
+        try{
+          if(type === 'click' && typeof fn === 'function'){
+            const m = wm.get(fn), key = capOf(opt) ? 'c' : 'b';
+            if(m && m[key]) return REL.call(this, type, m[key], opt);
+          }
+        }catch(e){ internal(e); }
+        return REL.apply(this, arguments);
+      };
+      st.ael = true;
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- Firebase: Firestore, Storage, fetch ----------
+  const fbSeq = { n: 0 };
+  function keysOf(data){ try{ return (data && typeof data === 'object') ? Object.keys(data).slice(0, 30) : undefined; }catch(_){ return undefined; } }
+  function bytesOf(data){ try{ return JSON.stringify(data).length; }catch(_){ return undefined; } }
+  function refPath(ref){
+    try{ if(ref && typeof ref.path === 'string') return ref.path; }catch(_){}
+    try{ const q = ref && ref._delegate && ref._delegate._query && ref._delegate._query.path; if(q && q.canonicalString) return q.canonicalString(); }catch(_){}
+    return '';
+  }
+  function fbEnd(c, t0, err, val){
+    try{
+      const dur = performance.now() - t0;
+      if(err) ev('fb.fail', 'error', c.m + ' ' + c.path, { code: (err && err.code) || '', err: errText(err), a: c.a }, { op: c.op, id: c.id, dur, src: 'firebase' });
+      else{
+        const d = { a: c.a };
+        try{
+          if(val && typeof val.size === 'number' && typeof val.docs !== 'undefined') d.docs = val.size;
+          else if(val && typeof val.exists === 'boolean') d.exists = val.exists;
+          if(val && val.metadata) d.fromCache = !!val.metadata.fromCache;
+        }catch(_){}
+        ev('fb.ok', 'info', c.m + ' ' + c.path, d, { op: c.op, id: c.id, dur, src: 'firebase' });
+      }
+    }catch(e){ internal(e); }
+  }
+  function fbWrapMethod(proto, m, kind){
+    const desc = Object.getOwnPropertyDescriptor(proto, m);
+    if(!desc || typeof desc.value !== 'function' || desc.value.__sd) return false;
+    const orig = desc.value;
+    const w = function(){
+      if(kind === 'batch' && m !== 'commit'){
+        try{ if(!dead){ const ops = this.__sdOps || (this.__sdOps = []); if(ops.length < 200) ops.push(m[0] + ':' + pathScrub(refPath(arguments[0])) + (m !== 'delete' ? ' [' + (keysOf(arguments[1]) || []).slice(0, 12).join(',') + ']' : '')); } }catch(e){ internal(e); }
+        return orig.apply(this, arguments);
+      }
+      let c = null, t0 = performance.now();
+      try{
+        if(!dead){
+          const path = pathScrub(refPath(this));
+          const a = {};
+          if(m === 'set' || m === 'update' || m === 'add'){ const data = arguments[0]; a.keys = keysOf(data); a.bytes = bytesOf(data); if(m === 'set' && arguments[1] && arguments[1].merge) a.merge = true; }
+          c = { m, path, a, op: ambient() || newOp('a'), id: 'f' + (++fbSeq.n).toString(36) };
+          if(m === 'commit'){ const ops = this.__sdOps || []; c.a = { n: ops.length, ops: ops.slice(0, 40) }; c.path = 'batch'; }
+          ev('fb.start', 'info', m + ' ' + c.path, c.a, { op: c.op, id: c.id, src: 'firebase' });
+        }
+      }catch(e){ c = null; internal(e); }
+      let r;
+      try{ r = orig.apply(this, arguments); }
+      catch(e){ if(c) fbEnd(c, t0, e); throw e; }
+      try{
+        if(m === 'commit'){ try{ this.__sdOps = []; }catch(_){} }
+        if(c){
+          if(r && typeof r.then === 'function') r.then((v) => fbEnd(c, t0, null, v), (e) => fbEnd(c, t0, e));
+          else fbEnd(c, t0, null, r);
+        }
+      }catch(e){ internal(e); }
+      return r;
+    };
+    w.__sd = true;
+    Object.defineProperty(proto, m, { value: w, writable: true, configurable: true, enumerable: desc.enumerable });
+    return true;
+  }
+  function snapLog(cid, path, snap){
+    try{
+      const d = { l: cid };
+      if(snap && typeof snap.size === 'number'){
+        d.size = snap.size;
+        try{
+          const ch = snap.docChanges ? snap.docChanges() : [];
+          const add = [], mod = [], rem = [];
+          ch.forEach(x => { const id = x && x.doc && x.doc.id; (x.type === 'added' ? add : x.type === 'removed' ? rem : mod).push(String(id).slice(0, 24)); });
+          d.add = add.length; d.mod = mod.length; d.rem = rem.length;
+          if(rem.length) d.remIds = rem.slice(0, 12);
+          if(add.length && add.length <= 12) d.addIds = add;
+        }catch(_){}
+      }else if(snap && typeof snap.exists === 'boolean') d.exists = snap.exists;
+      if(snap && snap.metadata){ d.cache = !!snap.metadata.fromCache; d.pending = !!snap.metadata.hasPendingWrites; }
+      const meta = d.add === 0 && d.mod === 0 && d.rem === 0 && d.size !== undefined;
+      if(meta && fbSeq.metaN++ > 400 && fbSeq.metaN % 10) return;   // метаданные-только снимки — реже
+      ev('fb.snapshot', d.rem ? 'warn' : 'info', 'snapshot ' + path, d, { src: 'firebase' });
+      stSoon('snapshot');
+    }catch(e){ internal(e); }
+  }
+  fbSeq.metaN = 0;
+  function fbWrapSnapshot(proto){
+    const desc = Object.getOwnPropertyDescriptor(proto, 'onSnapshot');
+    if(!desc || typeof desc.value !== 'function' || desc.value.__sd) return false;
+    const orig = desc.value;
+    const w = function(){
+      const args = Array.prototype.slice.call(arguments);
+      try{
+        if(!dead){
+          const path = pathScrub(refPath(this)), cid = 'l' + (++fbSeq.n).toString(36);
+          ev('fb.listen', 'info', 'onSnapshot ' + path, { l: cid }, { src: 'firebase' });
+          const idx = args.findIndex(a => typeof a === 'function' || (a && typeof a.next === 'function'));
+          if(idx >= 0){
+            const h = args[idx];
+            if(typeof h === 'function'){
+              args[idx] = function(snap){ snapLog(cid, path, snap); return h.apply(this, arguments); };
+              if(typeof args[idx + 1] === 'function'){ const eh = args[idx + 1]; args[idx + 1] = function(err){ try{ ev('fb.listen.error', 'error', 'onSnapshot ' + path, { l: cid, code: err && err.code || '', err: errText(err) }, { src: 'firebase' }); }catch(_){} return eh.apply(this, arguments); }; }
+            }else{
+              const obs = h, nobs = Object.create(obs);
+              nobs.next = function(snap){ snapLog(cid, path, snap); return obs.next.apply(obs, arguments); };
+              if(typeof obs.error === 'function') nobs.error = function(err){ try{ ev('fb.listen.error', 'error', 'onSnapshot ' + path, { l: cid, code: err && err.code || '', err: errText(err) }, { src: 'firebase' }); }catch(_){} return obs.error.apply(obs, arguments); };
+              args[idx] = nobs;
+            }
+          }
+        }
+      }catch(e){ internal(e); }
+      return orig.apply(this, args);
+    };
+    w.__sd = true;
+    Object.defineProperty(proto, 'onSnapshot', { value: w, writable: true, configurable: true, enumerable: desc.enumerable });
+    return true;
+  }
+  function protoChain(o){ const r = []; let p = o && Object.getPrototypeOf(o); while(p && p !== Object.prototype && p !== Function.prototype){ r.push(p); p = Object.getPrototypeOf(p); } return r; }
+  function installFirebase(){
+    try{
+      const database = sg(() => db, null), store = sg(() => storage, null);
+      if(database){
+        const dref = database.doc('__sd/probe'), cref = database.collection('__sd'), batch = database.batch();
+        const seen = new Set();
+        const patch = (protos, names, kind, label) => {
+          protos.forEach(p => { if(seen.has(p)) return; names.forEach(m => { if(Object.prototype.hasOwnProperty.call(p, m) && fbWrapMethod(p, m, kind)) st.fbPatched.push(label + '.' + m); }); });
+        };
+        patch(protoChain(dref), ['set', 'update', 'delete', 'get'], 'doc', 'DocumentReference');
+        patch(protoChain(cref), ['get', 'add'], 'col', 'Query');
+        patch(protoChain(batch), ['set', 'update', 'delete', 'commit'], 'batch', 'WriteBatch');
+        [protoChain(dref), protoChain(cref)].forEach(ch => ch.forEach(p => { if(Object.prototype.hasOwnProperty.call(p, 'onSnapshot') && fbWrapSnapshot(p)) st.fbPatched.push('onSnapshot@' + (p.constructor && p.constructor.name || '?')); }));
+        if(!st.fbPatched.length) st.fbSkipped.push('firestore: прототипы не найдены');
+      }else st.fbSkipped.push('firestore: db недоступен');
+      if(store){
+        const sref = store.ref('__sd/probe');
+        protoChain(sref).forEach(p => ['put', 'putString', 'delete', 'getDownloadURL'].forEach(m => {
+          if(Object.prototype.hasOwnProperty.call(p, m)){
+            const desc = Object.getOwnPropertyDescriptor(p, m);
+            if(!desc || typeof desc.value !== 'function' || desc.value.__sd) return;
+            const orig = desc.value;
+            const w = function(){
+              let c = null, t0 = performance.now();
+              try{
+                if(!dead){
+                  const a = {}; const x = arguments[0];
+                  if(m === 'put') a.bytes = (x && typeof x.size === 'number') ? x.size : undefined;
+                  if(m === 'putString') a.len = typeof x === 'string' ? x.length : undefined;
+                  c = { m: 'storage.' + m, path: pathScrub(sg(() => this.fullPath, '')), a, op: ambient() || newOp('a'), id: 'f' + (++fbSeq.n).toString(36) };
+                  ev('fb.start', 'info', c.m + ' ' + c.path, a, { op: c.op, id: c.id, src: 'storage' });
+                }
+              }catch(e){ c = null; internal(e); }
+              let r;
+              try{ r = orig.apply(this, arguments); }catch(e){ if(c) fbEnd(c, t0, e); throw e; }
+              try{ if(c){ if(r && typeof r.then === 'function') r.then((v) => fbEnd(c, t0, null, null), (e) => fbEnd(c, t0, e)); else fbEnd(c, t0, null, null); } }catch(e){ internal(e); }
+              return r;
+            };
+            w.__sd = true;
+            Object.defineProperty(p, m, { value: w, writable: true, configurable: true, enumerable: desc.enumerable });
+            st.fbPatched.push('Storage.' + m);
+          }
+        }));
+      }else st.fbSkipped.push('storage: недоступен');
+    }catch(e){ internal(e); st.fbSkipped.push('ошибка установки: ' + st.errText); }
+    try{
+      if(typeof window.fetch === 'function' && !window.fetch.__sd){
+        const F = window.fetch;
+        const wf = function(input, init){
+          let c = null, t0 = performance.now();
+          try{
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            if(!dead && /^https:\/\/(firebasestorage|firestore|identitytoolkit|securetoken|www)\.googleapis\.com|^https:\/\/[^/]*firebaseio|^https:\/\/[^/]*cloudfunctions/.test(url)){
+              const body = init && init.body; const bytes = body && (body.size || body.byteLength || (typeof body === 'string' ? body.length : undefined));
+              c = { m: 'fetch ' + ((init && init.method) || (input && input.method) || 'GET'), path: scrub(url.split('?')[0].replace(/\/o\/[^/]+/, '/o/<path>'), 140), a: { bytes }, op: ambient() || newOp('a'), id: 'f' + (++fbSeq.n).toString(36) };
+            }
+          }catch(e){ c = null; }
+          const p = F.apply(this, arguments);
+          try{ if(c && p && typeof p.then === 'function') p.then((r) => { try{ ev(r && r.ok ? 'fb.ok' : 'fb.fail', r && r.ok ? 'info' : 'warn', c.m + ' ' + c.path, { status: r && r.status, a: c.a }, { op: c.op, id: c.id, dur: performance.now() - t0, src: 'fetch' }); }catch(_){} }, (e) => { try{ ev('fb.fail', 'error', c.m + ' ' + c.path, { err: errText(e), a: c.a }, { op: c.op, id: c.id, dur: performance.now() - t0, src: 'fetch' }); }catch(_){} }); }catch(e){ internal(e); }
+          return p;
+        };
+        wf.__sd = true; window.fetch = wf; st.fetch = true;
+      }
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- смена данных: расходы, Автосервис, «Мой автомобиль», топливо, заявки (счётчики) ----------
+  const COLS = [
+    ['expenses', () => expenses, (x) => [x.editedAt || x.createdAt || 0, x.category ? 1 : 0, x.amount != null ? 1 : 0, x.liters != null ? 1 : 0]],
+    ['serviceFolders', () => serviceFolders, (f) => [f.editedAt || 0, (f.items || []).length, (f.items || []).filter(i => i && i.done).length, (f.items || []).reduce((a, i) => a + ((i && i.photos && i.photos.length) || 0), 0)]],
+    ['serviceCarNotes', () => serviceCarNotes, (c) => [c.editedAt || c.updatedAt || 0, (c.photos || []).length, (c.files || []).length]]
+  ];
+  const lastCol = {};
+  let lastNotes = '', lastFuel = '', stT = null, stWhy = '';
+  function stTick(why){
+    try{
+      if(dead) return;
+      COLS.forEach(([name, get, sig]) => {
+        const arr = sg(get, null);
+        if(!Array.isArray(arr)) return;
+        const map = new Map();
+        arr.forEach(x => { if(x && x.id != null) map.set(String(x.id), JSON.stringify(sg(() => sig(x), []))); });
+        const prev = lastCol[name]; lastCol[name] = map;
+        if(!prev) return;
+        const add = [], rem = [], chg = [];
+        map.forEach((v, k) => { if(!prev.has(k)) add.push(k.slice(0, 24)); else if(prev.get(k) !== v) chg.push(k.slice(0, 24)); });
+        prev.forEach((v, k) => { if(!map.has(k)) rem.push(k.slice(0, 24)); });
+        if(add.length || rem.length || chg.length){
+          ev('st.' + name, rem.length ? 'warn' : 'info', name + ': было ' + prev.size + ', стало ' + map.size + (why ? ' (после ' + why + ')' : ''),
+            { n: map.size, was: prev.size, add: add.slice(0, 12), rem: rem.slice(0, 12), chg: chg.slice(0, 12), why }, { src: 'state' });
+        }
+      });
+      const ns = sg(() => notes, null);
+      if(Array.isArray(ns)){
+        const c = { n: ns.length, active: 0, trashed: 0, archived: 0, delivered: 0 };
+        ns.forEach(x => { if(!x) return; if(x.trashed) c.trashed++; else if(x.archived) c.archived++; else { c.active++; if(x.delivered === true) c.delivered++; } });
+        const s = JSON.stringify(c);
+        if(lastNotes && s !== lastNotes) ev('st.notes', 'info', 'заявок: всего ' + c.n + ', активных ' + c.active + ', корзина ' + c.trashed + ', архив ' + c.archived + (why ? ' (после ' + why + ')' : ''), Object.assign({ was: JSON.parse(lastNotes).n, why }, c), { src: 'state' });
+        lastNotes = s;
+      }
+      const fb = sg(() => fuelBalances, null);
+      if(fb && typeof fb === 'object'){
+        let sig = ''; try{ const j = JSON.stringify(fb); sig = Object.keys(fb).length + ':' + j.length; }catch(_){}
+        if(lastFuel && sig !== lastFuel) ev('st.fuel', 'info', 'топливо/пробег: записей месяцев ' + Object.keys(fb).length + (why ? ' (после ' + why + ')' : ''), { months: Object.keys(fb).length, why }, { src: 'state' });
+        lastFuel = sig;
+      }
+    }catch(e){ internal(e); }
+  }
+  function stSoon(why){ stWhy = why || stWhy; if(stT) return; stT = setTimeout(() => { stT = null; const w = stWhy; stWhy = ''; stTick(w); }, 30); }
+
+  // ---------- ошибки ресурсов и долгие задачи ----------
+  function installObservers(){
+    try{
+      window.addEventListener('error', (e) => {
+        try{
+          const t = e && e.target;
+          if(t && t !== window && t.tagName){ ev('js.resource', 'warn', 'Не загрузился ресурс: ' + t.tagName.toLowerCase(), { src: scrub(t.currentSrc || t.src || t.href || '', 120) }, { src: 'js' }); }
+        }catch(_){}
+      }, true);
+      window.addEventListener('securitypolicyviolation', (e) => { try{ ev('js.csp', 'warn', 'Заблокировано политикой безопасности', { dir: e.violatedDirective, uri: scrub(e.blockedURI, 100) }, { src: 'js' }); }catch(_){} });
+    }catch(e){ internal(e); }
+    try{
+      if(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask') !== -1){
+        new PerformanceObserver((list) => { list.getEntries().forEach(en => { if(en.duration >= 250 && st.longtasks++ < 400) ev('dev.longtask', 'info', 'Долгая задача (интерфейс не отвечал)', { ms: Math.round(en.duration) }, { dur: en.duration, src: 'device' }); }); }).observe({ entryTypes: ['longtask'] });
+      }
+    }catch(_){}
+  }
+
+  // ---------- скачивание: один общий JSON ----------
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const iso = (ts) => { try{ return new Date(ts).toISOString(); }catch(_){ return ''; } };
+  function liveState(){
+    const s = {};
+    try{
+      const ns = sg(() => notes, []) || [];
+      s.notes = { total: ns.length, active: ns.filter(n => n && !n.trashed && !n.archived).length, trashed: ns.filter(n => n && n.trashed).length, archived: ns.filter(n => n && n.archived).length, delivered: ns.filter(n => n && n.delivered === true && !n.trashed && !n.archived).length };
+      s.expenses = (sg(() => expenses, []) || []).length;
+      s.expenseCategories = (sg(() => expenseCategories, []) || []).length;
+      const sf = sg(() => serviceFolders, []) || [];
+      s.service = { folders: sf.length, items: sf.reduce((a, f) => a + ((f && f.items) ? f.items.length : 0), 0), done: sf.reduce((a, f) => a + ((f && f.items) ? f.items.filter(i => i && i.done).length : 0), 0) };
+      s.carNotes = (sg(() => serviceCarNotes, []) || []).length;
+      s.fuelMonths = Object.keys(sg(() => fuelBalances, {}) || {}).length;
+      s.signedIn = !!sg(() => currentUID, null);
+      s.section = sg(() => currentSection, '?'); s.view = sg(() => view, '?'); s.cargoTab = sg(() => cargoTab, '?');
+      s.searchActive = String(sg(() => searchQuery, '') || '').trim().length > 0;
+      s.lastSyncedNotes = sg(() => lastSyncedNotes.size, null);
+      s.pendingDeletedNoteIds = sg(() => pendingDeletedNoteIds.length, null);
+      s.localUpdatedAt = sg(() => localUpdatedAt ? iso(localUpdatedAt) : null, null);
+      s.conflicts = sg(() => notes.filter(n => n && n.syncConflict).length, null);
+    }catch(e){ internal(e); }
+    return s;
+  }
+  function storageInfo(){
+    const o = { keys: [] };
+    try{
+      let tot = 0;
+      for(let i = 0; i < localStorage.length; i++){
+        const k = localStorage.key(i), v = localStorage.getItem(k) || '';
+        tot += k.length + v.length;
+        if(v.length > 2000 || /^vreyse|^moy|^fb|^__/.test(k)) o.keys.push([scrub(k, 60), v.length]);
+      }
+      o.localStorageChars = tot; o.keyCount = localStorage.length;
+      o.keys.sort((a, b) => b[1] - a[1]); o.keys = o.keys.slice(0, 25);
+    }catch(e){ o.err = String(e && e.name || e); }
+    return o;
+  }
+  function pushLines(){ return sg(() => (typeof pushDebugLines !== 'undefined' ? pushDebugLines.map(x => scrub(x, 200, true)) : []), []); }
+  function opsSummary(events){
+    const m = new Map();
+    events.forEach(e => {
+      if(!e.op) return;
+      const k = (e.sid || '') + '|' + e.op;
+      let o = m.get(k);
+      if(!o){ o = { op: e.op, sid: e.sid, from: e.ts, to: e.ts, events: 0, errors: 0, warns: 0, types: {}, first: '' }; m.set(k, o); }
+      o.events++; if(e.ts < o.from) o.from = e.ts; if(e.ts > o.to) o.to = e.ts;
+      if(e.lv === 'error') o.errors++; else if(e.lv === 'warn') o.warns++;
+      const t = e.type.split('.')[0]; o.types[t] = (o.types[t] || 0) + 1;
+      if(!o.first && e.type === 'ui.click') o.first = e.msg;
+    });
+    const arr = Array.from(m.values()).sort((a, b) => a.from - b.from);
+    return arr.map(o => ({ op: o.op, sid: o.sid, from: iso(o.from), spanMs: o.to - o.from, events: o.events, errors: o.errors, warnings: o.warns, types: o.types, trigger: o.first || undefined }));
+  }
+  const DROP = { t: 1, title: 1, text: 1, amt: 1, pa: 1, amount: 1, name: 1, phone: 1, phones: 1, address: 1, addr: 1, city: 1, from: 1, to: 1, client: 1, firm: 1 };
+  function cleanD(v, depth){
+    if(depth > 6) return '<глубоко>';
+    if(Array.isArray(v)) return v.slice(0, 60).map(x => cleanD(x, depth + 1));
+    if(v && typeof v === 'object'){ const o = {}; Object.keys(v).forEach(k => { if(DROP[k]) return; o[k] = (k === 'lost' && Array.isArray(v[k])) ? v[k].slice(0, 60).map(x => Array.isArray(x) ? x.slice(0, 2) : x) : cleanD(v[k], depth + 1); }); return o; }
+    if(typeof v === 'string') return scrub(v, 200, true);
+    return v;
+  }
+  function deepScrub(v, depth){
+    if(depth > 8) return '<глубоко>';
+    if(typeof v === 'string') return scrub(v, 400, true);
+    if(Array.isArray(v)) return v.slice(0, 300).map(x => deepScrub(x, depth + 1));
+    if(v && typeof v === 'object'){ const o = {}; Object.keys(v).forEach(k => { o[k] = deepScrub(v[k], depth + 1); }); return o; }
+    return v;
+  }
+  function normLegacy(e){
+    const r = { ts: e.ts, q: e.n || 0, sid: e.sid, dev: e.dev, type: e.type, lv: e.lv, src: e.src || '', op: e.op || '', msg: e.msg || '', legacy: true };
+    if(e.id) r.id = e.id; if(e.num) r.num = e.num; if(e.d !== undefined) r.d = cleanD(e.d, 0); if(e.ui) r.ui = e.ui; r.msg = scrub(r.msg, 300, true); if(e.cloud) r.cloud = true;
+    return r;
+  }
+  async function build(){
+    flush(); try{ DIAG.flush(); }catch(_){}
+    const now = Date.now();
+    let ext = null;
+    try{ if(typeof window.__sdExt === 'function') ext = await Promise.race([window.__sdExt(), new Promise(r => setTimeout(() => r({ timeout: true }), 7000))]); }catch(e){ ext = { error: errText(e) }; }
+    ext = deepScrub(ext, 0);
+    let storageEst = null;
+    try{ if(navigator.storage && navigator.storage.estimate){ const e = await navigator.storage.estimate(); storageEst = { usageMB: +(e.usage / 1048576).toFixed(1), quotaMB: Math.round(e.quota / 1048576) }; } }catch(_){}
+    let status = null;
+    try{ status = DIAG.status().map(r => ({ key: r.key, level: r.lv, label: r.label, text: scrub(r.text, 200, true), sub: r.sub ? scrub(r.sub, 200, true) : undefined })); }catch(e){ status = { error: errText(e) }; }
+    let legacy = []; try{ legacy = DIAG.entries().map(normLegacy); }catch(e){ internal(e); }
+    let events = all().concat(legacy).sort((a, b) => a.ts - b.ts || (a.pt || 0) - (b.pt || 0) || (a.q || 0) - (b.q || 0));
+    const total0 = events.length;
+    // защита от огромного файла: при превышении убираем самые старые «обычные» события (ошибки и предупреждения остаются)
+    let trimmed = 0; let size = 0;
+    const estimate = () => { let n = 0; for(let i = 0; i < events.length; i++) n += 120 + (events[i].msg || '').length + (events[i].d ? JSON.stringify(events[i].d).length : 0); return n; };
+    size = estimate();
+    if(size > 3500000){
+      const keep = []; let budget = 3000000, i = events.length - 1;
+      const important = events.filter(e => e.lv !== 'info');
+      for(; i >= 0 && budget > 0; i--){ const e = events[i]; budget -= 120 + (e.msg || '').length + (e.d ? JSON.stringify(e.d).length : 0); keep.push(e); }
+      const set = new Set(keep); important.forEach(e => set.add(e));
+      events = events.filter(e => set.has(e)); trimmed = total0 - events.length;
+    }
+    const oldest = events.length ? events[0].ts : null;
+    const sessions = {};
+    events.forEach(e => { const s = sessions[e.sid] = sessions[e.sid] || { dev: e.dev, from: e.ts, to: e.ts, events: 0 }; if(e.ts < s.from) s.from = e.ts; if(e.ts > s.to) s.to = e.ts; s.events++; });
+    Object.keys(sessions).forEach(k => { sessions[k].from = iso(sessions[k].from); sessions[k].to = iso(sessions[k].to); });
+    const ops = opsSummary(events);
+    const gaps = [];
+    const hasCloud = sg(() => DIAG.cloudOn(), false);
+    if(!hasCloud) gaps.push('События второго телефона сюда не попадают (облачная история выключена). Для разбора конфликтов между телефонами скачайте файл на обоих и приложите оба.');
+    if(lastFlushErr) gaps.push('Хранилище: ' + lastFlushErr);
+    if(st.missing.length) gaps.push('В этой версии не найдены отслеживаемые функции: ' + st.missing.join(', '));
+    if(st.fbSkipped.length) gaps.push('Firebase-перехват не установлен полностью: ' + st.fbSkipped.join('; '));
+    if(!st.fbPatched.length) gaps.push('Операции Firebase не записываются (перехват не установлен). Нужно искать причину в cloud.* и firestore.* событиях старого журнала.');
+    if(st.dropped) gaps.push('Сброшено ' + st.dropped + ' событий защитой от перегрузки (слишком частые события) — подробности по этим моментам могут отсутствовать.');
+    if(trimmed) gaps.push('Файл урезан по размеру: убрано ' + trimmed + ' старых обычных событий, ошибки и предупреждения сохранены.');
+    if(oldest && now - oldest < 3600 * 1000) gaps.push('Записей меньше чем за последний час (самая ранняя ' + iso(oldest) + ') — если ошибка была раньше, её следов в файле нет.');
+    if(st.internal) gaps.push('Внутренние сбои самой диагностики: ' + st.internal + (st.errText ? ' (последний: ' + st.errText + ')' : ''));
+    const unfinished = events.filter(e => e.type === 'fn.start').filter(s => !events.some(x => x.type === 'fn.call' && x.id === s.id)).slice(-10).map(e => ({ at: iso(e.ts), fn: e.msg, op: e.op }));
+    if(unfinished.length) gaps.push('Есть вызовы, у которых нет записи об окончании (возможно, зависли или приложение закрылось): ' + unfinished.length);
+    const readme = [
+      'Файл «Супердиагностика» приложения «В рейсе». Один общий журнал событий + снимок состояния. Время везде в UTC (ISO), ts — миллисекунды Unix.',
+      'timeline — события по порядку (старые → новые). Поля: ts/t, sid (сеанс запуска), dev (телефон), type, lv (info/warn/error), src, op (operationId), par (родительский вызов), id (id вызова/записи), dur (мс), msg, d (подробности), legacy:true — записи прежнего журнала заявок (note.*, sync.*, cloud.*, firestore.*).',
+      'operations — сводка по operationId: что запустило цепочку (trigger), сколько событий, были ли ошибки. Префикс op: u — нажатие пользователя, a — автоматическая операция (синхронизация, таймер).',
+      'Типы: ui.click/ui.tap/ui.tap.noclick/ui.result — нажатия и их итог; fn.call/fn.start/fn.settle/fn.handler — вызовы функций и обработчики; fb.start/fb.ok/fb.fail/fb.snapshot/fb.listen — Firebase; st.* — изменения данных (только id и счётчики); dev.* — устройство; life.* — запуск/перезапуск/версия; js.* и console.* — ошибки.',
+      'Как искать «нажал «+», а записи нет»: найти ui.click с #globalFab → его op → ui.result (fn/fb/st счётчики) → fn.call openExpenseSheet / svcCreateFolder / saveState → fb.start/fb.ok для записи → st.expenses/st.serviceFolders (add) → затем fb.snapshot с rem>0 или sync.reconcile/firestore.removed (синхронизация стёрла запись).',
+      'Не собирается: тексты и поля заявок, имена, телефоны, адреса, суммы и любые введённые значения, пароли, токены, ссылки с токенами, uid, содержимое документов Firestore (только имена полей и размеры).',
+      'Раздел gaps — чего в этом файле не хватает для точного вывода.'
+    ];
+    return {
+      format: 'vreyse-superdiag', schema: 1,
+      app: 'В рейсе', version: verNow(), exportedAt: iso(now), tzOffsetMin: new Date().getTimezoneOffset(),
+      device: DEV, session: SID, sessionStartedAt: iso(T0),
+      readme, gaps,
+      limits: { eventsInFile: events.length, eventsBeforeTrim: total0, oldestEvent: oldest ? iso(oldest) : null, trimmed, ringSegments: segs.length, ringCapacityEvents: SEG * MAXSEG },
+      self: { events: st.events, dropped: st.dropped, internalErrors: st.internal, overheadMsTotal: Math.round(st.selfMs), wrappedFunctions: st.wrapped, missingFunctions: st.missing, firebaseHooks: st.fbPatched, firebaseSkipped: st.fbSkipped, clickHandlerHook: st.ael, fetchHook: st.fetch, longtasks: st.longtasks },
+      device_now: devInfo(), storage: Object.assign(storageInfo(), storageEst ? { estimate: storageEst } : {}),
+      state_now: liveState(), systemStatus: status, extendedCheck: ext,
+      pushLog: pushLines(), sessions, unfinishedCalls: unfinished,
+      operations: ops.slice(-800),
+      timeline: events.map(e => { const r = Object.assign({}, e); r.t = iso(e.ts); return r; })
+    };
+  }
+  let busy = false;
+  async function download(btn){
+    if(busy) return; busy = true;
+    const label = btn ? btn.textContent : '';
+    const op = newOp('a');
+    try{
+      if(btn){ btn.disabled = true; btn.textContent = 'Собираю…'; }
+      ev('sd.download', 'info', 'Скачивание Супердиагностики', undefined, { op, src: 'sd' });
+      const payload = await build();
+      const text = JSON.stringify(payload, null, 1);
+      const d = new Date();
+      const name = 'vreyse-superdiag-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes()) + '.json';
+      const blob = new Blob([text], { type: 'application/json' });
+      let shared = false;
+      try{
+        const ios = /iPhone|iPad/i.test(navigator.userAgent || '');
+        if(ios && navigator.canShare && typeof File !== 'undefined'){
+          const f = new File([blob], name, { type: 'application/json' });
+          if(navigator.canShare({ files: [f] })){ await navigator.share({ files: [f], title: name }); shared = true; }
+        }
+      }catch(e){ if(e && e.name === 'AbortError'){ ev('sd.download', 'info', 'Отправка отменена пользователем', undefined, { op, src: 'sd' }); return; } }
+      if(!shared){
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      }
+      ev('sd.download', 'info', 'Файл сформирован: ' + Math.round(text.length / 1024) + ' КБ, событий ' + payload.timeline.length, { kb: Math.round(text.length / 1024), shared }, { op, src: 'sd' });
+      showToast(shared ? 'Супердиагностика: выберите, куда сохранить файл' : 'Супердиагностика сохранена в Загрузки (' + Math.round(text.length / 1024) + ' КБ)', 3500);
+    }catch(e){
+      internal(e); ev('sd.download', 'error', 'Не удалось сформировать файл', { err: errText(e) }, { op, src: 'sd' });
+      try{ showToast('Не удалось сформировать файл Супердиагностики'); }catch(_){}
+    }finally{ busy = false; if(btn){ btn.disabled = false; btn.textContent = label || 'Скачать'; } }
+  }
+  const info = () => ({ events: all().length, since: (all()[0] || {}).ts || null, err: lastFlushErr });
+
+  // ---------- запуск ----------
+  loadStore();
+  Q = 0;
+  installListeners();
+  try{
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    document.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+    document.addEventListener('input', onInput, true);
+    document.addEventListener('focusin', onFocus, true);
+    document.addEventListener('focusout', onBlur, true);
+    document.addEventListener('paste', onPaste, true);
+    window.addEventListener('resize', onViewport);
+    if(window.visualViewport) window.visualViewport.addEventListener('resize', onViewport);
+  }catch(e){ internal(e); }
+  installObservers();
+  installFirebase();
+  const WRAP = [
+    ['saveState', { hot: true, st: true }], ['loadState', { start: true, st: true }], ['applyState', { start: true, st: true }],
+    ['scheduleCloudSave', { hot: true }], ['flushCloudSave', { start: true, st: true }], ['loadFromCloud', { start: true, st: true }],
+    ['openEditor', { start: true, ids: [] }], ['closeEditor', { start: true }], ['commitEditingNoteLocally', { start: true, st: true }], ['commitNoteWithServerCheck', { start: true, st: true }],
+    ['setPaymentStatus', { st: true }], ['addPayment', { st: true }], ['removePayment', { st: true }], ['submitPaymentEntry', { st: true }],
+    ['queueNoteIdForDeletion', { st: true }], ['pasteOrderFromClipboard', { start: true }],
+    ['uploadPhotoAndReplace', { start: true }], ['uploadPdf', { start: true }], ['addPdfFromFile', { start: true }], ['deletePhotoFromStorage', {}], ['deletePdfFromStorage', {}],
+    ['openExpenseSheet', { start: true, ids: [0] }], ['closeExpenseSheet', {}], ['expRequestClose', {}], ['commitNewCategory', { st: true }],
+    ['fuelSetBalance', { st: true }], ['fuelScheduleFlush', { hot: true }], ['flushFuelBalances', { start: true, st: true }], ['fuelApplyCloud', { st: true }],
+    ['openSvcSheetCreate', { start: true }], ['svcFinishCreate', { start: true, st: true }], ['svcFinishCreateWithMove', { start: true, st: true }], ['svcFinishEdit', { start: true, st: true }],
+    ['svcCreateFolder', { start: true, st: true }], ['svcDeleteFolder', { start: true, st: true, ids: [0] }], ['svcAddItem', { start: true, st: true }], ['svcDoAddItem', { start: true, st: true }],
+    ['svcSetItemDone', { st: true }], ['svcRemoveItem', { st: true }], ['svcReorderGroup', { st: true }], ['svcMoveItems', { st: true }],
+    ['svcSave', { hot: true, st: true }], ['svcSaveSoon', { hot: true }], ['svcFlushLocalSave', { hot: true }], ['svcScheduleFlush', { hot: true }], ['flushServiceFolders', { start: true, st: true }],
+    ['svcApplyIncoming', { st: true }], ['svcApplyRemoval', { st: true }], ['svcSaveAndClose', { start: true, st: true }], ['svcOpenFolder', { ids: [0] }], ['svcUploadPhoto', { start: true }],
+    ['carStartNew', { start: true }], ['carSave', { hot: true, st: true }], ['carSaveSoon', { hot: true }], ['carFlushLocalSave', { hot: true }], ['carScheduleFlush', { hot: true }], ['flushCarNotes', { start: true, st: true }],
+    ['carDeleteEntry', { start: true, st: true }], ['carSaveAndClose', { start: true, st: true }], ['carApplyIncoming', { st: true }], ['carApplyRemoval', { st: true }], ['carPersistLocal', { hot: true }],
+    ['backupWriteRecord', { start: true }], ['backupDeleteFile', { start: true }], ['backupConfirmRestore', { start: true }], ['exportData', { start: true }], ['setAuthMode', {}]
+  ];
+  WRAP.forEach(([n, o]) => wrapFn(n, o));
+  try{ setInterval(() => stTick('timer'), 3000); }catch(_){}
+  setTimeout(() => stTick('start'), 1500);
+  lifeStart();
+  ev('sd.ready', 'info', 'Супердиагностика запущена', { wrapped: st.wrapped.length, missing: st.missing, fb: st.fbPatched, fbSkipped: st.fbSkipped, listenerHook: st.ael, fetchHook: st.fetch, restored: all().length }, { op: '', src: 'sd' });
+  window.addEventListener('beforeunload', flush);
+  return { ev, wrapFn, download, info, build, flush, state: st, stTick, newOp, push: (m) => ev('push', 'info', m, undefined, { src: 'push' }), all, scrub };
 })();
 
 // Перед отправкой в облако: пишем, какие заявки будут УДАЛЕНЫ из облака (их нет в локальном notes, но числятся синхронизированными).
@@ -2823,6 +3737,42 @@ function paymentWord(n){
   const st = getPaymentStatus(n);
   return st === 'full' ? 'оплачено' : st === 'partial' ? 'частично оплачено' : 'не оплачено';
 }
+// ---- Примечание к заявке: строка внизу карточки «Доставляется», правится прямо в списке ----
+// Хранится в поле заявки remark (строка до 200 символов), уходит в облако вместе с заявкой.
+const REMARK_PEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+let remarkDraft = null; // { id, value } — незавершённый ввод; переживает перерисовку списка
+function remarkEditHtml(n, value){
+  return `${REMARK_PEN}<input class="rm-in" type="text" maxlength="200" enterkeyhint="done" autocomplete="off" placeholder="Примечание" value="${escapeHtml(value)}"><button type="button" class="rm-ok" data-remark-ok="${n.id}">Готово</button>`;
+}
+function remarkRowHtml(n){
+  const t = String(n.remark || '').trim();
+  if(remarkDraft && remarkDraft.id == n.id) return `<div class="rm-row on editing" data-remark="${n.id}">${remarkEditHtml(n, remarkDraft.value)}</div>`;
+  return `<div class="rm-row${t ? ' on' : ''}" data-remark="${n.id}">${REMARK_PEN}<span class="rm-tx">${t ? escapeHtml(t) : 'Примечание'}</span></div>`;
+}
+function remarkStartEdit(row){
+  const id = row.getAttribute('data-remark');
+  const n = notes.find(x => x.id == id);
+  if(!n || row.querySelector('.rm-in')) return;
+  remarkDraft = { id, value: String(n.remark || '') };
+  row.classList.add('on', 'editing');
+  row.innerHTML = remarkEditHtml(n, remarkDraft.value);
+  const inp = row.querySelector('.rm-in');
+  if(inp){ inp.focus(); try{ inp.setSelectionRange(inp.value.length, inp.value.length); }catch(_){} }
+}
+function remarkCommit(id){
+  const row = document.querySelector('.rm-row[data-remark="' + id + '"]');
+  const inp = row && row.querySelector('.rm-in');
+  const value = (inp ? inp.value : (remarkDraft && remarkDraft.id == id ? remarkDraft.value : '')).trim().slice(0, 200);
+  remarkDraft = null;
+  const n = notes.find(x => x.id == id);
+  if(n && String(n.remark || '') !== value){
+    n.remark = value;
+    n.editedAt = Date.now();   // как у отметки в чек-листе: без editedAt+saveState правка не уйдёт в облако
+    saveState();
+  }
+  renderContent();
+}
+
 function noteCardHtml(n, favInfo){
   const isFav = !!n.favorite && !n.trashed; // в корзине избранное не показываем
   const photos = n.photos || [];
@@ -2889,6 +3839,7 @@ function noteCardHtml(n, favInfo){
     ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
     <div class="note-row"><div class="note-main">${titleShown ? `<h4${titleOrder ? ' class="rt"' : ''}>${escapeHtml(titleShown)}</h4>` : ''}${body}</div>${(amountH || flagsH) ? `<div class="note-side">${amountH}${flagsH}</div>` : ''}</div>
     ${firmShownHtml(n, 'note-firm firm-below', false)}${photosHtml}
+    ${remarkRowHtml(n)}
   </div>`;
   }
   return `<div class="note ${isFav ? 'favorite' : ''} ${overdue ? 'due-overdue' : ''} ${(!overdue && !isFav && n.color && n.color !== 'default') ? 'tinted' : ''}" style="background:${overdue ? 'var(--tint-red-bg)' : (isFav ? 'var(--tint-fav-bg)' : colorHex(n.color))}" data-open="${n.id}">
@@ -3435,6 +4386,15 @@ document.getElementById('content').addEventListener('click', (e) => {
     renderContent();
     return;
   }
+  const rmOk = e.target.closest('[data-remark-ok]');
+  if(rmOk){ e.stopPropagation(); remarkCommit(rmOk.getAttribute('data-remark-ok')); return; }
+  const rmRow = e.target.closest('[data-remark]');
+  if(rmRow){
+    e.stopPropagation();
+    if(swipedNoteId != null){ swipedNoteId = null; return; }
+    remarkStartEdit(rmRow);
+    return;
+  }
   if(swipedNoteId != null){ swipedNoteId = null; return; } // клик сразу после свайпа — не открываем редактор
   if(e.target.closest('[data-drag]')) return; // клик по ручке перетаскивания — не открываем редактор
   const cardPhoto = e.target.closest('[data-cardphoto]');
@@ -3526,11 +4486,34 @@ function swpFinish(g){
   if(bg){ bg.style.opacity = '0'; }
   setTimeout(() => { card.style.transition = ''; if(bg && bg.parentNode) bg.parentNode.removeChild(bg); }, 230);
 }
+document.getElementById('content').addEventListener('input', (e) => {
+  if(e.target.classList && e.target.classList.contains('rm-in') && remarkDraft) remarkDraft.value = e.target.value;
+});
+document.getElementById('content').addEventListener('keydown', (e) => {
+  if(e.target.classList && e.target.classList.contains('rm-in') && e.key === 'Enter'){ e.preventDefault(); const r = e.target.closest('[data-remark]'); if(r) remarkCommit(r.getAttribute('data-remark')); }
+});
+document.getElementById('content').addEventListener('focusout', (e) => {
+  if(!(e.target.classList && e.target.classList.contains('rm-in'))) return;
+  const row = e.target.closest('[data-remark]'); if(!row) return;
+  const id = row.getAttribute('data-remark');
+  // нажатие на «Готово» обработает клик; остальное (ушли с поля) — сохраняем сразу
+  if(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-remark-ok]')) return;
+  setTimeout(() => { if(e.target.isConnected && remarkDraft && remarkDraft.id == id && document.activeElement !== e.target) remarkCommit(id); }, 120);  // поле удалено перерисовкой — это не «ушли с поля»
+});
+// Перерисовка списка (например, ответ облака на только что сохранённую заявку) заменяет поле ввода новым — возвращаем фокус,
+// чтобы клавиатура не закрывалась посреди ввода. Текст берётся из черновика remarkDraft.
+if(window.MutationObserver){
+  new MutationObserver(() => {
+    if(!remarkDraft) return;
+    const inp = document.querySelector('#content .rm-row[data-remark="' + remarkDraft.id + '"] .rm-in');
+    if(inp && document.activeElement !== inp){ inp.focus(); try{ inp.setSelectionRange(inp.value.length, inp.value.length); }catch(_){} }
+  }).observe(document.getElementById('content'), { childList: true, subtree: true });
+}
 document.getElementById('content').addEventListener('touchstart', (e) => {
   if(view !== 'notes') return;
   const card = e.target.closest('.note');
   if(!card) return;
-  if(e.target.closest('[data-drag]') || e.target.closest('[data-clcheck]') || e.target.closest('[data-cardphoto]')) return;
+  if(e.target.closest('[data-drag]') || e.target.closest('[data-clcheck]') || e.target.closest('[data-cardphoto]') || e.target.closest('[data-remark]')) return;
   const t = e.touches[0];
   const id = card.getAttribute('data-open');
   const n = notes.find(x => x.id == id);
@@ -15617,6 +16600,7 @@ const pushDebugLines = [];
 let pushDebugPanelVisible = false;
 
 function pushDebugLog(msg){
+  try{ SD.push(msg); }catch(_){}   // всё про push идёт в Супердиагностику
   if(!isNativeApp()) return;
   const t = new Date().toTimeString().slice(0, 8);
   pushDebugLines.push('[' + t + '] ' + msg);
@@ -15654,6 +16638,7 @@ function hidePushDebugPanel(){
 }
 
 function showPushDebugPanel(){
+  return;   // панель убрана из интерфейса: записи push теперь в Супердиагностике
   if(!isNativeApp()) return;
   pushDebugPanelVisible = true;
   renderPushDebugPanel();
@@ -16229,6 +17214,22 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   backupsOverlay.style.display = 'none';
 });
 
+// ---- «Супердиагностика» в меню: одна строка и кнопка «Скачать» ----
+(function setupSuperDiag(){
+  const btn = document.getElementById('sdDownload'), nm = document.getElementById('sdName');
+  if(!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try{ drawer.classList.remove('show'); overlay.classList.remove('show'); }catch(_){}
+    SD.download(btn);
+  });
+  if(nm) nm.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try{ const i = SD.info(); showToast('Запись идёт постоянно: событий ' + i.events + (i.err ? ' · ' + i.err : ''), 2500); }catch(_){}
+  });
+})();
+
+// ---- (прежний экран «Диагностика» больше не открывается: оставлен как источник данных, из интерфейса убран) ----
 // ---- Экран «Диагностика»: просмотр, копирование и экспорт журнала (данные заявок не меняются) ----
 (function setupDiagScreen(){
   const ov = document.getElementById('diagOverlay');
@@ -16877,6 +17878,7 @@ document.getElementById('backupsCloseBtn')?.addEventListener('click', () => {
   }
   head.addEventListener('click', () => { open = !open; body.style.display = open ? 'block' : 'none'; tgl.textContent = open ? '▾' : '▸'; if(open) render(); });
   runBtn.addEventListener('click', run);
+  window.__sdExt = async () => { await run(); return window.__diagExtLast || null; };   // для Супердиагностики: тот же отчёт «только чтение»
   cloudBtn.addEventListener('click', checkCloud);
   copyBtn.addEventListener('click', () => {
     const t = reportText(); if(!t){ showToast('Сначала запустите проверку'); return; }
