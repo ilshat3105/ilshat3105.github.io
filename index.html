@@ -600,6 +600,9 @@
   .note.lay2 .note-firm{font-size:14.5px;line-height:1.3;margin:0 0 6px;padding-right:0;}
   /* Фирма внизу карточки «Доставляется»: тонкая разделительная линия, отступы 12 px над ней и 13 px под ней, шрифт 13 px полужирностью 500 (по образцу) */
   .note .note-firm.firm-below{font-size:13px;font-weight:500;margin:12px 0 0;padding:13px 0 0;border-top:1px solid var(--line);padding-right:0;}
+  .note.lay2 .note-side.has-att{align-self:stretch;}
+  .note.lay2 .side-att{margin-top:auto;padding-top:6px;flex:none;}
+  .note.lay2 .side-att .photo-thumb-sm{width:50px;height:50px;}
   .note .note-pdf-firm{font-size:11.5px;font-weight:400;color:var(--faint);line-height:1.3;margin:5px 0 0;display:flex;min-width:0;white-space:pre;flex-shrink:0;}
   .note.lay2 .note-row{display:flex;align-items:flex-start;gap:10px;min-width:0;flex-shrink:0;}
   .note.lay2 .note-main{flex:1 1 auto;min-width:0;}
@@ -1413,7 +1416,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-24 08:40 (Примечание под описанием груза)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-24 21:50 (Вложение справа под суммой)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -2565,7 +2568,7 @@ const DIAG = (() => {
 // Связанные события имеют один operationId (поле op). Хранится в localStorage отдельными сегментами (кольцевой буфер),
 // переживает перезапуск. Скачивается одним JSON через «Супердиагностика → Скачать».
 const SD = (() => {
-  const SEG = 250, MAXSEG = 12, MAX_CHARS = 700000;
+  const SEG = 250, MAXSEG = 12, MAX_CHARS = 600000;
   const META = 'vreyse_sd_meta', SEGK = 'vreyse_sd_seg_', ALIVE = 'vreyse_sd_alive', VERK = 'vreyse_sd_ver';
   const SID = DIAG.sid, DEV = DIAG.dev;
   const TAG = String(SID).split('-').pop().slice(-3);
@@ -2580,6 +2583,15 @@ const SD = (() => {
   let uop = null;               // последнее нажатие: { id, ts }
   const UOP_MS = 8000;
   const opStats = new Map();    // op -> { fn, fb, st, err, ui }
+  // ===== Этап 1: результат операций, очередь записей Firebase, синхронизация, приоритет ошибок =====
+  // Всё ниже только НАБЛЮДАЕТ: ничего не читает из Firebase, не пишет в него и не меняет данные приложения.
+  // cls у события: ok — норма · waiting — нормальное ожидание · suspect — подозрение (не доказано) · confirmed — подтверждённый сбой · unverifiable — проверить нельзя.
+  // oi у события: c — операция назначена по времени (клик был недавно), f — по окну отправки в облако; без oi — операция известна точно (стек вызовов).
+  const S1 = { loss: { rate: 0, evictOld: 0, evictWarn: 0, quota: 0, trimmed: 0, dead: 0, incEvict: 0 }, lossPrev: null, fb: { writes: 0, acks: 0, fails: 0 }, cnt: null, cntDirty: false, prevCnt: null, prevPend: null, audit: null, lsHook: false, mutHook: false, iid: '' };
+  const recent = [], OPR = new Map(), W = new Map(), wDone = [], recs = new Map(), tomb = new Map(), LST = {}, SNAPIDS = {}, SNAPAT = {}, lsLast = {};
+  const dirtyOps = [], netLog = [], visLog = [], mutTs = [], fpRecent = new Map();
+  let flushWin = null, ambKind = '', LREV = 0, inc = null, incs = [], incStr = '', incDirty = false, pendT = null, lastInputAt = 0, lastInputEl = '', lastLsAt = 0;
+  const fnv = (s) => { let h = 0x811c9dc5; s = String(s); for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 
   // ---------- очистка строк: ничего личного в журнал не попадает ----------
   function scrub(s, max, keepNums){
@@ -2606,7 +2618,12 @@ const SD = (() => {
   // ---------- операции ----------
   const newOp = (kind) => TAG + '-' + kind + (++OPN).toString(36);
   const userOpId = () => (uop && Date.now() - uop.ts < UOP_MS) ? uop.id : '';
-  const ambient = () => cur || userOpId();
+  function ambient(){
+    if(cur){ ambKind = ''; return cur; }
+    const now = Date.now();
+    if(flushWin && now - flushWin.ts < 8000 && (!uop || flushWin.ts >= uop.ts)){ ambKind = 'f'; return flushWin.op; }
+    const u = userOpId(); ambKind = u ? 'c' : ''; return u;
+  }
   DIAG.setOpGetter(ambient);
   function bump(op, k){
     if(!op) return;
@@ -2620,6 +2637,7 @@ const SD = (() => {
     try{
       const m = JSON.parse(localStorage.getItem(META) || 'null');
       if(!m || typeof m.first !== 'number' || typeof m.last !== 'number') return;
+      if(m.loss && typeof m.loss === 'object') S1.lossPrev = m.loss;
       for(let i = m.first; i <= m.last; i++){
         const raw = localStorage.getItem(SEGK + i);
         if(!raw) continue;
@@ -2635,11 +2653,12 @@ const SD = (() => {
   function total(){ return segs.reduce((a, s) => a + s.chars, 0); }
   function dropOldest(){
     const s = segs.shift();
-    if(s){ try{ localStorage.removeItem(SEGK + s.idx); }catch(_){} dirty.delete(s.idx); }
+    if(s){ S1.loss.evictOld += s.arr.length; S1.loss.evictWarn += s.arr.filter(e => e.lv !== 'info').length; try{ localStorage.removeItem(SEGK + s.idx); }catch(_){} dirty.delete(s.idx); }
   }
   function flush(){
     try{
       if(flushT){ clearTimeout(flushT); flushT = null; }
+      s1Flush();
       if(!dirty.size) return;
       const idxs = Array.from(dirty); dirty = new Set();
       for(const idx of idxs){
@@ -2653,11 +2672,11 @@ const SD = (() => {
             dropOldest();
             try{ localStorage.setItem(SEGK + idx, raw); ok = true; lastFlushErr = 'хранилище почти заполнено: старые записи Супердиагностики обрезаны'; }catch(_){}
           }
-          if(!ok) lastFlushErr = 'не удалось записать Супердиагностику: ' + (err && err.name || err);
+          if(!ok){ lastFlushErr = 'не удалось записать Супердиагностику: ' + (err && err.name || err); S1.loss.quota++; }
         }
       }
       while(segs.length > MAXSEG || (segs.length > 1 && total() > MAX_CHARS)) dropOldest();
-      try{ localStorage.setItem(META, JSON.stringify({ first: segs.length ? segs[0].idx : 0, last: segs.length ? segs[segs.length - 1].idx : 0 })); }catch(_){}
+      try{ localStorage.setItem(META, JSON.stringify({ first: segs.length ? segs[0].idx : 0, last: segs.length ? segs[segs.length - 1].idx : 0, loss: lossTotal() })); }catch(_){}
     }catch(e){ internal(e); }
   }
   function schedule(ms){ if(flushT) return; flushT = setTimeout(flush, ms); }
@@ -2672,7 +2691,7 @@ const SD = (() => {
   // ---------- запись события ----------
   let rlT = 0, rlN = 0, rlDrop = 0;
   function ev(type, lv, msg, d, o){
-    if(dead) return null;
+    if(dead){ S1.loss.dead++; return null; }
     const p0 = performance.now();
     try{
       o = o || {};
@@ -2682,14 +2701,22 @@ const SD = (() => {
         if(rlDrop){ const sum = { ts: now, q: ++Q, pt: Math.round(p0), sid: SID, dev: DEV, type: 'sd.dropped', lv: 'warn', src: 'sd', op: '', msg: 'Сброшено событий из-за частоты (защита от тормозов): ' + rlDrop }; const ls = lastSeg(); ls.arr.push(sum); dirty.add(ls.idx); }
         rlT = now; rlN = 0; rlDrop = 0;
       }
-      if(++rlN > 90 && lv === 'info'){ rlDrop++; st.dropped++; return null; }
-      const e = { ts: now, q: ++Q, pt: Math.round(p0), sid: SID, dev: DEV, type, lv, src: o.src || '', op: o.op != null ? o.op : ambient(), msg: scrub(msg) };
+      if(++rlN > 90 && lv === 'info'){ rlDrop++; st.dropped++; S1.loss.rate++; return null; }
+      let opv, oi = '';
+      if(o.op != null) opv = o.op; else { opv = ambient(); oi = ambKind; }
+      const e = { ts: now, q: ++Q, pt: Math.round(p0), sid: SID, dev: DEV, type, lv, src: o.src || '', op: opv, msg: scrub(msg) };
+      if(oi && opv) e.oi = oi;
+      const cl = o.cls || ((type === 'fb.fail' || type === 'fb.listen.error' || type === 'ls.error') ? 'confirmed' : '');
+      if(cl) e.cls = cl;
       if(o.par) e.par = o.par;
+      if(o.oi && !e.oi && opv) e.oi = o.oi;
       if(o.id != null) e.id = String(o.id).slice(0, 40);
       if(o.dur != null) e.dur = Math.round(o.dur);
       if(d !== undefined) e.d = clip(d);
       const s = lastSeg();
       s.arr.push(e); dirty.add(s.idx); st.events++;
+      recent.push(e); if(recent.length > 30) recent.shift();
+      incidentFeed(e);
       if(e.op){
         const k = type.slice(0, 3);
         if(lv === 'error' || lv === 'warn') bump(e.op, 'err');
@@ -2756,6 +2783,7 @@ const SD = (() => {
       const act = isAction(d) || !!(t && t.closest && t.closest('#globalFab,#composeBar'));
       const o = { x: Math.round(e.clientX || 0), y: Math.round(e.clientY || 0), trusted: !!e.isTrusted, disabled: !!(t && t.disabled), ctx: uiCtx() };
       if(act){ const f = fabInfo(); if(f) o.fab = f; }
+      const r0 = opr(id); if(r0){ r0.trig = d; chMark(r0, 'click'); if(act || /^button/.test(d)){ r0.ins = inputsSummary(); if(r0.ins.length) o.ins = r0.ins; } }
       ev('ui.click', 'info', d, o, { op: id, src: 'ui' });
       if(act) setTimeout(() => opCheck(id, d), 1800);
     }catch(err){ internal(err); }
@@ -2764,8 +2792,10 @@ const SD = (() => {
     try{
       const s = opStats.get(id) || { fn: 0, fb: 0, st: 0, err: 0, ui: 0 };
       const eff = s.fn + s.fb + s.st;
-      ev('ui.result', (eff === 0 || s.err) ? 'warn' : 'info', (eff === 0 ? 'Нажатие без видимых последствий: ' : 'Итог нажатия: ') + d,
-        { fn: s.fn, fb: s.fb, st: s.st, problems: s.err }, { op: id, src: 'ui' });
+      const r0 = OPR.get(id), scr = !!(r0 && mutTs.some(t => t >= r0.t0 - 20 && t <= r0.t0 + 1900));
+      const bad = (eff === 0 && !scr) || s.err;
+      ev('ui.result', bad ? 'warn' : 'info', (eff === 0 ? (scr ? 'Нажатие изменило экран (без вызова функций приложения): ' : 'Нажатие без видимых последствий: ') : 'Итог нажатия: ') + d,
+        { fn: s.fn, fb: s.fb, st: s.st, problems: s.err, screen: scr }, { op: id, src: 'ui' });
     }catch(err){ internal(err); }
   }
   function onTouchStart(e){
@@ -2901,9 +2931,11 @@ const SD = (() => {
         let c = null, t0 = 0;
         try{
           const par = calls.length ? calls[calls.length - 1] : null;
-          const op = par ? par.op : (userOpId() || newOp('a'));
+          const op = par ? par.op : (o.flush ? flushStart(name) : (userOpId() || newOp('a')));
           c = { id: 'c' + (++CALLN).toString(36), op, name, par: par ? par.id : '' };
           calls.push(c); cur = op; t0 = performance.now();
+          if(o.mark) markDirty(op);
+          onFnStart(name, op);
           if(o.start) ev('fn.start', 'info', name, { a: argSum(arguments, o.ids) }, { op, par: c.par, id: c.id, src: 'fn' });
         }catch(e){ c = null; internal(e); }
         let r, thr = null, threw = false;
@@ -2930,7 +2962,8 @@ const SD = (() => {
               r.then(() => { if(!quiet) ev('fn.settle', 'info', name + ': завершено', undefined, { op, id: cid, dur: performance.now() - ts0, src: 'fn' }); },
                 (e) => { ev('fn.settle', 'warn', name + ': отклонено', { err: errText(e) }, { op, id: cid, dur: performance.now() - ts0, src: 'fn' }); });
             }
-            if(o.st) stSoon(name);
+            if(o.st) stSoon(name, c.op);
+            onFnDone(name, c.op, threw);
           }
         }catch(e){ internal(e); cur = calls.length ? calls[calls.length - 1].op : ''; }
         if(threw) throw thr;
@@ -3002,7 +3035,8 @@ const SD = (() => {
   function fbEnd(c, t0, err, val){
     try{
       const dur = performance.now() - t0;
-      if(err) ev('fb.fail', 'error', c.m + ' ' + c.path, { code: (err && err.code) || '', err: errText(err), a: c.a }, { op: c.op, id: c.id, dur, src: 'firebase' });
+      if(c.w) wEnd(c, err);
+      if(err) ev('fb.fail', 'error', c.m + ' ' + c.path, { code: (err && err.code) || '', cat: errCat(err), err: errText(err), a: c.a }, { op: c.op, id: c.id, dur, src: 'firebase', oi: c.oi });
       else{
         const d = { a: c.a };
         try{
@@ -3010,17 +3044,59 @@ const SD = (() => {
           else if(val && typeof val.exists === 'boolean') d.exists = val.exists;
           if(val && val.metadata) d.fromCache = !!val.metadata.fromCache;
         }catch(_){}
-        ev('fb.ok', 'info', c.m + ' ' + c.path, d, { op: c.op, id: c.id, dur, src: 'firebase' });
+        ev('fb.ok', 'info', c.m + ' ' + c.path, d, { op: c.op, id: c.id, dur, src: 'firebase', oi: c.oi });
       }
     }catch(e){ internal(e); }
+  }
+  // runTransaction (сохранение из редактора и защищённая запись заявки): записи внутри транзакции учитываем как запись в очередь Firebase
+  function txCall(self, orig, argv){
+    const args = Array.prototype.slice.call(argv);
+    let c = null; const t0 = performance.now();
+    try{
+      if(!dead && typeof args[0] === 'function'){
+        c = { m: 'runTransaction', path: 'transaction', a: {}, op: ambient() || newOp('a'), id: 'f' + (++fbSeq.n).toString(36), oi: ambKind, aux: false, dd: [], w: false };
+        ev('fb.start', 'info', 'runTransaction', {}, { op: c.op, id: c.id, src: 'firebase', oi: c.oi });
+        const uf = args[0], cc = c;
+        args[0] = function(tx){
+          try{
+            if(!dead && tx && !tx.__sdT){
+              tx.__sdT = 1; cc.dd.length = 0;
+              ['set', 'update', 'delete'].forEach(mm => {
+                const o = tx[mm]; if(typeof o !== 'function') return;
+                tx[mm] = function(ref, data){
+                  try{
+                    const path = pathScrub(refPath(ref));
+                    if(!/\/(backups|diagEvents|devices)\b|^__sd/.test(path)){
+                      const cp = collOfPath(path);
+                      const d = cp ? [mm[0], cp[0], cp[1], (mm === 'set' || mm === 'update') ? eaNum(data && (data.editedAt || data.createdAt)) : undefined] : null;
+                      if(d) cc.dd.push(d);
+                      if(!cc.w){ cc.w = true; cc.path = 'transaction ' + (cp ? cp[0] + '/' + cp[1] : path); wStart(cc, cc.dd); }
+                      else if(d){ const r = rec(d[1], d[2]); r.qAt = Date.now(); r.op = cc.op; if(d[3]) r.ea = d[3]; }
+                    }
+                  }catch(e){ internal(e); }
+                  return o.apply(this, arguments);
+                };
+              });
+            }
+          }catch(e){ internal(e); }
+          return uf.apply(this, arguments);
+        };
+      }
+    }catch(e){ c = null; internal(e); }
+    let r;
+    try{ r = orig.apply(self, args); }
+    catch(e){ if(c) fbEnd(c, t0, e); throw e; }
+    try{ if(c){ if(r && typeof r.then === 'function') r.then((v) => fbEnd(c, t0, null, v), (e) => fbEnd(c, t0, e)); else fbEnd(c, t0, null, r); } }catch(e){ internal(e); }
+    return r;
   }
   function fbWrapMethod(proto, m, kind){
     const desc = Object.getOwnPropertyDescriptor(proto, m);
     if(!desc || typeof desc.value !== 'function' || desc.value.__sd) return false;
     const orig = desc.value;
     const w = function(){
+      if(kind === 'tx') return txCall(this, orig, arguments);
       if(kind === 'batch' && m !== 'commit'){
-        try{ if(!dead){ const ops = this.__sdOps || (this.__sdOps = []); if(ops.length < 200) ops.push(m[0] + ':' + pathScrub(refPath(arguments[0])) + (m !== 'delete' ? ' [' + (keysOf(arguments[1]) || []).slice(0, 12).join(',') + ']' : '')); } }catch(e){ internal(e); }
+        try{ if(!dead){ const ops = this.__sdOps || (this.__sdOps = []); const pp = pathScrub(refPath(arguments[0])); if(ops.length < 200) ops.push(m[0] + ':' + pp + (m !== 'delete' ? ' [' + (keysOf(arguments[1]) || []).slice(0, 12).join(',') + ']' : '')); const dd = this.__sdDocs || (this.__sdDocs = []); const cp = collOfPath(pp); if(dd.length < 80 && cp) dd.push([m[0], cp[0], cp[1], m === 'delete' ? undefined : eaNum(arguments[1] && (arguments[1].editedAt || arguments[1].createdAt))]); } }catch(e){ internal(e); }
         return orig.apply(this, arguments);
       }
       let c = null, t0 = performance.now();
@@ -3030,15 +3106,20 @@ const SD = (() => {
           const a = {};
           if(m === 'set' || m === 'update' || m === 'add'){ const data = arguments[0]; a.keys = keysOf(data); a.bytes = bytesOf(data); if(m === 'set' && arguments[1] && arguments[1].merge) a.merge = true; }
           c = { m, path, a, op: ambient() || newOp('a'), id: 'f' + (++fbSeq.n).toString(36) };
-          if(m === 'commit'){ const ops = this.__sdOps || []; c.a = { n: ops.length, ops: ops.slice(0, 40) }; c.path = 'batch'; }
-          ev('fb.start', 'info', m + ' ' + c.path, c.a, { op: c.op, id: c.id, src: 'firebase' });
+          let docs = [];
+          if(m === 'commit'){ const ops = this.__sdOps || []; docs = (this.__sdDocs || []).slice(0, 80); c.a = { n: ops.length, docs: docs.slice(0, 12), ops: ops.slice(0, 6) }; c.path = 'batch'; }
+          else if(WRITE_M[m]){ const cp = collOfPath(path); if(cp) docs = [[m[0], cp[0], cp[1], (m === 'set' || m === 'update') ? eaNum(arguments[0] && (arguments[0].editedAt || arguments[0].createdAt)) : undefined]]; }
+          try{ c.aux = (m === 'commit') ? ((this.__sdOps || []).length > 0 && (this.__sdOps || []).every(x => /\/(backups|diagEvents|devices)\//.test(x))) : /\/(backups|diagEvents|devices)\b|^__sd/.test(path); }catch(_){ c.aux = false; }
+          c.oi = ambKind;
+          ev('fb.start', 'info', m + ' ' + c.path, c.a, { op: c.op, id: c.id, src: 'firebase', oi: c.oi });
+          if(WRITE_M[m]){ c.w = true; wStart(c, docs); }
         }
       }catch(e){ c = null; internal(e); }
       let r;
       try{ r = orig.apply(this, arguments); }
       catch(e){ if(c) fbEnd(c, t0, e); throw e; }
       try{
-        if(m === 'commit'){ try{ this.__sdOps = []; }catch(_){} }
+        if(m === 'commit'){ try{ this.__sdOps = []; this.__sdDocs = []; }catch(_){} }
         if(c){
           if(r && typeof r.then === 'function') r.then((v) => fbEnd(c, t0, null, v), (e) => fbEnd(c, t0, e));
           else fbEnd(c, t0, null, r);
@@ -3065,6 +3146,7 @@ const SD = (() => {
         }catch(_){}
       }else if(snap && typeof snap.exists === 'boolean') d.exists = snap.exists;
       if(snap && snap.metadata){ d.cache = !!snap.metadata.fromCache; d.pending = !!snap.metadata.hasPendingWrites; }
+      snapAnalyze(cid, path, snap);
       const meta = d.add === 0 && d.mod === 0 && d.rem === 0 && d.size !== undefined;
       if(meta && fbSeq.metaN++ > 400 && fbSeq.metaN % 10) return;   // метаданные-только снимки — реже
       ev('fb.snapshot', d.rem ? 'warn' : 'info', 'snapshot ' + path, d, { src: 'firebase' });
@@ -3087,11 +3169,11 @@ const SD = (() => {
             const h = args[idx];
             if(typeof h === 'function'){
               args[idx] = function(snap){ snapLog(cid, path, snap); return h.apply(this, arguments); };
-              if(typeof args[idx + 1] === 'function'){ const eh = args[idx + 1]; args[idx + 1] = function(err){ try{ ev('fb.listen.error', 'error', 'onSnapshot ' + path, { l: cid, code: err && err.code || '', err: errText(err) }, { src: 'firebase' }); }catch(_){} return eh.apply(this, arguments); }; }
+              if(typeof args[idx + 1] === 'function'){ const eh = args[idx + 1]; args[idx + 1] = function(err){ try{ lErr(cid, err); ev('fb.listen.error', 'error', 'onSnapshot ' + path, { l: cid, code: err && err.code || '', err: errText(err) }, { src: 'firebase' }); }catch(_){} return eh.apply(this, arguments); }; }
             }else{
               const obs = h, nobs = Object.create(obs);
               nobs.next = function(snap){ snapLog(cid, path, snap); return obs.next.apply(obs, arguments); };
-              if(typeof obs.error === 'function') nobs.error = function(err){ try{ ev('fb.listen.error', 'error', 'onSnapshot ' + path, { l: cid, code: err && err.code || '', err: errText(err) }, { src: 'firebase' }); }catch(_){} return obs.error.apply(obs, arguments); };
+              if(typeof obs.error === 'function') nobs.error = function(err){ try{ lErr(cid, err); ev('fb.listen.error', 'error', 'onSnapshot ' + path, { l: cid, code: err && err.code || '', err: errText(err) }, { src: 'firebase' }); }catch(_){} return obs.error.apply(obs, arguments); };
               args[idx] = nobs;
             }
           }
@@ -3116,6 +3198,8 @@ const SD = (() => {
         patch(protoChain(dref), ['set', 'update', 'delete', 'get'], 'doc', 'DocumentReference');
         patch(protoChain(cref), ['get', 'add'], 'col', 'Query');
         patch(protoChain(batch), ['set', 'update', 'delete', 'commit'], 'batch', 'WriteBatch');
+        patch(protoChain(database), ['runTransaction'], 'tx', 'Firestore');
+        if(!st.fbPatched.some(x => /runTransaction/.test(x)) && fbWrapMethod(database, 'runTransaction', 'tx')) st.fbPatched.push('Firestore(instance).runTransaction');
         [protoChain(dref), protoChain(cref)].forEach(ch => ch.forEach(p => { if(Object.prototype.hasOwnProperty.call(p, 'onSnapshot') && fbWrapSnapshot(p)) st.fbPatched.push('onSnapshot@' + (p.constructor && p.constructor.name || '?')); }));
         if(!st.fbPatched.length) st.fbSkipped.push('firestore: прототипы не найдены');
       }else st.fbSkipped.push('firestore: db недоступен');
@@ -3135,6 +3219,7 @@ const SD = (() => {
                   if(m === 'putString') a.len = typeof x === 'string' ? x.length : undefined;
                   c = { m: 'storage.' + m, path: pathScrub(sg(() => this.fullPath, '')), a, op: ambient() || newOp('a'), id: 'f' + (++fbSeq.n).toString(36) };
                   ev('fb.start', 'info', c.m + ' ' + c.path, a, { op: c.op, id: c.id, src: 'storage' });
+                  if(m !== 'getDownloadURL'){ c.w = true; wStart(c, []); }
                 }
               }catch(e){ c = null; internal(e); }
               let r;
@@ -3170,49 +3255,687 @@ const SD = (() => {
     }catch(e){ internal(e); }
   }
 
-  // ---------- смена данных: расходы, Автосервис, «Мой автомобиль», топливо, заявки (счётчики) ----------
+  // ---------- смена данных: заявки, расходы, Автосервис («Перед рейсом» и ТО), «Мой автомобиль», топливо ----------
+  // Для каждого изменения: было/стало, безопасные id, editedAt (метка времени, не содержимое), ревизия до/после.
+  // Значения полей в журнал не попадают: подписи ниже живут только в памяти и сравниваются между собой.
+  const len = (v) => (typeof v === 'string' || Array.isArray(v)) ? v.length : 0;
+  const eaOf = (x) => { const v = Number(x && (x.editedAt || x.updatedAt || x.createdAt) || 0); return isFinite(v) ? v : 0; };
+  const FP_SKIP = { id: 1, createdAt: 1, editedAt: 1, updatedAt: 1, number: 1, seq: 1, photos: 1, photoIds: 1, photoNumbers: 1, pdfFiles: 1, order: 1, syncConflict: 1 };
+  const fpOf = (x) => { try{ return fnv(JSON.stringify(x, (k, v) => FP_SKIP[k] ? undefined : v)); }catch(_){ return ''; } };
   const COLS = [
-    ['expenses', () => expenses, (x) => [x.editedAt || x.createdAt || 0, x.category ? 1 : 0, x.amount != null ? 1 : 0, x.liters != null ? 1 : 0]],
+    ['notes', () => notes, (x) => [eaOf(x), len(x.text), len(x.title), (x.photoIds || x.photos || []).length, x.amount || 0, (x.trashed ? 1 : 0) | (x.archived ? 2 : 0) | (x.delivered === true ? 4 : 0) | (x.pinned ? 8 : 0)]],
+    ['expenses', () => expenses, (x) => [x.editedAt || x.createdAt || 0, x.category ? String(x.category).length : 0, x.amount != null ? x.amount : -1, x.liters != null ? x.liters : -1]],
     ['serviceFolders', () => serviceFolders, (f) => [f.editedAt || 0, (f.items || []).length, (f.items || []).filter(i => i && i.done).length, (f.items || []).reduce((a, i) => a + ((i && i.photos && i.photos.length) || 0), 0)]],
     ['serviceCarNotes', () => serviceCarNotes, (c) => [c.editedAt || c.updatedAt || 0, (c.photos || []).length, (c.files || []).length]]
   ];
-  const lastCol = {};
-  let lastNotes = '', lastFuel = '', stT = null, stWhy = '';
-  function stTick(why){
+  const lastCol = {}, lastRev = {}; let lastItems = null;
+  let lastNotes = '', lastFuel = '', stT = null, stWhy = '', stOp = '';
+  function revOf(map){ let h = 0; map.forEach((v, k) => { h = (h + parseInt(fnv(k + '|' + v), 36)) >>> 0; }); return h.toString(36); }
+  function noteCounters(arr){
+    const c = { n: arr.length, active: 0, trashed: 0, archived: 0, delivered: 0 };
+    arr.forEach(x => { if(!x) return; if(x.trashed) c.trashed++; else if(x.archived) c.archived++; else { c.active++; if(x.delivered === true) c.delivered++; } });
+    return c;
+  }
+  function stTick(why, opx){
     try{
       if(dead) return;
+      const remote = why === 'snapshot';
       COLS.forEach(([name, get, sig]) => {
         const arr = sg(get, null);
         if(!Array.isArray(arr)) return;
-        const map = new Map();
-        arr.forEach(x => { if(x && x.id != null) map.set(String(x.id), JSON.stringify(sg(() => sig(x), []))); });
-        const prev = lastCol[name]; lastCol[name] = map;
+        const map = new Map(), byId = new Map(), raw = new Map();
+        arr.forEach(x => { if(x && x.id != null){ const k = String(x.id); const a = sg(() => sig(x), []); byId.set(k, x); raw.set(k, a); map.set(k, JSON.stringify(a)); } });
+        const prev = lastCol[name], prevRaw = lastCol[name + '#raw']; lastCol[name] = map; lastCol[name + '#raw'] = raw;
+        let cs = '', counters = null;
+        if(name === 'notes'){ counters = noteCounters(arr); cs = JSON.stringify(counters); }
+        const prevCs = lastNotes; if(name === 'notes') lastNotes = cs;
         if(!prev) return;
-        const add = [], rem = [], chg = [];
-        map.forEach((v, k) => { if(!prev.has(k)) add.push(k.slice(0, 24)); else if(prev.get(k) !== v) chg.push(k.slice(0, 24)); });
-        prev.forEach((v, k) => { if(!map.has(k)) rem.push(k.slice(0, 24)); });
-        if(add.length || rem.length || chg.length){
-          ev('st.' + name, rem.length ? 'warn' : 'info', name + ': было ' + prev.size + ', стало ' + map.size + (why ? ' (после ' + why + ')' : ''),
-            { n: map.size, was: prev.size, add: add.slice(0, 12), rem: rem.slice(0, 12), chg: chg.slice(0, 12), why }, { src: 'state' });
+        const add = [], rem = [], chg = [], noea = [];
+        map.forEach((v, k) => {
+          if(!prev.has(k)) add.push(k);
+          else if(prev.get(k) !== v){
+            chg.push(k);
+            const a = raw.get(k) || [], b = (prevRaw && prevRaw.get(k)) || [];
+            if((name === 'notes' || name === 'expenses') && a[0] === b[0]){ let same = true; const lim = name === 'notes' ? 5 : 4; for(let i = 1; i < lim; i++) if(a[i] !== b[i]) same = false; if(!same) noea.push(k); }
+          }
+        });
+        prev.forEach((v, k) => { if(!map.has(k)) rem.push(k); });
+        if(!(add.length || rem.length || chg.length)) return;
+        LREV++;
+        const revB = lastRev[name] || '', revA = revOf(map); lastRev[name] = revA;
+        let op = opx || '', oi = '';
+        if(!op){ if(remote) op = newOp('r'); else { op = ambient(); oi = ambKind; if(!op) op = newOp('s'); } }
+        const eaM = {}; add.concat(chg).slice(0, 12).forEach(k => { eaM[sl24(k)] = eaOf(byId.get(k)); });
+        const d = { n: map.size, was: prev.size, add: add.slice(0, 12).map(sl24), rem: rem.slice(0, 12).map(sl24), chg: chg.slice(0, 12).map(sl24), why, revB, revA, lrev: LREV, ea: eaM };
+        let msg = name + ': было ' + prev.size + ', стало ' + map.size + (why ? ' (после ' + why + ')' : '');
+        if(name === 'notes'){
+          Object.assign(d, counters); try{ d.was = JSON.parse(prevCs || '{}').n; }catch(_){ d.was = prev.size; }
+          msg = (prevCs && cs !== prevCs) ? 'заявок: всего ' + counters.n + ', активных ' + counters.active + ', корзина ' + counters.trashed + ', архив ' + counters.archived + (why ? ' (после ' + why + ')' : '') : 'заявки: изменено ' + chg.length + (why ? ' (после ' + why + ')' : '');
         }
+        if(remote) d.remote = true;
+        const o = { src: 'state', op }; if(oi) o.oi = oi;
+        ev('st.' + name, (rem.length && name !== 'notes') ? 'warn' : 'info', msg, d, o);
+        s1Changed(name, op, { coll: name, add, rem, chg, was: prev.size, now: map.size, revB, revA, remote }, byId, why);
+        if(noea.length) ev('res.noea', 'warn', 'Содержимое ' + (name === 'notes' ? 'заявки' : 'расхода') + ' изменилось, а editedAt прежний — синхронизация опирается на editedAt, изменение может не уйти в облако', { coll: name, ids: noea.slice(0, 8).map(sl24) }, { op, cls: 'suspect', src: 'result' });
       });
-      const ns = sg(() => notes, null);
-      if(Array.isArray(ns)){
-        const c = { n: ns.length, active: 0, trashed: 0, archived: 0, delivered: 0 };
-        ns.forEach(x => { if(!x) return; if(x.trashed) c.trashed++; else if(x.archived) c.archived++; else { c.active++; if(x.delivered === true) c.delivered++; } });
-        const s = JSON.stringify(c);
-        if(lastNotes && s !== lastNotes) ev('st.notes', 'info', 'заявок: всего ' + c.n + ', активных ' + c.active + ', корзина ' + c.trashed + ', архив ' + c.archived + (why ? ' (после ' + why + ')' : ''), Object.assign({ was: JSON.parse(lastNotes).n, why }, c), { src: 'state' });
-        lastNotes = s;
+      // пункты внутри папок Автосервиса, в том числе «Перед рейсом»
+      const sf = sg(() => serviceFolders, null);
+      if(Array.isArray(sf)){
+        const nowM = new Map();
+        sf.forEach(f => { if(!f || f.id == null) return; const m = new Map(); (f.items || []).forEach(it => { if(it && it.id != null) m.set(String(it.id), (it.done ? 1 : 0) + ':' + len(it.text) + ':' + len(it.photos) + ':' + len(it.note)); }); nowM.set(String(f.id), { pt: f.kind === 'pretrip', m, f }); });
+        if(lastItems){
+          nowM.forEach((cur, fid) => {
+            const pv = lastItems.get(fid); if(!pv) return;
+            const add = [], rem = [], chg = [];
+            cur.m.forEach((v, k) => { if(!pv.m.has(k)) add.push(k); else if(pv.m.get(k) !== v) chg.push(k); });
+            pv.m.forEach((v, k) => { if(!cur.m.has(k)) rem.push(k); });
+            if(!(add.length || rem.length || chg.length)) return;
+            LREV++;
+            const doneN = (m) => Array.from(m.values()).filter(v => v[0] === '1').length;
+            let op = opx || '', oi = '';
+            if(!op){ if(remote) op = newOp('r'); else { op = ambient(); oi = ambKind; if(!op) op = newOp('s'); } }
+            const revA = revOf(cur.m), revB = revOf(pv.m);
+            const o = { src: 'state', op }; if(oi) o.oi = oi;
+            ev('st.svc.items', 'info', (cur.pt ? 'Перед рейсом' : 'Папка ТО') + ': пунктов было ' + pv.m.size + ', стало ' + cur.m.size + (why ? ' (после ' + why + ')' : ''),
+              { folder: sl24(fid), pretrip: cur.pt, was: pv.m.size, now: cur.m.size, add: add.slice(0, 8).map(sl24), rem: rem.slice(0, 8).map(sl24), chg: chg.slice(0, 8).map(sl24), doneWas: doneN(pv.m), doneNow: doneN(cur.m), revB, revA, lrev: LREV, why, remote: remote || undefined }, o);
+            const byId = new Map(); (cur.f.items || []).forEach(it => { if(it && it.id != null) byId.set(String(it.id), { text: it.text }); });
+            s1ChangedItems(op, { coll: 'svc.items', folder: fid, add, rem, chg, was: pv.m.size, now: cur.m.size, revB, revA, remote }, byId, why);
+          });
+        }
+        lastItems = nowM;
       }
       const fb = sg(() => fuelBalances, null);
       if(fb && typeof fb === 'object'){
         let sig = ''; try{ const j = JSON.stringify(fb); sig = Object.keys(fb).length + ':' + j.length; }catch(_){}
-        if(lastFuel && sig !== lastFuel) ev('st.fuel', 'info', 'топливо/пробег: записей месяцев ' + Object.keys(fb).length + (why ? ' (после ' + why + ')' : ''), { months: Object.keys(fb).length, why }, { src: 'state' });
+        if(lastFuel && sig !== lastFuel){ const op = opx || ambient() || newOp('s'); ev('st.fuel', 'info', 'топливо/пробег: записей месяцев ' + Object.keys(fb).length + (why ? ' (после ' + why + ')' : ''), { months: Object.keys(fb).length, why, revA: fnv(sig) }, { src: 'state', op }); const o = opr(op); if(o){ chMark(o, 'state'); o.stAt = Date.now(); } }
         lastFuel = sig;
+      }
+      const cn = cntNow(), cj = JSON.stringify(cn);
+      if(!S1.cnt || JSON.stringify(S1.cnt) !== cj){ S1.cnt = cn; S1.cntDirty = true; schedule(2500); }
+    }catch(e){ internal(e); }
+  }
+  function s1Changed(coll, op, x, byId, why){
+    try{
+      const now = Date.now();
+      x.rem.forEach(k => { tomb.set(coll + ':' + sl24(k), { ts: now }); });
+      if(tomb.size > 400){ const it = tomb.keys(); for(let i = 0; i < 100; i++) tomb.delete(it.next().value); }
+      x.add.forEach(k => {
+        const key = coll + ':' + sl24(k), t = tomb.get(key);
+        if(t){
+          tomb.delete(key); const gone = now - t.ts;
+          ev('res.resurrected', gone < 15000 ? 'info' : 'warn', 'Удалённая запись снова появилась в данных (' + Math.round(gone / 1000) + ' с после удаления)' + (gone < 15000 ? ' — возможно, «Отменить»' : ''), { coll, id: sl24(k), goneSec: Math.round(gone / 1000), why, remote: x.remote || undefined }, { op, cls: gone < 15000 ? 'suspect' : 'confirmed', src: 'result' });
+        }
+        dupCheck(coll, k, byId.get(k), op, now);
+        const r = rec(coll, k); r.localAt = now; r.ea = eaOf(byId.get(k)); r.op = op;
+      });
+      x.chg.forEach(k => { const r = rec(coll, k); r.localAt = now; r.ea = eaOf(byId.get(k)); r.op = op; });
+      oprState(op, { coll, add: x.add.slice(0, 8).map(sl24), rem: x.rem.slice(0, 8).map(sl24), chg: x.chg.slice(0, 8).map(sl24), was: x.was, now: x.now, revB: x.revB, revA: x.revA, remote: x.remote || undefined });
+    }catch(e){ internal(e); }
+  }
+  function s1ChangedItems(op, x, byId, why){
+    try{
+      const now = Date.now();
+      x.add.forEach(k => { const it = byId.get(k); if(it) dupCheck('svc.items:' + x.folder, k, { t: it.text }, op, now); });
+      oprState(op, { coll: 'svc.items', folder: sl24(x.folder), add: x.add.slice(0, 8).map(sl24), rem: x.rem.slice(0, 8).map(sl24), chg: x.chg.slice(0, 8).map(sl24), was: x.was, now: x.now, revB: x.revB, revA: x.revA, remote: x.remote || undefined });
+    }catch(e){ internal(e); }
+  }
+  function dupCheck(coll, id, item, op, now){
+    try{
+      if(!item) return;
+      const fp = fpOf(item); if(!fp) return;
+      const key = coll + ':' + fp, p = fpRecent.get(key);
+      if(p && p.id !== id && now - p.ts < 10000) ev('res.dup', 'warn', 'Возможный дубль: две записи с одинаковым содержимым созданы с интервалом ' + Math.round((now - p.ts) / 100) / 10 + ' с (повторное нажатие?)', { coll, ids: [sl24(p.id), sl24(id)], gapMs: now - p.ts }, { op, cls: 'suspect', src: 'result' });
+      fpRecent.set(key, { id, ts: now });
+      if(fpRecent.size > 80){ fpRecent.forEach((v, k) => { if(now - v.ts > 10000) fpRecent.delete(k); }); }
+    }catch(e){ internal(e); }
+  }
+  function stSoon(why, op){ stWhy = why || stWhy; if(op && !stOp) stOp = op; if(stT) return; stT = setTimeout(() => { stT = null; const w = stWhy, o = stOp; stWhy = ''; stOp = ''; stTick(w, o); }, 30); }
+
+  // ---------- Этап 1: цепочка и результат операции ----------
+  function opr(op){
+    if(!op) return null;
+    let o = OPR.get(op);
+    if(!o){ o = { op, t0: Date.now(), trig: '', fns: [], ch: {}, res: [], ls: 0, lsErr: 0, fbq: 0, fba: 0, fbf: 0, ins: null, vt: null, ft: null, stAt: 0, fin: false, ackSent: false, exp: null }; OPR.set(op, o); if(OPR.size > 200) OPR.delete(OPR.keys().next().value); }
+    return o;
+  }
+  const chMark = (o, k) => { if(o && o.ch[k] == null) o.ch[k] = Date.now() - o.t0; };
+  const isUserOp = (op) => /-u[0-9a-z]+$/.test(op || '');
+  const sl24 = (s) => String(s).slice(0, 24);
+  function inputsSummary(){
+    const r = [];
+    try{
+      const list = document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]),textarea');
+      for(let i = 0; i < list.length && r.length < 4; i++){
+        const el = list[i];
+        if(!el.offsetParent && el !== document.activeElement) continue;
+        if(!el.id && el !== document.activeElement) continue;
+        r.push([descr(el), (typeof el.value === 'string') ? el.value.length : -1]);
+      }
+    }catch(_){}
+    return r;
+  }
+  function markDirty(op){
+    if(!op) return;
+    const now = Date.now(), l = dirtyOps[dirtyOps.length - 1];
+    if(l && l.op === op){ l.ts = now; return; }
+    dirtyOps.push({ op, ts: now }); if(dirtyOps.length > 20) dirtyOps.shift();
+  }
+  // Отправка в облако идёт по таймеру, уже вне нажатия. Связываем её с операциями, чьи правки она уносит.
+  function flushStart(name){
+    const now = Date.now();
+    while(dirtyOps.length && now - dirtyOps[0].ts > 30000) dirtyOps.shift();
+    let op = '', links = [];
+    if(dirtyOps.length){
+      const p = dirtyOps.find(d => isUserOp(d.op)) || dirtyOps[0];
+      op = p.op; links = dirtyOps.map(d => d.op).filter((v, i, a) => a.indexOf(v) === i).slice(0, 8);
+      dirtyOps.length = 0;
+    }
+    if(!op) op = newOp('a');
+    flushWin = { op, ts: now, ops: links.length ? links : [op] };
+    links.forEach(l => ev('op.link', 'info', 'Отправка в облако по правкам: ' + name, { flush: name, from: links, primary: op }, { op: l, src: 'sync' }));
+    return op;
+  }
+  const cloudFlags = () => ({
+    signed: !!sg(() => currentUID, null), online: navigator.onLine !== false,
+    baseline: sg(() => initialCloudBaselineReady, null), writesAllowed: sg(() => cloudWritesAllowedThisSession, null), suppressed: sg(() => suppressCloudSave, null),
+    inFlight: sg(() => !!cloudSaveInFlight, null), timer: sg(() => !!cloudSaveTimer, null), retry: sg(() => !!cloudRetryTimer, null), lastErr: scrub(sg(() => cloudLastErrorCode, ''), 60)
+  });
+  function oprState(op, x){
+    const o = opr(op); if(!o) return;
+    chMark(o, 'state'); o.stAt = Date.now(); o.res.push(x); if(o.res.length > 6) o.res.shift();
+    try{ if(!o.ackSent && o.fbq && o.fba + o.fbf >= o.fbq){ o.ackSent = true; ev('res.ack', o.fbf ? 'warn' : 'info', o.fbf ? 'Часть записей отклонена сервером' : 'Сервер подтвердил запись (до появления изменения в состоянии)', { queued: o.fbq, acked: o.fba, failed: o.fbf }, { op, cls: o.fbf ? 'confirmed' : 'ok', src: 'sync' }); } }catch(_){}
+    if(o.vt) clearTimeout(o.vt);
+    o.vt = setTimeout(() => verdict(o), 2200);
+    if(o.ft) clearTimeout(o.ft);
+    o.ft = setTimeout(() => finalCheck(o), 7500);
+  }
+  // Есть ли запись в состоянии приложения и на экране.
+  function findItem(x, id){
+    if(x.coll === 'notes') return sg(() => notes, []).some(n => n && String(n.id) === id);
+    if(x.coll === 'expenses') return sg(() => expenses, []).some(n => n && String(n.id) === id);
+    if(x.coll === 'serviceFolders') return sg(() => serviceFolders, []).some(n => n && String(n.id) === id);
+    if(x.coll === 'serviceCarNotes') return sg(() => serviceCarNotes, []).some(n => n && String(n.id) === id);
+    if(x.coll === 'svc.items'){ const f = sg(() => serviceFolders, []).find(f => f && String(f.id) === String(x.folder)); return !!(f && (f.items || []).some(i => i && String(i.id) === id)); }
+    return null;
+  }
+  function inDom(x, id){
+    try{
+      const e = CSS.escape(id);
+      const sel = x.coll === 'notes' ? '[data-open="' + e + '"],[data-incopen="' + e + '"]' : x.coll === 'expenses' ? '[data-expopen="' + e + '"],[data-expedit="' + e + '"]' : x.coll === 'svc.items' ? '[data-svc-item="' + e + '"]' : x.coll === 'serviceFolders' ? '[data-svc-open="' + e + '"]' : '';
+      if(!sel) return null;
+      return !!document.querySelector(sel);
+    }catch(_){ return null; }
+  }
+  function uiExpected(x){
+    try{ if(x.coll === 'svc.items') return !!document.querySelector('[data-svc-container]') && String(sg(() => svcOpenFolderId, '')) === String(x.folder); }catch(_){}
+    return false;
+  }
+  function checkNow(x){
+    const r = {};
+    const add = (x.add || []).slice(0, 6), rem = (x.rem || []).slice(0, 6);
+    const st = [], ui = [];
+    add.forEach(id => { st.push(findItem(x, id)); ui.push(inDom(x, id)); });
+    rem.forEach(id => { const f = findItem(x, id); st.push(f === null ? null : !f); const d = inDom(x, id); ui.push(d === null ? null : !d); });
+    if(add.length || rem.length){
+      r.stateOk = st.every(v => v === null) ? 'unknown' : st.every(v => v !== false);
+      r.uiOk = ui.every(v => v === null) ? 'unknown' : (uiExpected(x) ? ui.every(v => v !== false) : (ui.every(v => v !== false) ? true : 'n/a'));
+      r.uiExpected = uiExpected(x);
+    }
+    return r;
+  }
+  function verdict(o){
+    try{
+      o.vt = null;
+      if(dead || !o.res.length) return;
+      const mut = mutTs.find(t => t >= o.stAt - 30);
+      if(mut) o.ch.ui = mut - o.t0;
+      const results = o.res.map(x => Object.assign({}, x, checkNow(x)));
+      let lv = 'info', cls = 'ok', why = '';
+      results.forEach(x => {
+        if(x.stateOk === false){ lv = 'warn'; cls = 'suspect'; why = 'запись изменена и уже не соответствует изменению в состоянии (появилась и исчезла или откатилась)'; }
+        else if(x.uiExpected && x.uiOk === false){ lv = 'warn'; cls = 'suspect'; why = 'в состоянии есть, на экране нет (экран со списком открыт)'; }
+      });
+      const d = { trig: o.trig || undefined, fns: o.fns.slice(0, 8), ch: o.ch, result: results, localWrites: o.ls, queued: o.fbq, acked: o.fba };
+      if(o.ins && o.ins.length) d.ins = o.ins;
+      ev('res.op', lv, 'Итог операции: ' + (o.trig || o.fns[0] || 'без нажатия') + (why ? ' — ' + why : ''), d, { op: o.op, cls, src: 'result' });
+    }catch(e){ internal(e); }
+  }
+  function finalCheck(o){
+    try{
+      o.ft = null;
+      if(dead || o.fin || !o.res.length) return; o.fin = true;
+      if(!isUserOp(o.op) && !o.fbq && !o.ls) return;      // изменения без нажатия (например, из облака) не оцениваем как «не сохранено»
+      const f = cloudFlags();
+      let lv = 'info', cls = 'ok', why = '';
+      const user = isUserOp(o.op);
+      if(user && !o.ls){ lv = 'warn'; cls = 'suspect'; why = 'состояние изменилось, а записи в localStorage в этой операции не замечено'; }
+      else if(o.lsErr){ lv = 'error'; cls = 'confirmed'; why = 'запись в localStorage завершилась ошибкой'; }
+      else if(user && !o.fbq){
+        if(!f.signed){ cls = 'unverifiable'; why = 'вход в облако не выполнен — отправка не предусмотрена'; }
+        else if(!f.online){ cls = 'waiting'; why = 'нет сети: отправка отложена'; }
+        else if(f.suppressed || f.baseline === false || f.writesAllowed === false){ lv = 'warn'; cls = 'suspect'; why = 'отправка заблокирована условием приложения (см. flags)'; }
+        else if(f.inFlight || f.timer || f.retry){ cls = 'waiting'; why = 'отправка ещё не началась: идёт предыдущая или ждёт таймер'; }
+        else { lv = 'warn'; cls = 'suspect'; why = 'изменение не поставлено в очередь Firebase, причина неизвестна'; }
+      }else if(o.fbq && o.fba + o.fbf < o.fbq){ cls = 'waiting'; why = 'запись поставлена в очередь, подтверждения сервера ещё нет'; }
+      const sync = {};
+      o.res.forEach(x => { try{
+        const S = x.coll === 'notes' ? sg(() => lastSyncedNotes, null) : x.coll === 'expenses' ? sg(() => lastSyncedExpenses, null) : null;
+        const arr = x.coll === 'notes' ? sg(() => notes, []) : x.coll === 'expenses' ? sg(() => expenses, []) : null;
+        if(S && arr) (x.add || []).concat(x.chg || []).slice(0, 6).forEach(id => { const it = arr.find(n => n && String(n.id) === id); if(it) sync[sl24(id)] = S.get(id) === (it.editedAt || it.createdAt || 0) ? 'считается отправленной' : 'ждёт отправки'; });
+      }catch(_){} });
+      const d = { ch: o.ch, localWrites: o.ls, queued: o.fbq, acked: o.fba, failed: o.fbf, why: why || undefined };
+      if(Object.keys(sync).length) d.syncState = sync;
+      if(cls !== 'ok') d.flags = f;
+      ev('res.final', lv, 'Сохранение и отправка: ' + (why || 'цепочка дошла до очереди Firebase'), d, { op: o.op, cls, src: 'result' });
+    }catch(e){ internal(e); }
+  }
+  const EXPECT = { svcDoAddItem: 'svc.items', svcCreateFolder: 'serviceFolders', svcDeleteFolder: 'serviceFolders', svcRemoveItem: 'svc.items', carDeleteEntry: 'serviceCarNotes' };
+  function onFnStart(name, op){
+    try{
+      const o = opr(op); if(!o) return;
+      if(o.fns.length < 12 && o.fns.indexOf(name) < 0) o.fns.push(name);
+      chMark(o, 'fn');
+      if(EXPECT[name] && !o.ins) o.ins = inputsSummary();
+    }catch(e){ internal(e); }
+  }
+  function onFnDone(name, op, threw){
+    try{
+      const coll = EXPECT[name]; if(!coll || threw) return;
+      const o = opr(op); if(!o) return;
+      setTimeout(() => {
+        try{
+          if(dead || o.res.some(x => x.coll === coll)) return;
+          const empty = o.ins && o.ins.length && o.ins.every(a => a[1] === 0);
+          ev('res.noeffect', empty ? 'info' : 'warn', name + ': выполнена без ошибки, ожидаемого изменения «' + coll + '» нет' + (empty ? ' (поле ввода было пустым — штатная проверка)' : ''),
+            { fn: name, coll, ins: o.ins || undefined }, { op, cls: empty ? 'ok' : 'suspect', src: 'result' });
+        }catch(e){ internal(e); }
+      }, 2300);
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- Этап 1: запись жизненного цикла записей (для сопоставления двух телефонов) ----------
+  function rec(coll, id){
+    const k = coll + ':' + sl24(id);
+    let r = recs.get(k);
+    if(!r){ r = { coll, id: sl24(id) }; recs.set(k, r); if(recs.size > 300) recs.delete(recs.keys().next().value); }
+    return r;
+  }
+  const collOfPath = (p) => { const m = /\/(notes|expenses|serviceFolders|serviceCarNotes)\/([^/]+)$/.exec(p); return m ? [m[1], m[2]] : null; };
+  const eaNum = (v) => (typeof v === 'number' && isFinite(v)) ? v : undefined;
+
+  // ---------- Этап 1: очередь неподтверждённых записей ----------
+  const WRITE_M = { set: 1, update: 1, delete: 1, add: 1, commit: 1 };
+  function overlap(log, bad, t0, t1){
+    let state = null, ms = 0;
+    for(const x of log){ if(x.ts <= t0) state = x.v; else break; }
+    let t = t0;
+    for(const x of log){ if(x.ts <= t0) continue; if(x.ts >= t1) break; if(state === bad) ms += x.ts - t; t = x.ts; state = x.v; }
+    if(state === bad) ms += t1 - t;
+    return ms;
+  }
+  const netOff = () => netLog.length ? netLog[netLog.length - 1].v === 'off' : false;
+  function wStart(c, docs){
+    try{
+      const now = Date.now();
+      const ops = (flushWin && c.op === flushWin.op && flushWin.ops) ? flushWin.ops.slice(0, 8) : [c.op];
+      W.set(c.id, { id: c.id, op: c.op, ops, aux: !!c.aux, oi: ambKind, m: c.m, path: c.path, t0: now, docs: docs || [], f1: 0, f2: 0, f3: 0 });
+      S1.fb.writes++;
+      if(!c.aux) ops.forEach(x => { const o = opr(x); if(o){ o.fbq++; chMark(o, 'fbq'); } if(x !== c.op) ev('op.sent', 'info', 'Правки этой операции ушли в очередь Firebase вместе с другими', { via: c.op, id: c.id, docs: (docs || []).slice(0, 6) }, { op: x, cls: 'ok', src: 'sync' }); });
+      (docs || []).forEach(d => { const r = rec(d[1], d[2]); r.qAt = now; r.op = c.op; if(d[3]) r.ea = d[3]; });
+      persistPend();
+    }catch(e){ internal(e); }
+  }
+  function errCat(err){
+    const code = String(err && err.code || '');
+    if(/permission|unauthenticated/.test(code)) return 'access';
+    if(/resource-exhausted/.test(code)) return 'limit';
+    if(/unavailable|deadline|network/.test(code)) return 'network';
+    return 'other';
+  }
+  function wEnd(c, err){
+    try{
+      const w = W.get(c.id); if(!w) return;
+      W.delete(c.id);
+      const now = Date.now(); w.t1 = now; w.ms = now - w.t0;
+      const off = overlap(netLog, 'off', w.t0, now), bg = overlap(visLog, 'hidden', w.t0, now);
+      if(err) S1.fb.fails++; else { S1.fb.acks++; (w.docs || []).forEach(d => { const r = rec(d[1], d[2]); r.ackAt = now; }); }
+      if(!w.aux) (w.ops || [w.op]).forEach(x => { const o = opr(x); if(o){ if(err) o.fbf++; else { o.fba++; chMark(o, 'ack'); } } if(x !== w.op) ev('op.acked', err ? 'warn' : 'info', err ? 'Сервер отклонил общую запись, в которую вошли правки этой операции' : 'Сервер подтвердил общую запись, в которую вошли правки этой операции', { via: w.op, id: w.id, ms: now - w.t0 }, { op: x, cls: err ? 'confirmed' : 'ok', src: 'sync' }); });
+      const slow = w.ms > 30000 && !off && !bg;
+      wDone.push({ id: w.id, op: w.op, oi: w.oi || undefined, m: w.m, path: w.path, at: iso(w.t0), ms: w.ms, res: err ? 'fail' : 'ok', cat: err ? errCat(err) : undefined, offlineMs: off || undefined, hiddenMs: bg || undefined, docs: (w.docs || []).length });
+      if(wDone.length > 80) wDone.shift();
+      if(w.ms > 8000 && !err) ev('fb.ack.late', slow ? 'warn' : 'info', 'Подтверждение сервера пришло через ' + Math.round(w.ms / 1000) + ' с' + (off ? ' (часть времени без сети)' : '') + (bg ? ' (часть времени приложение было в фоне)' : ''),
+        { ms: w.ms, offlineMs: off, hiddenMs: bg, path: w.path }, { op: w.op, cls: slow ? 'suspect' : 'waiting', src: 'firebase' });
+      if(!w.aux) (w.ops || [w.op]).forEach(x => {
+        const o = opr(x);
+        if(o && !o.ackSent && o.fbq && o.fba + o.fbf >= o.fbq && o.res.length){
+          o.ackSent = true;
+          ev('res.ack', o.fbf ? 'warn' : 'info', o.fbf ? 'Часть записей отклонена сервером' : 'Сервер подтвердил запись', { queued: o.fbq, acked: o.fba, failed: o.fbf, sinceChangeMs: o.stAt ? now - o.stAt : undefined }, { op: x, cls: o.fbf ? 'confirmed' : 'ok', src: 'sync' });
+        }
+      });
+      persistPend();
+    }catch(e){ internal(e); }
+  }
+  function wTick(){
+    try{
+      if(!W.size) return;
+      const now = Date.now(), off = netOff(), hid = document.visibilityState === 'hidden';
+      W.forEach(w => {
+        const age = now - w.t0, why = off ? 'нет сети' : hid ? 'приложение в фоне' : '';
+        if(age > 8000 && !w.f1){ w.f1 = 1; ev('fb.pending.wait', 'info', 'Запись ждёт подтверждения сервера: ' + Math.round(age / 1000) + ' с' + (why ? ' (' + why + ')' : ''), { path: w.path, ageMs: age, offline: off, hidden: hid, docs: w.docs.length }, { op: w.op, cls: 'waiting', src: 'firebase' }); }
+        if(age > 30000 && !w.f2){ w.f2 = 1; ev('fb.pending.long', why ? 'info' : 'warn', 'Подтверждение дольше 30 с' + (why ? ' — объяснимо: ' + why : ' при включённой сети и открытом приложении (не доказанный сбой)'), { path: w.path, ageMs: age, offline: off, hidden: hid }, { op: w.op, cls: why ? 'waiting' : 'suspect', src: 'firebase' }); }
+        if(age > 120000 && !w.f3){ w.f3 = 1; ev('fb.pending.stuck', why ? 'info' : 'warn', 'Подтверждения нет уже ' + Math.round(age / 1000) + ' с' + (why ? ' (' + why + ')' : ''), { path: w.path, ageMs: age, flags: cloudFlags() }, { op: w.op, cls: why ? 'waiting' : 'suspect', src: 'firebase' }); }
+      });
+    }catch(e){ internal(e); }
+  }
+  const PEND_KEY = 'vreyse_sd_pend', INC_KEY = 'vreyse_sd_inc', CNT_KEY = 'vreyse_sd_cnt', IID_KEY = 'vreyse_sd_iid';
+  function persistPendNow(){
+    try{
+      if(pendT){ clearTimeout(pendT); pendT = null; }
+      const arr = Array.from(W.values()).slice(0, 20).map(w => ({ op: w.op, path: w.path, t0: w.t0, n: w.docs.length }));
+      if(arr.length) localStorage.setItem(PEND_KEY, JSON.stringify({ sid: SID, ts: Date.now(), w: arr })); else localStorage.removeItem(PEND_KEY);
+    }catch(_){ S1.loss.quota++; }
+  }
+  function persistPend(){ if(pendT) return; pendT = setTimeout(persistPendNow, 1500); }
+
+  // ---------- Этап 1: чужие изменения из облака, расхождения, потери ----------
+  const LOCALGET = { notes: () => notes, expenses: () => expenses, serviceFolders: () => serviceFolders, serviceCarNotes: () => serviceCarNotes };
+  const collOfListen = (p) => { const m = /\/(notes|expenses|serviceFolders|serviceCarNotes)$/.exec(p); return m ? m[1] : ''; };
+  const eaOfData = (x) => { const v = Number(x && (x.editedAt || x.updatedAt || x.createdAt) || 0); return isFinite(v) ? v : 0; };
+  function snapAnalyze(cid, path, snap){
+    try{
+      const L = LST[cid] = LST[cid] || { path, n: 0, cache: 0, server: 0, pend: 0, first: Date.now(), last: 0, err: 0, lastErr: '' };
+      L.n++; L.last = Date.now();
+      if(snap && snap.metadata){ if(snap.metadata.fromCache) L.cache++; else L.server++; if(snap.metadata.hasPendingWrites) L.pend++; L.lastCache = !!snap.metadata.fromCache; L.lastPending = !!snap.metadata.hasPendingWrites; }
+      const coll = collOfListen(path);
+      if(!coll || !snap || typeof snap.size !== 'number' || !snap.docChanges) return;
+      const changes = snap.docChanges();
+      const fresh = !(snap.metadata && snap.metadata.fromCache);
+      const ids = SNAPIDS[coll] = SNAPIDS[coll] || new Set();
+      const initial = L.n === 1;
+      if(initial) ids.clear();
+      changes.forEach(ch => { const id = String(ch.doc.id); if(ch.type === 'removed') ids.delete(id); else ids.add(id); });
+      if(fresh) SNAPAT[coll] = Date.now();
+      if(initial || changes.length > 40 || !changes.length) return;
+      const get = LOCALGET[coll]; const local = new Map();
+      (sg(get, []) || []).forEach(x => { if(x && x.id != null) local.set(String(x.id), x); });
+      const synced = coll === 'notes' ? sg(() => lastSyncedNotes, null) : coll === 'expenses' ? sg(() => lastSyncedExpenses, null) : null;
+      const now = Date.now();
+      changes.forEach(ch => {
+        const md = ch.doc.metadata || {};
+        if(md.hasPendingWrites) return;                     // эхо собственной записи
+        const id = String(ch.doc.id); let rea = 0; try{ rea = Number(ch.doc.get('editedAt') || ch.doc.get('updatedAt') || ch.doc.get('createdAt') || 0) || 0; }catch(_){ return; }
+        const lx = local.get(id), lea = lx ? eaOfData(lx) : 0, key = coll + ':' + sl24(id);
+        if(ch.type === 'removed'){ ev('sync.remote.removed', 'info', 'Запись удалена в облаке: ' + coll, { coll, id: sl24(id), localHas: !!lx }, { cls: 'ok', src: 'sync', op: newOp('r') }); return; }
+        if(!lx){
+          const tb = tomb.get(key);
+          if(tb) ev('sync.resurrect', 'warn', 'Запись, которую этот телефон удалил, пришла из облака снова', { coll, id: sl24(id), goneSec: Math.round((now - tb.ts) / 1000), ea: rea, cache: !!md.fromCache }, { cls: 'suspect', src: 'sync', op: newOp('r') });
+          else ev('sync.remote.new', 'info', 'Из облака пришла новая запись: ' + coll, { coll, id: sl24(id), ea: rea, lagMs: rea ? now - rea : undefined, cache: !!md.fromCache }, { cls: 'ok', src: 'sync', op: newOp('r') });
+          const r = rec(coll, id); r.recvAt = now; r.ea = rea; r.recvEa = rea;
+          return;
+        }
+        if(rea > lea){ ev('sync.remote.newer', 'info', 'Из облака пришла более новая версия: ' + coll, { coll, id: sl24(id), ea: rea, was: lea, lagMs: now - rea, cache: !!md.fromCache }, { cls: 'ok', src: 'sync', op: newOp('r') }); const r = rec(coll, id); r.recvAt = now; r.recvEa = rea; }
+        else if(rea < lea){
+          const unsent = synced ? synced.get(id) !== lea : true;
+          if(unsent) ev('sync.remote.older', 'info', 'Облако пока старее локальной версии: локальная ещё не отправлена', { coll, id: sl24(id), ea: { remote: rea, local: lea } }, { cls: 'waiting', src: 'sync', op: newOp('r') });
+          else ev('sync.stale', 'warn', 'Облачная версия старее локальной, хотя приложение считает локальную отправленной', { coll, id: sl24(id), ea: { remote: rea, local: lea }, cache: !!md.fromCache }, { cls: 'suspect', src: 'sync', op: newOp('r') });
+        }
+      });
+    }catch(e){ internal(e); }
+  }
+  // Раз в 20 с: что ждёт отправки, что расходится с последним снимком облака.
+  const unsyncSeen = new Map(); const auditSigs = new Map(); const auditPrev = {};
+  function syncAudit(){
+    try{
+      if(dead || !sg(() => currentUID, null)) return;
+      const now = Date.now(), out = {}, f = cloudFlags();
+      const quiet = W.size === 0 && !f.inFlight && !f.timer && f.online && f.baseline !== false;
+      [['notes', () => notes, () => lastSyncedNotes], ['expenses', () => expenses, () => lastSyncedExpenses]].forEach(([coll, getL, getS]) => {
+        const arr = sg(getL, null), S = sg(getS, null); if(!Array.isArray(arr) || !S) return;
+        const pv = coll === 'notes' ? sg(() => notesPendingVersionCheck, null) : null, tx = coll === 'notes' ? sg(() => notesUnderTransaction, null) : null;
+        const un = [], seen = new Set(), keep = new Map();
+        arr.forEach(x => {
+          if(!x || x.id == null) return; const id = String(x.id); seen.add(id);
+          if((pv && pv.has(id)) || (tx && tx.has(id))) return;
+          if(S.get(id) !== (x.editedAt || x.createdAt || 0)){ un.push(id); keep.set(coll + ':' + id, unsyncSeen.get(coll + ':' + id) || now); }
+        });
+        Array.from(unsyncSeen.keys()).forEach(k => { if(k.indexOf(coll + ':') === 0 && !keep.has(k)) unsyncSeen.delete(k); });
+        keep.forEach((v, k) => unsyncSeen.set(k, v));
+        let delPending = 0; S.forEach((et, id) => { if(!seen.has(id)) delPending++; });
+        const oldest = un.length ? Math.round((now - Math.min.apply(null, un.map(id => keep.get(coll + ':' + id)))) / 1000) : 0;
+        const o = { local: arr.length, unsynced: un.length, deletePending: delPending, oldestUnsyncedSec: oldest };
+        // сравнение с последним снимком облака по id
+        const ids = SNAPIDS[coll];
+        if(ids && SNAPAT[coll]){
+          const cloudOnly = [], localMissing = [];
+          ids.forEach(id => { if(!seen.has(id) && !S.has(id)) cloudOnly.push(id); });
+          arr.forEach(x => { if(x && x.id != null){ const id = String(x.id); if(!ids.has(id) && S.get(id) === (x.editedAt || x.createdAt || 0) && S.has(id)) localMissing.push(id); } });
+          o.cloudOnly = cloudOnly.length; o.markedSyncedButNotInCloud = localMissing.length;
+          const prevA = auditPrev[coll] || { co: [], lm: [] };
+          const persist = (cur, prev) => cur.filter(id => prev.indexOf(id) >= 0);
+          const pco = persist(cloudOnly, prevA.co), plm = persist(localMissing, prevA.lm);
+          auditPrev[coll] = { co: cloudOnly.slice(0, 40), lm: localMissing.slice(0, 40) };
+          if(quiet && pco.length){ const sg0 = coll + ':co:' + pco.length; if(!auditSigs.has(sg0) || now - auditSigs.get(sg0) > 300000){ auditSigs.set(sg0, now); ev('sync.diverge', 'warn', 'В облаке есть записи, которых нет на этом телефоне (' + pco.length + '), и они не ждут удаления', { coll, ids: pco.slice(0, 8).map(sl24) }, { cls: 'suspect', src: 'sync', op: newOp('s') }); } }
+          if(quiet && plm.length){ const sg1 = coll + ':lm:' + plm.length; if(!auditSigs.has(sg1) || now - auditSigs.get(sg1) > 300000){ auditSigs.set(sg1, now); ev('sync.lost', 'warn', 'Записи считаются отправленными, но в последнем снимке облака их нет (' + plm.length + ')', { coll, ids: plm.slice(0, 8).map(sl24) }, { cls: 'suspect', src: 'sync', op: newOp('s') }); } }
+        }
+        if(quiet && un.length && oldest > 60){ const sg2 = coll + ':un:' + un.length; if(!auditSigs.has(sg2) || now - auditSigs.get(sg2) > 300000){ auditSigs.set(sg2, now); ev('sync.stuck', 'warn', 'Изменения не уходят в облако: ' + un.length + ' шт. ждут уже ' + oldest + ' с, очередь записей пуста', { coll, ids: un.slice(0, 8).map(sl24), flags: f }, { cls: 'suspect', src: 'sync', op: newOp('s') }); } }
+        out[coll] = o;
+      });
+      out.at = iso(now); out.flags = f; S1.audit = out;
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- Этап 1: счётчики до/после перезапуска ----------
+  function cntNow(){
+    const c = {};
+    try{
+      c.notes = (sg(() => notes, []) || []).length; c.expenses = (sg(() => expenses, []) || []).length;
+      const sf = sg(() => serviceFolders, []) || []; c.svcFolders = sf.length; c.svcItems = sf.reduce((a, f) => a + ((f && f.items) ? f.items.length : 0), 0);
+      c.pretripItems = sf.filter(f => f && f.kind === 'pretrip').reduce((a, f) => a + ((f.items || []).length), 0);
+      c.carNotes = (sg(() => serviceCarNotes, []) || []).length; c.fuelMonths = Object.keys(sg(() => fuelBalances, {}) || {}).length;
+    }catch(_){}
+    return c;
+  }
+  function restartCheck(stage){
+    try{
+      const p = S1.prevCnt; if(!p || !p.c) return;
+      const n = cntNow(), low = [];
+      Object.keys(p.c).forEach(k => { if(typeof n[k] === 'number' && n[k] < p.c[k]) low.push({ k, was: p.c[k], now: n[k] }); });
+      if(stage === 'final'){
+        if(low.length) ev('res.after-restart', 'warn', 'После перезапуска элементов меньше, чем было при закрытии: ' + low.map(x => x.k + ' ' + x.was + '→' + x.now).join(', '), { low, closedAt: iso(p.ts), note: 'Возможные законные причины: удаление или очистка на другом телефоне; сам факт не доказывает потерю.' }, { op: '', cls: 'suspect', src: 'life' });
+        else ev('res.after-restart', 'info', 'После перезапуска количество записей не меньше, чем при закрытии', { was: p.c, now: n }, { op: '', cls: 'ok', src: 'life' });
+      }else if(low.length) ev('res.after-restart', 'info', 'Сразу после запуска элементов меньше (' + low.map(x => x.k + ' ' + x.was + '→' + x.now).join(', ') + '), ждём облако', { low }, { op: '', cls: 'waiting', src: 'life' });
+    }catch(e){ internal(e); }
+  }
+  // ---------- Этап 1: инциденты — важные события и их окружение хранятся отдельно от общего кольца ----------
+  const INC_MAX_CHARS = 150000, INC_MAX = 30, INC_BEFORE = 20, INC_AFTER = 20, INC_EVMAX = 90;
+  const INC_SKIP = /^st\.|^ui\.tap\.noclick$|^sd\.dropped$/;
+  function cmp(e){
+    const r = { ts: e.ts, q: e.q, sid: e.sid, type: e.type, lv: e.lv, src: e.src, op: e.op, msg: String(e.msg || '').slice(0, 140) };
+    if(e.cls) r.cls = e.cls; if(e.oi) r.oi = e.oi; if(e.id) r.id = e.id; if(e.dur != null) r.dur = e.dur;
+    if(e.d !== undefined){ let j = ''; try{ j = JSON.stringify(e.d); }catch(_){} r.d = j.length > 360 ? { truncated: true, head: j.slice(0, 360) } : e.d; }
+    return r;
+  }
+  const isTrigger = (e) => (e.lv === 'error' || (e.lv === 'warn' && !INC_SKIP.test(e.type)) || e.cls === 'confirmed' || e.cls === 'suspect' && e.lv !== 'info') ;
+  function incClose(){
+    if(!inc) return;
+    incs.push(inc); inc = null; incTrim(); incDirty = true; incStr = '';
+  }
+  function incTrim(){
+    const size = () => incs.reduce((a, x) => a + JSON.stringify(x).length + 1, 0);
+    while(incs.length > INC_MAX || (incs.length > 1 && size() > INC_MAX_CHARS)){
+      let i = incs.findIndex(x => x.lv !== 'error'); if(i < 0) i = 0;
+      incs.splice(i, 1); S1.loss.incEvict++;
+    }
+  }
+  function incidentFeed(e){
+    try{
+      if(inc){
+        if(inc.ev.length < INC_EVMAX) inc.ev.push(cmp(e));
+        inc.lastTs = e.ts;
+        if(isTrigger(e)){ inc.n++; inc.after = 0; if(e.lv === 'error') inc.lv = 'error'; } else inc.after++;
+        if(inc.after >= INC_AFTER || e.ts - inc.ts > 60000 || inc.ev.length >= INC_EVMAX) incClose();
+        incDirty = true;
+        return;
+      }
+      if(!isTrigger(e)) return;
+      const key = e.type + '|' + String(e.msg || '').replace(/\d+/g, '#').slice(0, 80);
+      for(let i = incs.length - 1; i >= 0 && i >= incs.length - 8; i--){
+        const x = incs[i]; if(x.key === key && e.ts - (x.lastRepeat || x.lastTs) < 60000){ x.repeat = (x.repeat || 0) + 1; x.lastRepeat = e.ts; incDirty = true; return; }
+      }
+      inc = { id: 'i' + e.ts.toString(36) + e.q, ts: e.ts, sid: SID, key, lv: e.lv === 'error' ? 'error' : 'warn', trig: { type: e.type, msg: String(e.msg || '').slice(0, 140), q: e.q, cls: e.cls || undefined }, n: 1, after: 0, lastTs: e.ts, ev: recent.slice(-INC_BEFORE - 1, -1).map(cmp).concat([cmp(e)]) };
+      incDirty = true;
+    }catch(err){ internal(err); }
+  }
+  function incSave(){
+    try{
+      if(!incDirty) return; incDirty = false;
+      if(!incStr) incStr = incs.map(x => JSON.stringify(x)).join(',');
+      const open = inc ? JSON.stringify(Object.assign({ open: true }, inc)) : '';
+      const s = '[' + incStr + (incStr && open ? ',' : '') + open + ']';
+      try{ localStorage.setItem(INC_KEY, s); }
+      catch(_){ S1.loss.quota++; while(incs.length > 1){ incs.shift(); S1.loss.incEvict++; incStr = ''; incStr = incs.map(x => JSON.stringify(x)).join(','); try{ localStorage.setItem(INC_KEY, '[' + incStr + ']'); break; }catch(__){} } }
+    }catch(e){ internal(e); }
+  }
+  function incLoad(){
+    try{
+      const raw = localStorage.getItem(INC_KEY); if(!raw) return;
+      const arr = JSON.parse(raw); if(!Array.isArray(arr)) return;
+      arr.forEach(x => { if(x && Array.isArray(x.ev)){ if(x.open){ delete x.open; x.interrupted = true; } incs.push(x); } });
+      incTrim(); incStr = '';
+    }catch(e){ internal(e); }
+  }
+
+  // ---------- Этап 1: запись в localStorage (видим и ошибки, которые приложение глотает) ----------
+  function lsNote(key, v, err, ms){
+    const len = (typeof v === 'string') ? v.length : -1, now = Date.now();
+    const l = lsLast[key] = lsLast[key] || { n: 0, at: 0, len: 0, err: 0, maxMs: 0, slow: 0 };
+    l.n++; l.at = now; l.len = len; if(ms > l.maxMs) l.maxMs = Math.round(ms); lastLsAt = now;
+    const op = ambient(), o = op ? OPR.get(op) : null;
+    if(o){ o.ls++; chMark(o, 'local'); }
+    if(err){
+      l.err++; if(o) o.lsErr++;
+      ev('ls.error', 'error', 'Не удалось записать в localStorage: ' + scrub(key, 60), { key: scrub(key, 60), len, name: String(err && err.name || ''), quota: /quota/i.test(String(err && (err.name + err.message))) }, { cls: 'confirmed', src: 'storage' });
+    }else if(ms > 250 && l.slow++ < 20) ev('ls.slow', 'info', 'Медленная запись localStorage: ' + scrub(key, 60), { key: scrub(key, 60), len, ms: Math.round(ms) }, { src: 'storage' });
+  }
+  function installLs(){
+    try{
+      const SI = Storage.prototype.setItem;
+      if(!SI || SI.__sd) return;
+      const w = function(k, v){
+        let isLS = false; try{ isLS = this === window.localStorage; }catch(_){}
+        const key = String(k);
+        if(dead || !isLS || /^vreyse_sd_|^vreyse_diag/.test(key)) return SI.apply(this, arguments);
+        const t0 = performance.now(); let err = null;
+        try{ return SI.apply(this, arguments); }
+        catch(e){ err = e; throw e; }
+        finally{ try{ lsNote(key, v, err, performance.now() - t0); }catch(e2){ internal(e2); } }
+      };
+      w.__sd = true; Storage.prototype.setItem = w; S1.lsHook = true;
+    }catch(e){ internal(e); }
+  }
+  function installMut(){
+    try{
+      const start = () => {
+        try{ new MutationObserver(() => { mutTs.push(Date.now()); if(mutTs.length > 120) mutTs.shift(); }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden'] }); S1.mutHook = true; }catch(e){ internal(e); }
+      };
+      if(document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
+    }catch(e){ internal(e); }
+  }
+  function s1Flush(){
+    try{
+      incSave(); persistPendNow();
+      if(S1.cntDirty && S1.cnt){ S1.cntDirty = false; try{ localStorage.setItem(CNT_KEY, JSON.stringify({ ts: Date.now(), sid: SID, c: S1.cnt })); }catch(_){ S1.loss.quota++; } }
+    }catch(e){ internal(e); }
+  }
+  function s1Start(){
+    try{
+      try{ S1.iid = localStorage.getItem(IID_KEY) || ''; if(!S1.iid){ S1.iid = Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); localStorage.setItem(IID_KEY, S1.iid); } }catch(_){ S1.iid = 'n/a'; }
+      try{ S1.prevCnt = JSON.parse(localStorage.getItem(CNT_KEY) || 'null'); }catch(_){}
+      try{ S1.prevPend = JSON.parse(localStorage.getItem(PEND_KEY) || 'null'); localStorage.removeItem(PEND_KEY); }catch(_){}
+      incLoad();
+      netLog.push({ ts: Date.now(), v: navigator.onLine === false ? 'off' : 'on' });
+      visLog.push({ ts: Date.now(), v: document.visibilityState === 'hidden' ? 'hidden' : 'visible' });
+      window.addEventListener('online', () => { netLog.push({ ts: Date.now(), v: 'on' }); if(netLog.length > 60) netLog.shift(); ev('net.online', 'info', 'Сеть появилась', { pending: W.size }, { op: '', src: 'net' }); });
+      window.addEventListener('offline', () => { netLog.push({ ts: Date.now(), v: 'off' }); if(netLog.length > 60) netLog.shift(); ev('net.offline', 'info', 'Сеть пропала', { pending: W.size }, { op: '', src: 'net' }); });
+      document.addEventListener('visibilitychange', () => {
+        visLog.push({ ts: Date.now(), v: document.visibilityState === 'hidden' ? 'hidden' : 'visible' }); if(visLog.length > 60) visLog.shift();
+        if(document.visibilityState === 'hidden') unsavedCheck('свернули приложение');
+      });
+      window.addEventListener('pagehide', () => unsavedCheck('закрытие страницы'));
+      document.addEventListener('input', (e) => { try{ const t = e.target; if(!t || !t.tagName) return; if(/search|find|filter/i.test((t.id || '') + ' ' + (t.className || '') + ' ' + (t.type || ''))) return; lastInputAt = Date.now(); lastInputEl = descr(t); }catch(_){} }, true);
+      installLs(); installMut();
+      let tk = 0;
+      setInterval(() => { wTick(); if(++tk % 5 === 0) syncAudit(); }, 4000);
+      setTimeout(() => restartCheck('start'), 2000);
+      setTimeout(() => restartCheck('final'), 20000);
+      const pp = S1.prevPend;
+      if(pp && pp.sid !== SID && Array.isArray(pp.w) && pp.w.length){
+        const oldest = Math.min.apply(null, pp.w.map(x => x.t0)), age = Math.round((pp.ts - oldest) / 1000);
+        ev('life.pending.prev', age > 30 ? 'warn' : 'info', 'В прошлом сеансе при закрытии оставались неподтверждённые записи Firebase: ' + pp.w.length + ' (самая старая ждала ' + age + ' с). Дошли ли они — по этому журналу проверить нельзя.',
+          { n: pp.w.length, oldestAgeSec: age, paths: pp.w.slice(0, 6).map(x => x.path), note: 'Firestore мог дослать их из своей локальной очереди; смотрите sync.* и res.after-restart.' }, { op: '', cls: age > 30 ? 'suspect' : 'unverifiable', src: 'life' });
       }
     }catch(e){ internal(e); }
   }
-  function stSoon(why){ stWhy = why || stWhy; if(stT) return; stT = setTimeout(() => { stT = null; const w = stWhy; stWhy = ''; stTick(w); }, 30); }
+  function unsavedCheck(why){
+    try{
+      const now = Date.now();
+      if(lastInputAt && now - lastInputAt < 60000 && lastInputAt > lastLsAt + 100) ev('data.unsaved-input', 'info', 'При выходе из приложения (' + why + ') последний ввод новее последней записи в localStorage — возможно, введённое ещё не сохранено', { sinceInputMs: now - lastInputAt, sinceWriteMs: lastLsAt ? now - lastLsAt : null, el: lastInputEl, note: 'Если это поле открытого редактора с кнопкой сохранения — это нормально.' }, { op: '', cls: 'suspect', src: 'state' });
+    }catch(e){ internal(e); }
+  }
+  function lErr(cid, err){ try{ const L = LST[cid] = LST[cid] || { path: '', n: 0, cache: 0, server: 0, pend: 0, first: Date.now(), last: 0, err: 0, lastErr: '' }; L.err++; L.lastErr = errText(err); }catch(_){} }
+  const lossTotal = () => { const t = {}, p = S1.lossPrev || {}; Object.keys(S1.loss).forEach(k => { t[k] = (S1.loss[k] || 0) + (p[k] || 0); }); return t; };
+  // Сводка этапа 1 для файла: результаты операций, очередь записей, синхронизация, инциденты, находки по серьёзности.
+  function s1Report(events, incList){
+    const now = Date.now(), rank = { info: 0, low: 1, medium: 2, high: 3 };
+    const sevOf = (e) => e.cls === 'confirmed' ? 'high' : e.lv === 'error' ? 'medium' : e.cls === 'suspect' ? 'medium' : e.lv === 'warn' ? 'low' : 'info';
+    const groups = new Map(), cannot = [], byCls = {};
+    events.forEach(e => {
+      if(e.cls) byCls[e.cls] = (byCls[e.cls] || 0) + 1;
+      if(e.cls === 'unverifiable'){ if(cannot.length < 30) cannot.push({ at: e.t || iso(e.ts), type: e.type, msg: e.msg, op: e.op }); return; }
+      if(!(e.lv === 'error' || e.lv === 'warn' || e.cls === 'suspect' || e.cls === 'confirmed')) return;
+      if(INC_SKIP.test(e.type) && !e.cls) return;
+      const key = e.type + '|' + String(e.msg || '').replace(/\d+/g, '#').slice(0, 90);
+      let g = groups.get(key);
+      const sv = sevOf(e);
+      if(!g){ g = { sev: sv, cls: e.cls || 'unclassified', type: e.type, msg: String(e.msg || '').slice(0, 160), count: 0, first: iso(e.ts), last: iso(e.ts), ops: [], refs: [] }; groups.set(key, g); }
+      g.count++; g.last = iso(e.ts);
+      if(e.op && g.ops.indexOf(e.op) < 0 && g.ops.length < 5) g.ops.push(e.op);
+      if(g.refs.length < 5) g.refs.push(e.sid + ':' + e.q);
+      if(rank[sv] > rank[g.sev]) g.sev = sv;
+    });
+    const findings = Array.from(groups.values()).sort((a, b) => rank[b.sev] - rank[a.sev] || (a.last < b.last ? 1 : -1)).slice(0, 80);
+    const resEv = events.filter(e => /^res\./.test(e.type)).slice(-40).map(e => ({ at: e.t || iso(e.ts), op: e.op, type: e.type, lv: e.lv, cls: e.cls, msg: e.msg, d: e.d }));
+    const lst = {}; Object.keys(LST).forEach(k => { const L = LST[k]; lst[k] = { path: L.path, snapshots: L.n, fromServer: L.server, fromCache: L.cache, withPendingWrites: L.pend, errors: L.err, lastError: L.lastErr || undefined, lastAt: L.last ? iso(L.last) : null, lastWasCache: L.lastCache, lastHadPending: L.lastPending }; });
+    const f = (t) => t ? iso(t) : undefined;
+    return {
+      results: { byClass: byCls, recent: resEv },
+      sync: {
+        flags: cloudFlags(),
+        pendingWrites: Array.from(W.values()).slice(0, 20).map(w => ({ op: w.op, inferredOp: w.oi || undefined, m: w.m, path: w.path, ageSec: Math.round((now - w.t0) / 1000), docs: w.docs.slice(0, 8) })),
+        recentWrites: wDone.slice(-40),
+        totals: { writes: S1.fb.writes, acked: S1.fb.acks, failed: S1.fb.fails },
+        listeners: lst,
+        audit: S1.audit,
+        network: netLog.slice(-20).map(x => ({ at: iso(x.ts), v: x.v })),
+        visibility: visLog.slice(-20).map(x => ({ at: iso(x.ts), v: x.v })),
+        records: Array.from(recs.values()).slice(-60).map(r => ({ coll: r.coll, id: r.id, ea: r.ea || undefined, localAt: f(r.localAt), queuedAt: f(r.qAt), ackedAt: f(r.ackAt), receivedFromCloudAt: f(r.recvAt), receivedEa: r.recvEa || undefined, op: r.op })),
+        localStorageWrites: lsLast
+      },
+      incidents: incList.map(x => ({ id: x.id, at: iso(x.ts), sid: x.sid, level: x.lv, trigger: x.trig, triggers: x.n, repeats: x.repeat || 0, events: x.ev.length, interrupted: x.interrupted || x.open || undefined })),
+      findings, cannotVerify: cannot,
+      loss: { thisSession: S1.loss, allSessions: lossTotal(), note: 'rate — отброшено защитой от частых событий; evictOld — вытеснено из кольца старых событий (важные копируются в incidents); incEvict — вытеснено инцидентов; quota — не хватило места в localStorage; trimmed — убрано при сборке файла; dead — события после аварийного отключения диагностики.' }
+    };
+  }
+  function s1Gaps(gaps){
+    gaps.push('Этап 1 из 3. Ещё не добавлено: цепочка фотографий и Storage, IndexedDB/Cache Storage/Service Worker, проверки целостности данных, подробная производительность (этапы 2 и 3).');
+    gaps.push('Проверка введённых данных внутри функций не видна: наблюдается только итог (есть изменение или нет) и длины полей ввода, не их содержимое.');
+    gaps.push('Внутренние повторные попытки Firestore SDK и состояние его соединения напрямую не наблюдаются: сеть оценивается по navigator.onLine, события fromCache/hasPendingWrites в снимках и времени подтверждения записи.');
+    gaps.push('Получил ли второй телефон изменение, видно только по журналу второго телефона: сопоставляйте записи sync.records двух файлов по (coll, id, ea). Время сравнивается по часам двух телефонов — это приблизительно.');
+    gaps.push('Отображение на экране проверяется по атрибутам элементов (data-*) и только там, где список точно должен быть виден; в остальных случаях inUI = n/a или unknown.');
+    gaps.push('Операция, помеченная inferredOp/oi (c — по недавнему нажатию, f — по окну отправки), назначена по времени, а не по стеку вызовов — это обоснованное предположение, не доказательство.');
+    if(S1.fb.writes === 0 && !st.fbPatched.length) gaps.push('Записи Firebase не наблюдаются: перехват не установлен.');
+    if(!S1.lsHook) gaps.push('Перехват записи localStorage не установлен — ошибки сохранения могут быть не видны.');
+  }
 
   // ---------- ошибки ресурсов и долгие задачи ----------
   function installObservers(){
@@ -3318,6 +4041,11 @@ const SD = (() => {
     try{ status = DIAG.status().map(r => ({ key: r.key, level: r.lv, label: r.label, text: scrub(r.text, 200, true), sub: r.sub ? scrub(r.sub, 200, true) : undefined })); }catch(e){ status = { error: errText(e) }; }
     let legacy = []; try{ legacy = DIAG.entries().map(normLegacy); }catch(e){ internal(e); }
     let events = all().concat(legacy).sort((a, b) => a.ts - b.ts || (a.pt || 0) - (b.pt || 0) || (a.q || 0) - (b.q || 0));
+    const incList = incs.concat(inc ? [Object.assign({ open: true }, inc)] : []);
+    let fromInc = 0;
+    { const seenK = new Set(events.map(e => e.sid + ':' + e.q + ':' + e.ts));
+      incList.forEach(x => x.ev.forEach(e => { const k = e.sid + ':' + e.q + ':' + e.ts; if(!seenK.has(k)){ seenK.add(k); events.push(Object.assign({ fromIncident: x.id }, e)); fromInc++; } }));
+      if(fromInc) events.sort((a, b) => a.ts - b.ts || (a.pt || 0) - (b.pt || 0) || (a.q || 0) - (b.q || 0)); }
     const total0 = events.length;
     // защита от огромного файла: при превышении убираем самые старые «обычные» события (ошибки и предупреждения остаются)
     let trimmed = 0; let size = 0;
@@ -3328,7 +4056,7 @@ const SD = (() => {
       const important = events.filter(e => e.lv !== 'info');
       for(; i >= 0 && budget > 0; i--){ const e = events[i]; budget -= 120 + (e.msg || '').length + (e.d ? JSON.stringify(e.d).length : 0); keep.push(e); }
       const set = new Set(keep); important.forEach(e => set.add(e));
-      events = events.filter(e => set.has(e)); trimmed = total0 - events.length;
+      events = events.filter(e => set.has(e)); trimmed = total0 - events.length; S1.loss.trimmed += trimmed;
     }
     const oldest = events.length ? events[0].ts : null;
     const sessions = {};
@@ -3348,6 +4076,8 @@ const SD = (() => {
     if(st.internal) gaps.push('Внутренние сбои самой диагностики: ' + st.internal + (st.errText ? ' (последний: ' + st.errText + ')' : ''));
     const unfinished = events.filter(e => e.type === 'fn.start').filter(s => !events.some(x => x.type === 'fn.call' && x.id === s.id)).slice(-10).map(e => ({ at: iso(e.ts), fn: e.msg, op: e.op }));
     if(unfinished.length) gaps.push('Есть вызовы, у которых нет записи об окончании (возможно, зависли или приложение закрылось): ' + unfinished.length);
+    s1Gaps(gaps);
+    const s1r = s1Report(events.map(e => (e.t ? e : Object.assign({ t: iso(e.ts) }, e))), incList);
     const readme = [
       'Файл «Супердиагностика» приложения «В рейсе». Один общий журнал событий + снимок состояния. Время везде в UTC (ISO), ts — миллисекунды Unix.',
       'timeline — события по порядку (старые → новые). Поля: ts/t, sid (сеанс запуска), dev (телефон), type, lv (info/warn/error), src, op (operationId), par (родительский вызов), id (id вызова/записи), dur (мс), msg, d (подробности), legacy:true — записи прежнего журнала заявок (note.*, sync.*, cloud.*, firestore.*).',
@@ -3355,17 +4085,21 @@ const SD = (() => {
       'Типы: ui.click/ui.tap/ui.tap.noclick/ui.result — нажатия и их итог; fn.call/fn.start/fn.settle/fn.handler — вызовы функций и обработчики; fb.start/fb.ok/fb.fail/fb.snapshot/fb.listen — Firebase; st.* — изменения данных (только id и счётчики); dev.* — устройство; life.* — запуск/перезапуск/версия; js.* и console.* — ошибки.',
       'Как искать «нажал «+», а записи нет»: найти ui.click с #globalFab → его op → ui.result (fn/fb/st счётчики) → fn.call openExpenseSheet / svcCreateFolder / saveState → fb.start/fb.ok для записи → st.expenses/st.serviceFolders (add) → затем fb.snapshot с rem>0 или sync.reconcile/firestore.removed (синхронизация стёрла запись).',
       'Не собирается: тексты и поля заявок, имена, телефоны, адреса, суммы и любые введённые значения, пароли, токены, ссылки с токенами, uid, содержимое документов Firestore (только имена полей и размеры).',
-      'Раздел gaps — чего в этом файле не хватает для точного вывода.'
+      'Раздел gaps — чего в этом файле не хватает для точного вывода.',
+      'Этап 1. cls у события: ok — норма; waiting — нормальное ожидание; suspect — подозрение (не доказано); confirmed — подтверждённый сбой (ошибка, которую вернул Firebase/браузер); unverifiable — проверить нельзя. oi: c — операция назначена по недавнему нажатию, f — по окну отправки в облако (предположение), без oi — точно по стеку вызовов.',
+      'res.op — итог операции через ~2 с (было/стало, id, ревизия, есть ли в состоянии и на экране); res.final — через ~7 с: записалось ли локально и поставлено ли в очередь Firebase, причина обрыва цепочки; res.ack — сервер подтвердил; res.noeffect/res.dup/res.noea/res.resurrected/res.after-restart — подозрительные результаты; op.link — отправка в облако связана с правками; fb.pending.* — долгое ожидание подтверждения; sync.* — чужие изменения из облака и расхождения.',
+      'Секции: results, sync (очередь записей, слушатели, audit, records для сопоставления двух телефонов), incidents (важные события и контекст до/после, переживают перезапуск и вытеснение из кольца), findings (группы проблем по серьёзности), cannotVerify, loss (что и почему было отброшено).'
     ];
     return {
       format: 'vreyse-superdiag', schema: 1,
       app: 'В рейсе', version: verNow(), exportedAt: iso(now), tzOffsetMin: new Date().getTimezoneOffset(),
-      device: DEV, session: SID, sessionStartedAt: iso(T0),
+      device: DEV, deviceId: S1.iid, stage: 1, session: SID, sessionStartedAt: iso(T0),
       readme, gaps,
-      limits: { eventsInFile: events.length, eventsBeforeTrim: total0, oldestEvent: oldest ? iso(oldest) : null, trimmed, ringSegments: segs.length, ringCapacityEvents: SEG * MAXSEG },
+      limits: { fromIncidents: fromInc, eventsInFile: events.length, eventsBeforeTrim: total0, oldestEvent: oldest ? iso(oldest) : null, trimmed, ringSegments: segs.length, ringCapacityEvents: SEG * MAXSEG },
       self: { events: st.events, dropped: st.dropped, internalErrors: st.internal, overheadMsTotal: Math.round(st.selfMs), wrappedFunctions: st.wrapped, missingFunctions: st.missing, firebaseHooks: st.fbPatched, firebaseSkipped: st.fbSkipped, clickHandlerHook: st.ael, fetchHook: st.fetch, longtasks: st.longtasks },
       device_now: devInfo(), storage: Object.assign(storageInfo(), storageEst ? { estimate: storageEst } : {}),
       state_now: liveState(), systemStatus: status, extendedCheck: ext,
+      results: s1r.results, sync: s1r.sync, incidents: s1r.incidents, findings: s1r.findings, cannotVerify: s1r.cannotVerify, loss: s1r.loss,
       pushLog: pushLines(), sessions, unfinishedCalls: unfinished,
       operations: ops.slice(-800),
       timeline: events.map(e => { const r = Object.assign({}, e); r.t = iso(e.ts); return r; })
@@ -3424,21 +4158,22 @@ const SD = (() => {
   }catch(e){ internal(e); }
   installObservers();
   installFirebase();
+  s1Start();
   const WRAP = [
-    ['saveState', { hot: true, st: true }], ['loadState', { start: true, st: true }], ['applyState', { start: true, st: true }],
-    ['scheduleCloudSave', { hot: true }], ['flushCloudSave', { start: true, st: true }], ['loadFromCloud', { start: true, st: true }],
+    ['saveState', { hot: true, st: true, mark: true }], ['loadState', { start: true, st: true }], ['applyState', { start: true, st: true }],
+    ['scheduleCloudSave', { hot: true, mark: true }], ['flushCloudSave', { start: true, st: true, flush: true }], ['loadFromCloud', { start: true, st: true }],
     ['openEditor', { start: true, ids: [] }], ['closeEditor', { start: true }], ['commitEditingNoteLocally', { start: true, st: true }], ['commitNoteWithServerCheck', { start: true, st: true }],
     ['setPaymentStatus', { st: true }], ['addPayment', { st: true }], ['removePayment', { st: true }], ['submitPaymentEntry', { st: true }],
-    ['queueNoteIdForDeletion', { st: true }], ['pasteOrderFromClipboard', { start: true }],
+    ['queueNoteIdForDeletion', { st: true, mark: true }], ['pasteOrderFromClipboard', { start: true }],
     ['uploadPhotoAndReplace', { start: true }], ['uploadPdf', { start: true }], ['addPdfFromFile', { start: true }], ['deletePhotoFromStorage', {}], ['deletePdfFromStorage', {}],
     ['openExpenseSheet', { start: true, ids: [0] }], ['closeExpenseSheet', {}], ['expRequestClose', {}], ['commitNewCategory', { st: true }],
-    ['fuelSetBalance', { st: true }], ['fuelScheduleFlush', { hot: true }], ['flushFuelBalances', { start: true, st: true }], ['fuelApplyCloud', { st: true }],
+    ['fuelSetBalance', { st: true, mark: true }], ['fuelScheduleFlush', { hot: true }], ['flushFuelBalances', { start: true, st: true, flush: true }], ['fuelApplyCloud', { st: true }],
     ['openSvcSheetCreate', { start: true }], ['svcFinishCreate', { start: true, st: true }], ['svcFinishCreateWithMove', { start: true, st: true }], ['svcFinishEdit', { start: true, st: true }],
     ['svcCreateFolder', { start: true, st: true }], ['svcDeleteFolder', { start: true, st: true, ids: [0] }], ['svcAddItem', { start: true, st: true }], ['svcDoAddItem', { start: true, st: true }],
     ['svcSetItemDone', { st: true }], ['svcRemoveItem', { st: true }], ['svcReorderGroup', { st: true }], ['svcMoveItems', { st: true }],
-    ['svcSave', { hot: true, st: true }], ['svcSaveSoon', { hot: true }], ['svcFlushLocalSave', { hot: true }], ['svcScheduleFlush', { hot: true }], ['flushServiceFolders', { start: true, st: true }],
+    ['svcSave', { hot: true, st: true, mark: true }], ['svcSaveSoon', { hot: true }], ['svcFlushLocalSave', { hot: true }], ['svcScheduleFlush', { hot: true }], ['flushServiceFolders', { start: true, st: true, flush: true }],
     ['svcApplyIncoming', { st: true }], ['svcApplyRemoval', { st: true }], ['svcSaveAndClose', { start: true, st: true }], ['svcOpenFolder', { ids: [0] }], ['svcUploadPhoto', { start: true }],
-    ['carStartNew', { start: true }], ['carSave', { hot: true, st: true }], ['carSaveSoon', { hot: true }], ['carFlushLocalSave', { hot: true }], ['carScheduleFlush', { hot: true }], ['flushCarNotes', { start: true, st: true }],
+    ['carStartNew', { start: true }], ['carSave', { hot: true, st: true, mark: true }], ['carSaveSoon', { hot: true }], ['carFlushLocalSave', { hot: true }], ['carScheduleFlush', { hot: true }], ['flushCarNotes', { start: true, st: true, flush: true }],
     ['carDeleteEntry', { start: true, st: true }], ['carSaveAndClose', { start: true, st: true }], ['carApplyIncoming', { st: true }], ['carApplyRemoval', { st: true }], ['carPersistLocal', { hot: true }],
     ['backupWriteRecord', { start: true }], ['backupDeleteFile', { start: true }], ['backupConfirmRestore', { start: true }], ['exportData', { start: true }], ['setAuthMode', {}]
   ];
@@ -3820,6 +4555,10 @@ function noteCardHtml(n, favInfo){
       </div>`
     : (n.number ? `<div class="note-num">№${n.number}${n.createdAt ? ' · ' + formatNoteDate(n.createdAt) : ''}</div>` : '');
   const firmHtml = firmLineHtml(n, 'note-firm');
+  // «Доставляется»: на карточке только одна миниатюра (первое фото, а если фото нет — первый PDF); остальные открываются внутри заявки
+  let oneThumbHtml = '';
+  if(photos.length) oneThumbHtml = `<div class="photo-thumb-sm" data-cardphoto="${n.id}:0"><img src="${photoSrcById(photos[0], n.photoIds && n.photoIds[0])}"></div>`;
+  else if(pdfs.length){ const f = pdfs[0]; oneThumbHtml = `<div class="photo-thumb-sm" data-cardpdf="${n.id}:${escapeHtml(String(f.id))}">${f.thumb ? `<img src="${f.thumb}">` : '<div class="pdf-ph">PDF</div>'}<span class="pdf-badge">PDF</span></div>`; }
   const overdue = isOverdue(n);
   // основной список «Доставляется»: две колонки — слева маршрут и груз, справа сумма и тип расчёта (без абсолютных координат)
   const lay2 = view === 'notes' && !n.trashed && !n.archived && !n.delivered;
@@ -3839,9 +4578,9 @@ function noteCardHtml(n, favInfo){
     ${numberBlockHtml}
     ${n.delivered ? '<div class="deliv-tag">✓ Доставлен</div>' : ''}
     ${n.syncConflict ? `<div style="display:inline-block;margin:0 0 4px;padding:2px 8px;border-radius:6px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;">⚠ Требует решения — изменилась на другом телефоне</div>` : ''}
-    <div class="note-row"><div class="note-main">${titleShown ? `<h4${titleOrder ? ' class="rt"' : ''}>${escapeHtml(titleShown)}</h4>` : ''}${body}</div>${(amountH || flagsH) ? `<div class="note-side">${amountH}${flagsH}</div>` : ''}</div>
+    <div class="note-row"><div class="note-main">${titleShown ? `<h4${titleOrder ? ' class="rt"' : ''}>${escapeHtml(titleShown)}</h4>` : ''}${body}</div>${(amountH || flagsH || oneThumbHtml) ? `<div class="note-side${oneThumbHtml ? ' has-att' : ''}">${amountH}${flagsH}${oneThumbHtml ? `<div class="side-att">${oneThumbHtml}</div>` : ''}</div>` : ''}</div>
     ${remarkRowHtml(n)}
-    ${firmShownHtml(n, 'note-firm firm-below', false)}${photosHtml}
+    ${firmShownHtml(n, 'note-firm firm-below', false)}
   </div>`;
   }
   return `<div class="note ${isFav ? 'favorite' : ''} ${overdue ? 'due-overdue' : ''} ${(!overdue && !isFav && n.color && n.color !== 'default') ? 'tinted' : ''}" style="background:${overdue ? 'var(--tint-red-bg)' : (isFav ? 'var(--tint-fav-bg)' : colorHex(n.color))}" data-open="${n.id}">
