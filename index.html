@@ -530,6 +530,8 @@
   .cargo-toggle{position:sticky;top:0;z-index:6;display:flex;gap:18px;margin:0 -4px 6px;padding:4px 6px 0;background:var(--bg);box-shadow:0 -16px 0 0 var(--bg);border:none;}
   .cargo-btn{min-height:36px;border:none;background:none;border-radius:0;padding:6px 2px;font-family:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;-webkit-tap-highlight-color:transparent;border-bottom:2px solid transparent;}
   .cargo-btn{position:relative;}
+  .cargo-total{white-space:nowrap;}
+  .cargo-btn[data-cargo="delivered"]::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:1px;background:var(--card-line);}
   .cargo-btn.active{color:var(--ink);font-weight:700;font-size:16.5px;}
   .cargo-btn.active::after{content:"";position:absolute;left:2px;right:2px;bottom:5px;height:1.5px;border-radius:2px;background:var(--ink);} /* тонкая тёмная линия под словом, цвет как у текста */
   .ed-undeliver{display:none;margin:8px 0 2px;padding:9px 14px;border:1px solid var(--card-line);border-radius:12px;background:var(--surface);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;}
@@ -1355,7 +1357,7 @@
     <div class="ptr-indicator" id="ptrIndicator"><div class="spinner"></div></div>
     <div class="msb" id="monthStartBanner" role="button" aria-label="Начался новый месяц: запишите остаток топлива и пробег"><div class="msb-t"><b>Начался новый месяц</b><span>Запишите остаток топлива на начало и пробег.</span></div><button type="button" class="msb-x" id="monthStartBannerX" aria-label="Скрыть до завтра">✕</button></div>
     <div class="cargo-toggle" id="cargoToggle" style="display:none;">
-      <button type="button" class="cargo-btn active" data-cargo="active">Доставляется</button>
+      <button type="button" class="cargo-btn active" data-cargo="active">Доставляется<span class="cargo-total" id="cargoTotal" style="display:none;"></span></button>
       <button type="button" class="cargo-btn" data-cargo="delivered">Доставлено</button>
     </div>
     <div class="compose" id="composeBar">Новая заявка</div>
@@ -1416,7 +1418,7 @@
   <nav class="drawer" id="drawer">
     <div class="brand">В рейсе</div>
     <div id="drawerEmail" style="margin:-16px 22px 16px;font-size:12.5px;color:var(--muted);word-break:break-all;"></div>
-    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-24 21:50 (Вложение справа под суммой)</div>
+    <div id="appVersionLine" style="margin:-12px 22px 16px;font-size:16.5px;color:var(--muted);opacity:.7;user-select:none;-webkit-user-select:none;">Версия: 2026-11-27 13:15 (Итого тонн во вкладке)</div>
     <div id="offlinePhotoStatus" style="display:none;margin:-8px 22px 14px;font-size:12.5px;color:var(--muted);cursor:pointer;" title="Фото заявок сохраняются на телефоне, чтобы открываться без интернета"></div>
     <button class="active" data-view="notes">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 L3 14h7l-1 8 10-12h-7z"/></svg>
@@ -11421,6 +11423,31 @@ document.getElementById('progStrip').addEventListener('click', (e) => {
   if(e.target.closest('#pstripPrev')){ pstripOffset--; pstripUpdate(); return; }
   if(e.target.closest('#pstripNext') && pstripOffset < 0){ pstripOffset++; pstripUpdate(); }
 });
+// «Всего»: сумма тонн по всем текущим заявкам «Доставляется» (вес берётся из текста заявки так же, как для карточки; кг пересчитываются в тонны;
+// заявки без веса считаются за 0). Ничего не хранится и не пишется в Firebase.
+function cargoTonsOf(text){
+  try{
+    const c = cargoInfo(text);
+    if(!c || !c.measure) return 0;
+    const m = c.measure.match(/(\d+(?:[.,]\d+)?)\s*(кг|тонн[а-я]*|тн|т)(?![\p{L}\p{N}])/iu);
+    if(!m) return 0;
+    const v = parseFloat(m[1].replace(',', '.'));
+    if(!isFinite(v)) return 0;
+    return /^кг$/i.test(m[2]) ? v / 1000 : v;
+  }catch(e){ return 0; }
+}
+function cargoTotalUpdate(show){
+  const el = document.getElementById('cargoTotal');
+  if(!el) return;
+  let sum = 0;
+  if(show){
+    for(const n of notes){ if(!n.archived && !n.trashed && n.delivered !== true) sum += cargoTonsOf(n.text); }
+  }
+  const r = Math.round(sum * 10) / 10;
+  if(!show || !(r > 0)){ el.style.display = 'none'; return; }
+  el.textContent = ' · ' + String(r).replace('.', ',') + ' т';
+  el.style.display = '';
+}
 function cargoApplyLayout(){
   const inNotes = currentSection === 'notes';
   const main = inNotes && view === 'notes';
@@ -11428,6 +11455,7 @@ function cargoApplyLayout(){
   monthStartBannerUpdate();
   diagSafe(pstripUpdate);
   document.getElementById('cargoToggle').style.display = main ? 'flex' : 'none';
+  cargoTotalUpdate(main && !del);
   document.querySelectorAll('#cargoToggle .cargo-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-cargo') === cargoTab));
   if(!inNotes) return;
   document.getElementById('content').style.display = del ? 'none' : 'block';
